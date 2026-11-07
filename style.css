@@ -549,12 +549,15 @@ input::placeholder, textarea::placeholder {
 }
 
 .btn-nav:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(56, 189, 248, 0.16) !important;
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.75), 0 0 20px rgba(14, 165, 233, 0.4) !important;
 }
 
-.btn-nav:hover i {
-  color: var(--text-primary);
+.btn-nav:hover i,
+.btn-nav:hover svg {
+  color: #38bdf8 !important;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.85)) !important;
 }
 
 .btn-logout-style:hover {
@@ -3143,73 +3146,87 @@ html, body {
 }
 
 /* ==========================================================================
-   UNIFIED APP TOOLBAR - SMALL SIZE & STANDARDIZED 3-ZONE FORMAT FOR ALL PAGES
-   "MAKE SIZE SMALLL - ALL PAGE SAME TYPE TOOL BAR - THIS FORMAT"
+   UNIFIED APP TOOLBAR - FULL AUTO-FIT & RESPONSIVE STANDARDIZED 3-ZONE FORMAT
+   "DATE IN ONE LINE - AS PER PAGE SIZE FIT - AUTO SCALES - NEVER OVERLAPS"
    ========================================================================== */
 .unified-app-toolbar {
   width: 100% !important;
-  height: 42px !important;
-  min-height: 42px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
-  padding: 4px 10px !important;
   box-sizing: border-box !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
-  margin-bottom: 8px !important;
-  flex-shrink: 0 !important;
-  gap: 8px !important;
   background: transparent !important;
+  flex-shrink: 0 !important;
+  flex-wrap: nowrap !important; /* STRICTLY ONE LINE */
+  height: clamp(34px, 4vw, 42px) !important;
+  min-height: clamp(34px, 4vw, 42px) !important;
+  padding: 2px clamp(3px, 0.8vw, 8px) !important;
+  margin-bottom: clamp(4px, 1vw, 8px) !important;
+  gap: clamp(3px, 0.8vw, 8px) !important;
+  position: relative !important;
+  overflow: hidden !important;
 }
 
+/* Left zone: strictly hugs its buttons - never encroaches or overlaps center */
 .toolbar-zone-left {
-  flex: 1 1 0% !important;
+  flex: 0 0 auto !important;
   display: flex !important;
   align-items: center !important;
   justify-content: flex-start !important;
-  gap: 6px !important;
+  gap: clamp(2px, 0.5vw, 6px) !important;
   min-width: 0 !important;
+  flex-shrink: 0 !important;
 }
 
+/* Center zone: occupies middle space smoothly in the exact same line */
 .toolbar-zone-center {
-  flex: 2 1 0% !important;
+  flex: 1 1 auto !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: 8px !important;
+  gap: clamp(3px, 0.6vw, 6px) !important;
   text-align: center !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
   white-space: nowrap !important;
 }
 
 .toolbar-zone-center .toolbar-title {
   margin: 0 !important;
-  font-size: 1.1rem !important;
+  font-size: clamp(0.74rem, 1.4vw, 1.05rem) !important;
   font-weight: 800 !important;
-  letter-spacing: 1.2px !important;
+  letter-spacing: clamp(0.3px, 0.08vw, 1.2px) !important;
   color: #ffffff !important;
   text-transform: uppercase !important;
   font-family: var(--font-heading, 'Outfit', 'Inter', sans-serif) !important;
   display: inline-flex !important;
   align-items: center !important;
-  gap: 8px !important;
+  gap: clamp(3px, 0.6vw, 6px) !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
 }
 
+/* Right zone: strictly hugs its buttons - never encroaches or overlaps center */
 .toolbar-zone-right {
-  flex: 1 1 0% !important;
+  flex: 0 0 auto !important;
   display: flex !important;
   align-items: center !important;
   justify-content: flex-end !important;
-  gap: 6px !important;
+  gap: clamp(2px, 0.5vw, 6px) !important;
   min-width: 0 !important;
+  flex-shrink: 0 !important;
 }
 
-/* Small, uniform, rounded square tool button */
-.unified-tool-btn {
-  width: 32px !important;
-  height: 32px !important;
-  min-width: 32px !important;
+/* Fluid, responsive tool buttons that auto-scale between small and big page sizes */
+.unified-tool-btn,
+.unified-search-btn {
+  width: clamp(24px, 2.8vw, 32px) !important;
+  height: clamp(24px, 2.8vw, 32px) !important;
+  min-width: clamp(24px, 2.8vw, 32px) !important;
   padding: 0 !important;
-  border-radius: 8px !important;
+  border-radius: clamp(4px, 0.6vw, 8px) !important;
   background: rgba(255, 255, 255, 0.05) !important;
   border: 1.2px solid rgba(255, 255, 255, 0.18) !important;
   color: #cbd5e1 !important;
@@ -3222,11 +3239,158 @@ html, body {
   flex-shrink: 0 !important;
 }
 
-.unified-tool-btn:hover {
-  background: rgba(255, 255, 255, 0.12) !important;
-  border-color: rgba(255, 255, 255, 0.35) !important;
+.unified-tool-btn i,
+.unified-tool-btn svg,
+.unified-search-btn i,
+.unified-search-btn svg {
+  width: clamp(11px, 1.4vw, 15px) !important;
+  height: clamp(11px, 1.4vw, 15px) !important;
+  display: block !important;
+  pointer-events: none !important;
+}
+
+/* Auto-scaling Date & Time Badges - STRICTLY ONE LINE */
+.home-date-time-badge,
+#all-entries-gaming-date,
+#ai-selected-date-badge {
+  background: rgba(0, 0, 0, 0.6) !important;
   color: #ffffff !important;
+  border: 1.2px solid rgba(56, 189, 248, 0.4) !important;
+  border-radius: clamp(4px, 0.5vw, 6px) !important;
+  font-weight: 900 !important;
+  font-family: 'JetBrains Mono', Consolas, monospace !important;
+  letter-spacing: clamp(0px, 0.04vw, 0.4px) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
+  font-size: clamp(0.60rem, 1.2vw, 0.82rem) !important;
+  height: clamp(24px, 2.8vw, 30px) !important;
+  padding: 2px clamp(4px, 0.8vw, 8px) !important;
+  max-width: 100% !important;
+  text-overflow: ellipsis !important;
+  overflow: hidden !important;
+}
+
+/* Auto-scaling Entries Count Badge */
+.record-badge {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: #818cf8 !important;
+  border: 1px solid rgba(99, 102, 241, 0.35) !important;
+  border-radius: clamp(4px, 0.5vw, 6px) !important;
+  font-weight: 800 !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
+  font-size: clamp(0.60rem, 1.1vw, 0.78rem) !important;
+  height: clamp(24px, 2.8vw, 30px) !important;
+  padding: 1px clamp(3px, 0.6vw, 7px) !important;
+  flex-shrink: 0 !important;
+}
+
+/* Mobile & Small Screens (<= 640px): STILL STRICTLY ONE LINE with auto-scaled sizes */
+@media (max-width: 640px) {
+  .unified-app-toolbar {
+    flex-wrap: nowrap !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 2px 4px !important;
+    gap: 3px !important;
+  }
+  .toolbar-zone-left {
+    gap: 3px !important;
+  }
+  .toolbar-zone-right {
+    gap: 3px !important;
+  }
+  .unified-tool-btn,
+  .unified-search-btn {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 26px !important;
+    border-radius: 5px !important;
+  }
+  .unified-tool-btn i,
+  .unified-tool-btn svg,
+  .unified-search-btn i,
+  .unified-search-btn svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+  .record-badge {
+    height: 26px !important;
+    padding: 1px 4px !important;
+    font-size: 0.68rem !important;
+  }
+  .home-date-time-badge,
+  #all-entries-gaming-date,
+  #ai-selected-date-badge {
+    font-size: 0.68rem !important;
+    height: 26px !important;
+    padding: 1px 5px !important;
+    letter-spacing: 0px !important;
+  }
+}
+
+/* Extra Small Phones (<= 440px): STRICTLY ONE LINE */
+@media (max-width: 440px) {
+  .unified-app-toolbar {
+    flex-wrap: nowrap !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 1px 2px !important;
+    gap: 2px !important;
+  }
+  .toolbar-zone-left,
+  .toolbar-zone-right {
+    gap: 2px !important;
+  }
+  .unified-tool-btn,
+  .unified-search-btn {
+    width: 23px !important;
+    height: 23px !important;
+    min-width: 23px !important;
+    border-radius: 4px !important;
+  }
+  .unified-tool-btn i,
+  .unified-tool-btn svg,
+  .unified-search-btn i,
+  .unified-search-btn svg {
+    width: 11px !important;
+    height: 11px !important;
+  }
+  .record-badge {
+    height: 23px !important;
+    padding: 1px 3px !important;
+    font-size: 0.62rem !important;
+  }
+  .home-date-time-badge,
+  #all-entries-gaming-date,
+  #ai-selected-date-badge {
+    font-size: 0.60rem !important;
+    height: 23px !important;
+    padding: 1px 3px !important;
+    letter-spacing: -0.2px !important;
+  }
+}
+
+.unified-tool-btn:hover {
+  background: rgba(56, 189, 248, 0.18) !important;
+  border-color: #38bdf8 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.8), 0 0 22px rgba(14, 165, 233, 0.45) !important;
   transform: translateY(-1px);
+}
+
+.unified-tool-btn:hover i,
+.unified-tool-btn:hover svg {
+  color: #38bdf8 !important;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.85)) !important;
 }
 
 .unified-tool-btn:active {
@@ -3279,10 +3443,17 @@ html, body {
 }
 
 .unified-search-btn:hover {
-  background: rgba(255, 255, 255, 0.12) !important;
-  border-color: rgba(255, 255, 255, 0.35) !important;
+  background: rgba(56, 189, 248, 0.18) !important;
+  border-color: #38bdf8 !important;
   color: #ffffff !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.8), 0 0 22px rgba(14, 165, 233, 0.45) !important;
   transform: translateY(-1px);
+}
+
+.unified-search-btn:hover i,
+.unified-search-btn:hover svg {
+  color: #38bdf8 !important;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.85)) !important;
 }
 
 .unified-search-btn.active {
@@ -3724,12 +3895,6 @@ html, body {
     flex-wrap: wrap !important;
   }
 
-  .home-date-time-badge {
-    font-size: 0.72rem !important;
-    padding: 2px 6px !important;
-    height: 24px !important;
-  }
-
   .all-entries-toggle-btn {
     width: 26px !important;
     height: 26px !important;
@@ -3851,22 +4016,6 @@ html, body {
   }
 }
 
-/* Home Panel Toolbar & Date-Time Badge - DARK BOLD */
-.home-date-time-badge,
-#all-entries-gaming-date {
-  background: rgba(0, 0, 0, 0.6) !important;
-  color: #ffffff !important;
-  border: 1.2px solid rgba(56, 189, 248, 0.4) !important;
-  padding: 2px 10px !important;
-  border-radius: 6px !important;
-  font-size: 0.82rem !important;
-  font-weight: 900 !important;
-  font-family: 'JetBrains Mono', Consolas, monospace !important;
-  letter-spacing: 0.5px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
-}
 .home-search-expandable,
 .all-entries-search-expandable {
   transition: width 0.25s ease, opacity 0.25s ease;
@@ -4589,4 +4738,81 @@ html, body {
   background: rgba(239, 68, 68, 0.2) !important;
   color: #ef4444 !important;
   border-color: rgba(239, 68, 68, 0.4) !important;
+}
+
+/* ==========================================================================
+   GLOBAL UNIVERSAL BUTTON HOVER BLUE GLOW EFFECT
+   "AFTER POINTING CURCEL TO ANY BUTTON IT SOULD GLOW BLUE"
+   ========================================================================== */
+button,
+.btn,
+.unified-tool-btn,
+.unified-search-btn,
+.btn-nav,
+.day-nav-arrow-btn,
+.day-nav-btn,
+.ai-chip-btn,
+.ai-send-btn,
+.ai-clear-btn,
+.ai-close-btn,
+.telegram-ai-badge,
+.day-number-pill,
+.btn-delete-item,
+.all-entries-toggle-btn,
+.btn-officer-quick-save,
+#btn-officer-quick-save,
+input[type="button"],
+input[type="submit"] {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Universal Blue Glow on Cursor Pointing / Hover */
+button:hover:not(:disabled),
+.btn:hover:not(:disabled),
+.unified-tool-btn:hover:not(:disabled),
+.unified-search-btn:hover:not(:disabled),
+.btn-nav:hover:not(:disabled),
+.day-nav-arrow-btn:hover:not(:disabled),
+.day-nav-btn:hover:not(:disabled),
+.ai-chip-btn:hover:not(:disabled),
+.ai-send-btn:hover:not(:disabled),
+.ai-close-btn:hover:not(:disabled),
+.telegram-ai-badge:hover,
+.day-number-pill:hover,
+.all-entries-toggle-btn:hover,
+.btn-officer-quick-save:hover:not(:disabled),
+#btn-officer-quick-save:hover:not(:disabled),
+input[type="button"]:hover:not(:disabled),
+input[type="submit"]:hover:not(:disabled) {
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.8), 0 0 24px rgba(14, 165, 233, 0.45) !important;
+  cursor: pointer !important;
+  transform: translateY(-1.5px);
+}
+
+/* Universal icon blue glow on hover */
+button:hover:not(:disabled) i,
+button:hover:not(:disabled) svg,
+.btn:hover:not(:disabled) i,
+.btn:hover:not(:disabled) svg,
+.unified-tool-btn:hover:not(:disabled) i,
+.unified-tool-btn:hover:not(:disabled) svg,
+.unified-search-btn:hover:not(:disabled) i,
+.unified-search-btn:hover:not(:disabled) svg,
+.btn-nav:hover:not(:disabled) i,
+.btn-nav:hover:not(:disabled) svg,
+.telegram-ai-badge:hover i,
+.telegram-ai-badge:hover svg {
+  color: #38bdf8 !important;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.85)) !important;
+}
+
+/* Keyboard Accessibility Focus Visible Blue Glow */
+button:focus-visible,
+.btn:focus-visible,
+.unified-tool-btn:focus-visible,
+.btn-nav:focus-visible {
+  outline: none !important;
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.9), 0 0 26px rgba(14, 165, 233, 0.55) !important;
 }

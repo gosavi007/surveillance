@@ -105,7 +105,7 @@
   <script src="jszip.min.js"></script>
   <script src="xlsx.style.min.js"></script>
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="style.css?v=43">
+  <link rel="stylesheet" href="style.css?v=48">
 </head>
 <body>
 
@@ -225,11 +225,11 @@
             <button id="btn-home-view-excel" class="unified-tool-btn" title="Excel View">
               <i data-lucide="file-spreadsheet"></i>
             </button>
-            <span class="record-badge" id="record-count" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; padding: 2px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; border: 1px solid rgba(99, 102, 241, 0.35); display: inline-flex; align-items: center; height: 32px;" title="Entries Count">0</span>
+            <span class="record-badge" id="record-count" title="Entries Count">0</span>
           </div>
           <!-- Center: Live Gaming Date & Time Badge (Dark Bold) -->
           <div class="toolbar-zone-center">
-            <span id="home-live-datetime" class="home-date-time-badge" style="background: rgba(0, 0, 0, 0.6) !important; color: #ffffff !important; border: 1.2px solid rgba(56, 189, 248, 0.4) !important; padding: 2px 10px !important; border-radius: 6px !important; font-size: 0.82rem !important; font-weight: 900 !important; font-family: 'JetBrains Mono', Consolas, monospace !important; letter-spacing: 0.5px !important; display: inline-flex !important; align-items: center !important; height: 30px !important;"></span>
+            <span id="home-live-datetime" class="home-date-time-badge"></span>
           </div>
           <!-- Right: Search (Icon Only - Expandable), Offline AI Assistant & New Gaming Day -->
           <div class="toolbar-zone-right">
@@ -551,13 +551,9 @@
               <i data-lucide="trash-2"></i>
             </button>
           </div>
-          <!-- Center: Title with Shield Icon -->
+          <!-- Center: Live Gaming Date & Time Badge (Single Line Format) -->
           <div class="toolbar-zone-center">
-            <span class="toolbar-title">
-              <i data-lucide="shield" style="color: #38bdf8; width: 17px; height: 17px;"></i>
-              <span>ALL ENTRIES</span>
-              <span id="all-entries-gaming-date" style="background: rgba(0, 0, 0, 0.6) !important; color: #ffffff !important; border: 1.2px solid rgba(56, 189, 248, 0.4) !important; padding: 2px 10px !important; border-radius: 6px !important; font-size: 0.82rem !important; font-weight: 900 !important; font-family: 'JetBrains Mono', Consolas, monospace !important; letter-spacing: 0.5px !important; display: inline-flex !important; align-items: center !important; height: 30px !important; margin-left: 8px !important;"></span>
-            </span>
+            <span id="all-entries-gaming-date" class="home-date-time-badge"></span>
           </div>
           <!-- Right: Search (Icon Only), Export, Datepicker, Home/Close -->
           <div class="toolbar-zone-right">
@@ -875,7 +871,7 @@
             <input type="date" id="ai-date-picker" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;" />
           </div>
           <!-- Dark Bold Selected Date Badge -->
-          <span id="ai-selected-date-badge" style="background: rgba(0, 0, 0, 0.6) !important; color: #ffffff !important; border: 1.2px solid rgba(56, 189, 248, 0.4) !important; padding: 2px 8px !important; border-radius: 6px !important; font-size: 0.8rem !important; font-weight: 900 !important; font-family: 'JetBrains Mono', Consolas, monospace !important; height: 32px !important; display: inline-flex !important; align-items: center !important;"></span>
+          <span id="ai-selected-date-badge" class="home-date-time-badge"></span>
           <button id="btn-close-ai-modal" class="ai-close-btn" title="Close AI Assistant">
             <i data-lucide="x"></i>
           </button>
@@ -1112,7 +1108,7 @@
   <!-- IN-APP TOAST NOTIFICATION CONTAINER -->
   <div id="app-notification-container" class="app-notification-container"></div>
 
-  <script src="app.js?v=86"></script>
+  <script src="app.js?v=88"></script>
 
   <!-- DIRECT PHOTO UPLOADS -->
   <input type="file" id="direct-photo-barred" accept="image/*" style="display:none;" />
