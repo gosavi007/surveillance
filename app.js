@@ -1,8 +1,156 @@
-var currentBusinessDateStr = '';
-window.currentBusinessDateStr = '';
-
 const CREDIT_TYPES = ['CASHIN', 'C/IN', 'ISSUE', 'KEYIN'];
 const DEBIT_TYPES = ['CASHOUT', 'C/OUT', 'DEPOSIT', 'KEYOUT', 'PAID'];
+
+// Universal Global Data References (Safe across all scopes and event handlers)
+var allEntries = [];
+window.allEntries = allEntries;
+var globalBarredList = [];
+window.globalBarredList = globalBarredList;
+var currentBusinessDate = '';
+var currentBusinessDateStr = '';
+window.currentBusinessDate = '';
+window.currentBusinessDateStr = '';
+
+// Global Safe HTML Escape
+function escapeHTML(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+window.escapeHTML = escapeHTML;
+
+// Global Date Formatting Helper (Safe across all scopes)
+function formatDisplayDate(dateStr) {
+  if (!dateStr) return '';
+  const clean = String(dateStr).split('T')[0];
+  const parts = clean.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+  return dateStr;
+}
+window.formatDisplayDate = formatDisplayDate;
+
+// Global Number Formatter Helper (Indian Format)
+function formatIndianNumber(val) {
+  const n = Math.abs(Math.round(Number(val) || 0));
+  return n.toLocaleString('en-IN');
+}
+window.formatIndianNumber = formatIndianNumber;
+
+// Global K Amount Formatter Helper (e.g. 50000 -> 50K, 500000 -> 500K)
+function formatKCurrency(val) {
+  if (!val || isNaN(val)) return '0';
+  const num = Math.abs(Number(val));
+  if (num >= 1000) {
+    const k = num / 1000;
+    return (Number.isInteger(k) ? k : k.toFixed(1)) + 'K';
+  }
+  return num.toString();
+}
+window.formatKCurrency = formatKCurrency;
+
+// Global Entry Type Helpers
+function isTotalInType(type) {
+  if (!type) return false;
+  const clean = String(type).trim().toUpperCase().replace(/[\s\-_]/g, '');
+  const norm = clean.replace(/[\/\\]/g, '/');
+  return (
+    norm === 'CASHIN' ||
+    norm === 'C/IN' ||
+    norm === 'CIN' ||
+    norm === 'ISSUE' ||
+    norm === 'KEY/IN' ||
+    norm === 'KEYIN'
+  );
+}
+window.isTotalInType = isTotalInType;
+
+function isTotalOutType(type) {
+  if (!type) return false;
+  const clean = String(type).trim().toUpperCase().replace(/[\s\-_]/g, '');
+  const norm = clean.replace(/[\/\\]/g, '/');
+  return (
+    norm === 'CASHOUT' ||
+    norm === 'C/OUT' ||
+    norm === 'COUT' ||
+    norm === 'DEPOSIT' ||
+    norm === 'KEY/OUT' ||
+    norm === 'KEYOUT' ||
+    norm === 'KY/OUT' ||
+    norm === 'KYOUT' ||
+    norm === 'PAID'
+  );
+}
+window.isTotalOutType = isTotalOutType;
+
+function parseEntryDateTime(datetimeStr) {
+  if (!datetimeStr) return { date: '', time: '', dmy: '' };
+  const str = String(datetimeStr).trim();
+  let datePart = '';
+  let timePart = '';
+  if (str.includes('T')) {
+    const parts = str.split('T');
+    datePart = parts[0] || '';
+    timePart = parts[1] || '';
+  } else if (str.includes(' ')) {
+    const parts = str.split(' ');
+    datePart = parts[0] || '';
+    timePart = parts[1] || '';
+  } else {
+    datePart = str.slice(0, 10);
+    timePart = str.slice(11);
+  }
+  const cleanTime = timePart ? timePart.slice(0, 5) : '';
+  let dmy = datePart;
+  const dp = datePart.split('-');
+  if (dp.length === 3) {
+    dmy = `${dp[2]}-${dp[1]}-${dp[0]}`;
+  }
+  return { date: datePart, time: cleanTime, dmy, timeOnly: cleanTime };
+}
+window.parseEntryDateTime = parseEntryDateTime;
+
+function getEntryDate(entry) {
+  if (!entry) return '';
+  if (entry.businessDate) return String(entry.businessDate).trim();
+  if (!entry.datetime) return '';
+  return parseEntryDateTime(entry.datetime).date;
+}
+window.getEntryDate = getEntryDate;
+
+// Universal Business Date Calculator Helper (Safe across all scopes)
+function getBusinessDate(dateObj) {
+  if (!dateObj && (window.currentBusinessDateStr || window.currentBusinessDate || currentBusinessDateStr || currentBusinessDate)) {
+    return window.currentBusinessDateStr || window.currentBusinessDate || currentBusinessDateStr || currentBusinessDate;
+  }
+  if (dateObj) {
+    if (typeof dateObj === 'string') {
+      const parsed = parseEntryDateTime(dateObj);
+      if (parsed && parsed.date) return parsed.date;
+    }
+    const d = new Date(dateObj);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  }
+  const d = new Date();
+  if (d.getHours() < 6) {
+    d.setDate(d.getDate() - 1);
+  }
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+window.getBusinessDate = getBusinessDate;
 
 /**
  * CLIENT-SIDE APP LOGIC
@@ -10,106 +158,6 @@ const DEBIT_TYPES = ['CASHOUT', 'C/OUT', 'DEPOSIT', 'KEYOUT', 'PAID'];
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // ==========================================================================
-  // EDGE WRITING ASSISTANCE SUPPRESSION
-  // ==========================================================================
-  const suppressEdgeWritingAssistant = () => {
-    document.querySelectorAll('input, textarea').forEach(el => {
-      el.setAttribute('data-ms-editor', 'false');
-      el.setAttribute('spellcheck', 'false');
-      el.setAttribute('writingsuggestions', 'false');
-      el.setAttribute('autocomplete', 'off');
-    });
-  };
-  suppressEdgeWritingAssistant();
-  document.addEventListener('focusin', (e) => {
-    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-      e.target.setAttribute('data-ms-editor', 'false');
-      e.target.setAttribute('spellcheck', 'false');
-      e.target.setAttribute('writingsuggestions', 'false');
-    }
-  }, true);
-  // ==========================================================================
-  // IN-APP TOAST & CONFIRM SYSTEM (NO BROWSER "LOCALHOST SAYS" DIALOGS)
-  // ==========================================================================
-  function showToast(message, type = 'info') {
-    if (!message) return;
-    let toastContainer = document.getElementById('app-toast-container');
-    if (!toastContainer) {
-      toastContainer = document.createElement('div');
-      toastContainer.id = 'app-toast-container';
-      toastContainer.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999999;display:flex;flex-direction:column;gap:8px;pointer-events:none;align-items:center;max-width:90vw;';
-      document.body.appendChild(toastContainer);
-    }
-    const toast = document.createElement('div');
-    const msgStr = String(message);
-    const isError = type === 'error' || /fail|error|wrong|invalid|missing|denied/i.test(msgStr);
-    const isSuccess = type === 'success' || /success|saved|uploaded|imported|exported|deleted|updated/i.test(msgStr);
-    const borderColor = isError ? '#ef4444' : (isSuccess ? '#10b981' : '#38bdf8');
-    const dotColor = isError ? '#ef4444' : (isSuccess ? '#10b981' : '#38bdf8');
-
-    toast.style.cssText = `background:#0f172a;border:1.5px solid ${borderColor};color:#ffffff;padding:10px 22px;border-radius:10px;font-weight:700;font-size:0.9rem;box-shadow:0 10px 25px -5px rgba(0,0,0,0.6),0 0 15px ${borderColor}33;display:flex;align-items:center;gap:10px;opacity:0;transform:translateY(-12px);transition:all 0.25s cubic-bezier(0.16,1,0.3,1);pointer-events:auto;cursor:pointer;`;
-    const cleanEscaped = msgStr.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    toast.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};flex-shrink:0;"></span><span style="letter-spacing:0.3px;">${cleanEscaped}</span>`;
-
-    toastContainer.appendChild(toast);
-    requestAnimationFrame(() => {
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateY(0)';
-    });
-
-    const removeToast = () => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateY(-12px)';
-      setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 250);
-    };
-
-    toast.addEventListener('click', removeToast);
-    setTimeout(removeToast, 3500);
-  }
-
-  // Override window.alert completely so NO "localhost says" popup ever appears!
-  window.alert = function(msg) {
-    showToast(msg);
-  };
-
-  // Custom In-App Confirm Modal (NO browser "localhost says" dialogs)
-  function customConfirm(message) {
-    return new Promise((resolve) => {
-      let modal = document.getElementById('app-confirm-modal');
-      if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'app-confirm-modal';
-        modal.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(4px);z-index:9999999;align-items:center;justify-content:center;';
-        modal.innerHTML = `
-          <div style="background:#1e293b;border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:24px;max-width:420px;width:90%;box-shadow:0 20px 25px -5px rgba(0,0,0,0.6);text-align:center;">
-            <div style="font-size:1.05rem;font-weight:700;color:#fff;margin-bottom:20px;line-height:1.4;" id="app-confirm-msg"></div>
-            <div style="display:flex;justify-content:center;gap:12px;">
-              <button id="app-confirm-cancel" style="padding:9px 22px;border-radius:8px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);cursor:pointer;font-weight:700;font-size:0.9rem;">CANCEL</button>
-              <button id="app-confirm-ok" style="padding:9px 22px;border-radius:8px;background:#ef4444;color:#fff;border:none;cursor:pointer;font-weight:800;font-size:0.9rem;">CONFIRM</button>
-            </div>
-          </div>
-        `;
-        document.body.appendChild(modal);
-      }
-      const msgEl = document.getElementById('app-confirm-msg');
-      if (msgEl) msgEl.textContent = message;
-      modal.style.display = 'flex';
-
-      const okBtn = document.getElementById('app-confirm-ok');
-      const cancelBtn = document.getElementById('app-confirm-cancel');
-
-      const cleanup = () => {
-        modal.style.display = 'none';
-        okBtn.onclick = null;
-        cancelBtn.onclick = null;
-      };
-
-      okBtn.onclick = () => { cleanup(); resolve(true); };
-      cancelBtn.onclick = () => { cleanup(); resolve(false); };
-    });
-  }
-
   // Time Synchronization
   let timeOffset = 0;
   function getServerTimeDate() {
@@ -144,8 +192,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const adminPanelCard = document.getElementById('admin-panel-card');
   const majorPanelCard = document.getElementById('major-panel-card');
   const allEntriesPanelCard = document.getElementById('all-entries-panel-card');
-  let allEntriesViewMode = 'table'; // 'table' | 'sentence' | 'excel' | 'guestwise' | 'custom-entries'
-  let staffList = [];
   
   // DOM Elements - Supervisor / Log Modal
   const btnSupervisorLog = document.getElementById('btn-supervisor-log');
@@ -161,9 +207,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function openLogModal() {
     if (supervisorLogModal) {
       resetFormInputs();
-      if (typeof renderCashierSuggestions === 'function') renderCashierSuggestions('');
       supervisorLogModal.style.display = 'flex';
-      if (typeof renderModalEntriesView === 'function') renderModalEntriesView(allEntries);
       if (typeof lucide !== 'undefined') lucide.createIcons();
     }
   }
@@ -226,28 +270,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const tableSearchInput = document.getElementById('table-search');
   const btnRefresh = document.getElementById('btn-refresh');
 
-  // DOM Elements - New Gaming Day / Change Date
-  const btnStartNewDay = document.getElementById('btn-start-new-day');
-  const newDayModal = document.getElementById('new-day-modal');
-  const newDayDateInput = document.getElementById('new-day-date-input');
-  const btnCancelNewDay = document.getElementById('btn-cancel-new-day');
-  const btnConfirmNewDay = document.getElementById('btn-confirm-new-day');
-  const homeGamingDateDisplay = document.getElementById('home-gaming-date-display');
-  const modalCurrentDateDisplay = document.getElementById('modal-current-date-display');
-
-  // Local state cache
-  let allEntries = [];
+  // Local state cache synced to universal window scope
+  allEntries = window.allEntries || [];
+  window.allEntries = allEntries;
   let currentUser = null;
-  let globalBarredList = [];
+  globalBarredList = window.globalBarredList || [];
+  window.globalBarredList = globalBarredList;
   let summaryChart = null;
-
-  // Helper: Strictly verify if active user is administrator
-  function isAdmin() {
-    if (!currentUser) return false;
-    const uid = String(currentUser.id || currentUser.name || '').toLowerCase().trim();
-    const urole = String(currentUser.role || '').toLowerCase().trim();
-    return uid === 'admin' || urole === 'admin';
-  }
 
   // Initialize Lucide Icons
   lucide.createIcons();
@@ -261,10 +290,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (data.serverTime) {
         const rtt = Date.now() - startFetch;
         timeOffset = data.serverTime + (rtt / 2) - Date.now();
-      }
-      if (data.currentBusinessDate) {
-        currentBusinessDateStr = data.currentBusinessDate;
-        if (typeof updateAllDateTimeDisplays === 'function') updateAllDateTimeDisplays();
       }
     }
   } catch (e) {
@@ -292,37 +317,156 @@ document.addEventListener('DOMContentLoaded', async () => {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   }
 
-  currentBusinessDateStr = window.currentBusinessDateStr || '';
+  // ==========================================================================
+  // IN-APP NOTIFICATION SYSTEM (NO BROWSER "localhost:3000 says" POPUPS)
+  // ==========================================================================
+  function showAppNotification(message, type = 'info', durationMs = 4000) {
+    if (!message) return;
+    let container = document.getElementById('app-notification-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'app-notification-container';
+      container.className = 'app-notification-container';
+      document.body.appendChild(container);
+    }
 
-  // Helper: Get the business date string (YYYY-MM-DD) for a given datetime respecting 06:00 AM cut-over
+    const toast = document.createElement('div');
+    const toastType = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
+    toast.className = `app-toast toast-${toastType}`;
+
+    let iconSvg = '';
+    if (toastType === 'success') {
+      iconSvg = '<svg class="app-toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>';
+    } else if (toastType === 'error') {
+      iconSvg = '<svg class="app-toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+    } else if (toastType === 'warning') {
+      iconSvg = '<svg class="app-toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+    } else {
+      iconSvg = '<svg class="app-toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+    }
+
+    toast.innerHTML = `
+      ${iconSvg}
+      <div class="app-toast-content">${escapeHTML(String(message))}</div>
+      <button class="app-toast-close" title="Close">&times;</button>
+    `;
+
+    const closeBtn = toast.querySelector('.app-toast-close');
+    const dismiss = () => {
+      toast.classList.add('toast-hiding');
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 250);
+    };
+
+    if (closeBtn) closeBtn.addEventListener('click', dismiss);
+    if (durationMs > 0) setTimeout(dismiss, durationMs);
+
+    container.appendChild(toast);
+  }
+  window.showAppNotification = showAppNotification;
+
+  // Intercept and replace all window.alert calls with in-app notifications
+  window.alert = function(msg) {
+    const text = String(msg || '');
+    let type = 'info';
+    const low = text.toLowerCase();
+    if (low.includes('error') || low.includes('failed')) type = 'error';
+    else if (low.includes('success') || low.includes('started') || low.includes('copied') || low.includes('saved') || low.includes('imported')) type = 'success';
+    else if (low.includes('warning') || low.includes('please') || low.includes('require') || low.includes('choose')) type = 'warning';
+    showAppNotification(text, type);
+  };
+
+  currentBusinessDateStr = currentBusinessDateStr || '';
+  currentBusinessDate = currentBusinessDate || '';
+
+  // In-app confirmation dialog (replaces browser confirm() "localhost:3000 says")
+  function showAppConfirm(message) {
+    return new Promise(resolve => {
+      const modal = document.getElementById('app-confirm-modal');
+      const msgEl = document.getElementById('app-confirm-message');
+      const btnOk = document.getElementById('app-confirm-ok');
+      const btnCancel = document.getElementById('app-confirm-cancel');
+      if (!modal) {
+        return resolve(true);
+      }
+      if (msgEl) msgEl.textContent = message || 'Are you sure?';
+      modal.style.display = 'flex';
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+
+      const cleanup = (val) => {
+        modal.style.display = 'none';
+        btnOk.onclick = null;
+        btnCancel.onclick = null;
+        resolve(val);
+      };
+
+      if (btnOk) btnOk.onclick = () => cleanup(true);
+      if (btnCancel) btnCancel.onclick = () => cleanup(false);
+    });
+  }
+
+  // Parse datetime string safely whether formatted with 'T' or space ' '
+  function parseEntryDateTime(datetimeStr) {
+    if (!datetimeStr) return { date: '', time: '', dmy: '' };
+    const str = String(datetimeStr).trim();
+    let datePart = '';
+    let timePart = '';
+    if (str.includes('T')) {
+      const parts = str.split('T');
+      datePart = parts[0] || '';
+      timePart = parts[1] || '';
+    } else if (str.includes(' ')) {
+      const parts = str.split(' ');
+      datePart = parts[0] || '';
+      timePart = parts[1] || '';
+    } else {
+      datePart = str.slice(0, 10);
+      timePart = str.slice(11);
+    }
+    const cleanTime = timePart ? timePart.slice(0, 5) : '';
+    let dmy = datePart;
+    const dp = datePart.split('-');
+    if (dp.length === 3) {
+      dmy = `${dp[2]}-${dp[1]}-${dp[0]}`;
+    }
+    return { date: datePart, time: cleanTime, dmy, timeOnly: cleanTime };
+  }
+
+  // Extract pure YYYY-MM-DD from entry
+  function getEntryDate(entry) {
+    if (!entry) return '';
+    if (entry.businessDate) return String(entry.businessDate).trim();
+    if (!entry.datetime) return '';
+    return parseEntryDateTime(entry.datetime).date;
+  }
+
+  // Format number in Indian numbering format (e.g. 41,00,000) without currency symbol
+  function formatIndianNumber(val) {
+    const n = Math.abs(Math.round(Number(val) || 0));
+    return n.toLocaleString('en-IN');
+  }
+
+  // Helper: Get the business date string (YYYY-MM-DD) for a given datetime.
   function getBusinessDate(dateObj) {
-    if (!dateObj && currentBusinessDateStr) {
-      return currentBusinessDateStr;
+    if (!dateObj && (currentBusinessDateStr || currentBusinessDate)) {
+      return currentBusinessDateStr || currentBusinessDate;
     }
     
-    let d;
     if (dateObj) {
       if (typeof dateObj === 'string') {
-        const s = dateObj.trim();
-        // If it's a pure YYYY-MM-DD string with no time, return as-is
-        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-          return s;
-        }
-        d = new Date(s);
-      } else if (dateObj instanceof Date) {
-        d = new Date(dateObj.getTime());
-      } else {
-        d = new Date(dateObj);
+        const parsed = parseEntryDateTime(dateObj);
+        if (parsed.date) return parsed.date;
       }
-    } else {
-      d = getServerTimeDate();
+      const d = new Date(dateObj);
+      if (isNaN(d.getTime())) return '';
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     }
 
-    if (!d || isNaN(d.getTime())) return currentBusinessDateStr || '';
-
-    // 06:00 AM Cut-over Rule:
-    // Entries between 00:00:00 and 05:59:59 belong to previous calendar date's gaming session.
-    // At and after 06:00:00 AM, fresh entries start for the current day.
+    const d = getServerTimeDate();
     if (d.getHours() < 6) {
       d.setDate(d.getDate() - 1);
     }
@@ -332,41 +476,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     return `${year}-${month}-${day}`;
   }
 
-  // Helper: Format YYYY-MM-DD into DD-MM-YYYY (e.g. 2026-11-05 -> 05-11-2026)
-  function formatDateDMY(dateVal) {
-    if (!dateVal) return '';
-    const s = String(dateVal).trim();
-    const match = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (match) {
-      return `${match[3]}-${match[2]}-${match[1]}`;
-    }
-    return s;
-  }
-
-  // Helper: Format datetime (YYYY-MM-DDTHH:mm:ss or YYYY-MM-DD HH:mm:ss) into DD-MM-YYYY HH:mm:ss
-  function formatDateTimeDMY(dateTimeVal) {
-    if (!dateTimeVal) return 'N/A';
-    const s = String(dateTimeVal).trim();
-    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}:\d{2}(?::\d{2})?)/);
-    if (m) {
-      return `${m[3]}-${m[2]}-${m[1]} ${m[4]}`;
-    }
-    const mDate = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (mDate) {
-      return `${mDate[3]}-${mDate[2]}-${mDate[1]}`;
-    }
-    return s.replace('T', ' ');
-  }
-
-  // Helper: Check if an entry belongs to today's business session.
+  // Helper: Check if an entry belongs to today's active business session.
+  // STRICT RULE: Only unarchived entries matching current gaming date belong to today.
   function isEntryForToday(e) {
     if (!e) return false;
-    // Archived entries belong to past gaming days, exclude from today's home screen
     if (e.archived === true || e.archived === 'true') return false;
-
-    const todayBus = currentBusinessDateStr || getBusinessDate();
-    const eDate = e.businessDate || (e.datetime ? getBusinessDate(e.datetime) : '');
-    return eDate === todayBus;
+    const todayBus = currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+    if (!todayBus) return true;
+    const entryDate = getEntryDate(e);
+    return entryDate === todayBus;
   }
 
   // Helper: Format amount as Indian Rupee (INR) without decimal zeroes
@@ -378,37 +496,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       maximumFractionDigits: 0
     }).format(value);
   }
-
-  // Helper: Format and continuously update the Date & 24h Time on both All Entries & Home screens
-  function updateAllDateTimeDisplays() {
-    const now = getServerTimeDate();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
-    const rawDateStr = currentBusinessDateStr || getBusinessDate() || `${y}-${m}-${d}`;
-    const dateStr = formatDateDMY(rawDateStr);
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
-    const ss = String(now.getSeconds()).padStart(2, '0');
-
-    // 1. All Entries header: DATE: DD-MM-YYYY HH:MM:SS HRS
-    const allEl = document.getElementById('all-entries-gaming-date');
-    if (allEl) {
-      allEl.textContent = `DATE: ${dateStr} ${hh}:${mm}:${ss} HRS`;
-    }
-
-    // 2. Home screen badge: DD-MM-YYYY HH:MM:SS (24-hour time)
-    if (homeGamingDateDisplay) {
-      homeGamingDateDisplay.textContent = `${dateStr} ${hh}:${mm}:${ss}`;
-    }
-  }
-
-  // Alias for backward-compatibility with any existing call
-  const updateAllEntriesHeaderDateTime = updateAllDateTimeDisplays;
-
-  // Initialize and keep all date & 24h time displays continuously updated in real time
-  updateAllDateTimeDisplays();
-  setInterval(updateAllDateTimeDisplays, 1000);
 
   let allEntriesArchiveData = [];
   let archiveMetadata = {};
@@ -463,6 +550,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     dayNumbersContainer.innerHTML = html;
 
+    if (gotoDayInput && activeAllEntriesDay) {
+      gotoDayInput.value = activeAllEntriesDay;
+    }
+
     // Attach listeners
     dayNumbersContainer.querySelectorAll('.day-nav-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -474,24 +565,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateAllEntriesView();
       });
     });
+
+    // Auto-scroll active day into view
+    setTimeout(() => {
+      const activeBtn = dayNumbersContainer.querySelector('.day-nav-btn.active');
+      if (activeBtn && activeBtn.scrollIntoView) {
+        activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    }, 10);
   }
 
-  // Next/Prev logic
+  // Next/Prev logic (< PREV and NEXT >)
   if(dayNavPrev) {
     dayNavPrev.addEventListener('click', () => {
       if(activeAllEntriesDay > 1) {
         activeAllEntriesDay--;
-        if(gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
-        syncDatePickerWithDay();
-        renderDayPagination();
-        updateAllEntriesView();
+      } else {
+        activeAllEntriesDay = 31; // wrap around
       }
+      if(gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
+      syncDatePickerWithDay();
+      renderDayPagination();
+      updateAllEntriesView();
     });
   }
   if(dayNavNext) {
     dayNavNext.addEventListener('click', () => {
       if(activeAllEntriesDay === null) activeAllEntriesDay = 1;
       else if(activeAllEntriesDay < 31) activeAllEntriesDay++;
+      else activeAllEntriesDay = 1; // wrap around
       if(gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
       syncDatePickerWithDay();
       renderDayPagination();
@@ -499,13 +601,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   if(gotoDayInput) {
-    gotoDayInput.addEventListener('change', () => {
-      let val = parseInt(gotoDayInput.value);
-      if(val >= 1 && val <= 31) {
+    const handleGoto = () => {
+      let val = parseInt(gotoDayInput.value, 10);
+      if(!isNaN(val)) {
+        if (val < 1) val = 1;
+        if (val > 31) val = 31;
         activeAllEntriesDay = val;
+        gotoDayInput.value = val;
         syncDatePickerWithDay();
         renderDayPagination();
         updateAllEntriesView();
+      }
+    };
+    gotoDayInput.addEventListener('change', handleGoto);
+    gotoDayInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleGoto();
+        gotoDayInput.blur();
       }
     });
   }
@@ -597,50 +710,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Helper: Synchronize visibility and button states for All Entries views
-  function applyAllEntriesViewMode() {
-    const normal = document.getElementById('all-entries-normal-view');
-    const custom = document.getElementById('all-entries-custom-view');
-    const list = document.getElementById('all-entries-list-container');
-    const excel = document.getElementById('all-entries-excel-view');
-    const guestwise = document.getElementById('all-entries-guestwise-view');
-
-    const btnNormal = document.getElementById('btn-view-normal');
-    const btnSentence = document.getElementById('btn-view-sentence');
-    const btnExcel = document.getElementById('btn-view-excel');
-    const btnCustom = document.getElementById('btn-view-custom-entries');
-    const btnGuestwise = document.getElementById('btn-view-guestwise');
-
-    if (btnNormal) btnNormal.classList.toggle('active', allEntriesViewMode === 'table');
-    if (btnSentence) btnSentence.classList.toggle('active', allEntriesViewMode === 'sentence');
-    if (btnExcel) btnExcel.classList.toggle('active', allEntriesViewMode === 'excel');
-    if (btnCustom) btnCustom.classList.toggle('active', allEntriesViewMode === 'custom-entries');
-    if (btnGuestwise) btnGuestwise.classList.toggle('active', allEntriesViewMode === 'guestwise');
-
-    if (normal) normal.style.setProperty('display', allEntriesViewMode === 'table' ? 'block' : 'none', 'important');
-    if (custom) custom.style.setProperty('display', allEntriesViewMode === 'custom-entries' ? 'block' : 'none', 'important');
-    if (list) list.style.setProperty('display', allEntriesViewMode === 'sentence' ? 'block' : 'none', 'important');
-    if (excel) excel.style.setProperty('display', allEntriesViewMode === 'excel' ? 'block' : 'none', 'important');
-    if (guestwise) guestwise.style.setProperty('display', allEntriesViewMode === 'guestwise' ? 'block' : 'none', 'important');
-  }
-
-  // ALL ENTRIES panel view update (Strictly Current Business Date by default)
+  // ALL ENTRIES panel view update
   async function updateAllEntriesView() {
-    if (!allEntriesDatePicker) return;
+    if (!allEntriesDatePicker || !allEntriesSearch) return;
 
-    // Default to current gaming date if not explicitly picked
-    const activeDate = currentBusinessDateStr || getBusinessDate();
-    if (!allEntriesDatePicker.value) {
-      allEntriesDatePicker.value = activeDate;
+    const selectedDate = allEntriesDatePicker.value;
+    const query = allEntriesSearch.value.toLowerCase().trim();
+
+    let sourceEntries = allEntries;
+
+    // Filter by selected date
+    if (selectedDate) {
+      sourceEntries = sourceEntries.filter(entry => {
+        if (!entry.datetime) return false;
+        return getBusinessDate(entry.datetime) === selectedDate;
+      });
     }
-    const selectedDate = allEntriesDatePicker.value || activeDate;
-    const query = allEntriesSearch ? allEntriesSearch.value.toLowerCase().trim() : '';
-
-    // Filter strictly by the chosen business date (current date by default)
-    let sourceEntries = (allEntries || []).filter(entry => {
-      const eDate = entry.businessDate || (entry.datetime ? getBusinessDate(entry.datetime) : '');
-      return eDate === selectedDate;
-    });
 
     // Apply Search filter
     if (query) {
@@ -658,9 +743,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     }
 
-    // Render sentences
+    // Render sentences, table, and excel grid views
     const allEntriesListContainer = document.getElementById('all-entries-list-container');
     const allEntriesTableBody = document.getElementById('all-entries-table-body');
+    const allEntriesExcelView = document.getElementById('all-entries-excel-view');
     
     if (sourceEntries.length === 0) {
       if (allEntriesListContainer) {
@@ -673,28 +759,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (allEntriesTableBody) {
         allEntriesTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:20px;">No records found.</td></tr>`;
       }
-      const allEntriesExcelView = document.getElementById('all-entries-excel-view');
       if (allEntriesExcelView) {
-        allEntriesExcelView.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No records found matching the filters.</div>`;
+        const activeDay = activeAllEntriesDay || (selectedDate ? parseInt(selectedDate.split('-')[2], 10) : 'ALL');
+        renderStyledExcelGrid([], allEntriesExcelView, activeDay === 'ALL' ? 'ALL' : 'Day ' + activeDay);
       }
-      const allEntriesGuestwiseView = document.getElementById('all-entries-guestwise-view');
-      if (allEntriesGuestwiseView) {
-        allEntriesGuestwiseView.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No records found matching the filters.</div>`;
-      }
-      const allEntriesCustomTableBody = document.getElementById('all-entries-custom-table-body');
-      if (allEntriesCustomTableBody) {
-        allEntriesCustomTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:35px; color:var(--text-muted); font-weight:700;">No records found matching the filters.</td></tr>`;
-      }
-      applyAllEntriesViewMode();
+      lucide.createIcons();
       return;
     }
 
+    // 1. Render Sentences View
     if (allEntriesListContainer) {
       allEntriesListContainer.innerHTML = `<ul class="sentence-list">` + 
-        sourceEntries.map(e => `<li class="sentence-item ${(e.type||'').toLowerCase().replace('/', '-')}">${getEntrySentenceHTML(e)}</li>`).join('') +
+        sourceEntries.map(e => `<li class="sentence-item ${(e.type||'').toLowerCase().replace('/', '-')}">${getEntrySentence(e, true)}</li>`).join('') +
         `</ul>`;
     }
 
+    // 2. Render Table View
     if (allEntriesTableBody) {
       let tableHtml = '';
       sourceEntries.forEach(entry => {
@@ -705,30 +785,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         const amtClass = ['CASHIN', 'C/IN', 'ISSUE', 'KEYIN'].includes(type) ? 'text-green' : 'text-red';
         const amtFormatted = formatCurrency(Number(entry.amount) || 0);
-        const displayDate = entry.datetime ? formatDateTimeDMY(entry.datetime) : 'N/A';
+        const displayDate = entry.datetime ? entry.datetime.replace('T', ' ') : 'N/A';
         const cdText = escapeHTML(entry.cd || 'N/A');
 
         let actionButtons = `
-          <div style="display:flex; gap:6px;">
-            <button class="btn-edit-entry" data-id="${entry.id}" title="Edit" style="background:transparent;color:var(--accent);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:4px 8px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-              <i data-lucide="edit-2" style="width:14px;height:14px;"></i>
+          <div style="display:flex; gap:4px; align-items:center;">
+            <button class="btn-edit-entry" data-id="${entry.id}" title="Edit" style="background:rgba(59,130,246,0.18);color:#60a5fa;border:1px solid rgba(59,130,246,0.4);border-radius:5px;width:24px;height:24px;padding:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all 0.15s ease;">
+              <i data-lucide="edit-2" style="width:12px;height:12px;pointer-events:none;"></i>
             </button>
-            <button class="btn-delete-entry" data-id="${entry.id}" title="Delete" style="background:transparent;color:var(--danger,#ef4444);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:4px 8px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-              <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+            <button class="btn-delete-entry" data-id="${entry.id}" title="Delete" style="background:rgba(239,68,68,0.18);color:#f87171;border:1px solid rgba(239,68,68,0.4);border-radius:5px;width:24px;height:24px;padding:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all 0.15s ease;">
+              <i data-lucide="trash-2" style="width:12px;height:12px;pointer-events:none;"></i>
             </button>
           </div>
         `;
 
-          tableHtml += `
-            <tr>
-              <td class="checkbox-col">
-                <input type="checkbox" class="entry-checkbox" data-id="${entry.id}">
-              </td>
-              <td><strong>${displayDate}</strong></td>
+        tableHtml += `
+          <tr>
+            <td class="checkbox-col">
+              <input type="checkbox" class="entry-checkbox" data-id="${entry.id}">
+            </td>
+            <td><strong>${displayDate}</strong></td>
             <td><span style="color: #60a5fa; font-weight: bold;">${escapeHTML(entry.surv || '-')}</span></td>
             <td><span class="badge ${typeBadge.cls}">${typeBadge.label}</span></td>
             <td class="table-amount ${amtClass}">${amtFormatted}</td>
-            <td>${entry.guestname ? `<a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(entry.guestname)}" data-date="${escapeHTML(entry.businessDate || (entry.datetime ? getBusinessDate(entry.datetime) : ''))}">${escapeHTML(String(entry.guestname).toUpperCase())}</a>` : '—'}</td>
+            <td><span class="clickable-guest-name" data-guest="${escapeHTML(entry.guestname || '')}" style="cursor:pointer; color:#60a5fa; text-decoration:underline;">${escapeHTML(entry.guestname || '—')}</span></td>
             <td>${(() => {
               const showCard = ['ISSUE','DEPOSIT'].includes(type);
               return showCard
@@ -745,35 +825,52 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
       });
       allEntriesTableBody.innerHTML = tableHtml;
-      lucide.createIcons();
+    }
 
-      // Attach listeners
-      allEntriesTableBody.querySelectorAll('.btn-edit-entry').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = Number(btn.getAttribute('data-id'));
-          const entry = allEntries.find(e => e.id === id);
-          if (entry) editEntry(entry);
-        });
-      });
-      allEntriesTableBody.querySelectorAll('.btn-delete-entry').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const id = Number(btn.getAttribute('data-id'));
-          try {
-            const resp = await fetch(`/api/entries?id=${id}`, { method: 'DELETE' });
-            if (!resp.ok) throw new Error('Delete failed.');
-            await fetchEntries();
-          } catch (err) {
-            alert(`Error deleting entry: ${err.message}`);
-          }
+    // 3. Render Excel Spreadsheet View
+    if (allEntriesExcelView) {
+      const activeDay = activeAllEntriesDay || (selectedDate ? parseInt(selectedDate.split('-')[2], 10) : 'ALL');
+      renderStyledExcelGrid(sourceEntries, allEntriesExcelView, activeDay === 'ALL' ? 'ALL' : 'Day ' + activeDay);
+    }
+
+    lucide.createIcons();
+
+    // Attach click listeners to all guest names in All Entries (Table, Sentence, and Excel)
+    const allEntriesPanel = document.getElementById('all-entries-panel-card');
+    if (allEntriesPanel) {
+      allEntriesPanel.querySelectorAll('.clickable-guest-name').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const gName = el.getAttribute('data-guest');
+          if (!gName) return;
+          const targetDay = (allEntriesDatePicker && allEntriesDatePicker.value) ? allEntriesDatePicker.value : (selectedDate || getBusinessDate());
+          openGuestSummaryPopup(gName, sourceEntries, targetDay);
         });
       });
     }
 
-    renderAllEntriesExcelView(sourceEntries);
-    renderAllEntriesGuestwiseView(sourceEntries);
-    renderAllEntriesCustomView(sourceEntries);
-
-    applyAllEntriesViewMode();
+    // Attach listeners for Edit & Delete across all containers
+    document.querySelectorAll('#all-entries-panel-card .btn-edit-entry').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.getAttribute('data-id'));
+        const entry = allEntries.find(e => e.id === id);
+        if (entry) editEntry(entry);
+      });
+    });
+    document.querySelectorAll('#all-entries-panel-card .btn-delete-entry').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = Number(btn.getAttribute('data-id'));
+        if (!(await showAppConfirm('Are you sure you want to delete this entry?'))) return;
+        try {
+          const resp = await fetch(`/api/entries?id=${id}`, { method: 'DELETE' });
+          if (!resp.ok) throw new Error('Delete failed.');
+          showAppNotification('Entry deleted successfully.', 'success');
+          await fetchEntries();
+        } catch (err) {
+          showAppNotification(`Error deleting entry: ${err.message}`, 'error');
+        }
+      });
+    });
   }
 
   // Switch App Views
@@ -797,38 +894,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Dynamic Wallpaper Logic with Surveillance Watermark
+  // Dynamic Wallpaper Logic
   const wallpapers = [
-    'assets/surveillance_watermark_bg.png',
-    'assets/surveillance_bg.png'
+    'assets/surveillance_bg.png',
+    'assets/surveillance_bg_green.png',
+    'assets/surveillance_bg_red.png',
+    'assets/surveillance_bg_orange.png'
   ];
 
   function applyUserWallpaper(username) {
-    if (!username) {
-      document.body.style.background = `linear-gradient(rgba(3, 7, 18, 0.70), rgba(11, 15, 25, 0.85)), url('assets/surveillance_watermark_bg.png') center/cover fixed no-repeat`;
-      return;
-    }
-    const index = Math.floor(Math.random() * wallpapers.length);
-    document.body.style.background = `linear-gradient(rgba(3, 7, 18, 0.70), rgba(11, 15, 25, 0.85)), url('${wallpapers[index]}') center/cover fixed no-repeat`;
-  }
-
-  // Inactivity auto-logout disabled per user request: user stays logged in permanently
-  function performLogout() {
-    localStorage.removeItem('surv_session');
-    localStorage.removeItem('surv_last_activity');
-    sessionStorage.removeItem('current_panel');
-    currentUser = null;
-    allEntries = [];
-    applyUserWallpaper(null);
-    updateSurvFieldState();
-    hideAllPanels();
-    if (btnAdminUsers) btnAdminUsers.style.display = 'none';
-    if (btnSupervisorLog) btnSupervisorLog.style.display = 'none';
-
-    showView('login');
-    if (loginErrorContainer) {
-      loginErrorContainer.style.display = 'none';
-    }
+    document.body.style.background = "linear-gradient(rgba(10, 15, 30, 0.72), rgba(10, 15, 30, 0.80)), url('assets/surveillance_bg.png') center/cover fixed no-repeat";
   }
 
   // Verify and load active session
@@ -840,17 +915,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         parsedSession = JSON.parse(sessionData);
       } catch (err) {
         console.error('Failed to parse session data:', err);
-        performLogout();
+        localStorage.removeItem('surv_session');
+        showView('login');
         return;
       }
       
       if (parsedSession) {
-        currentUser = {
-          ...parsedSession,
-          id: String(parsedSession.id || '').toUpperCase(),
-          name: String(parsedSession.name || parsedSession.id || '').toUpperCase()
-        };
-        localStorage.setItem('surv_session', JSON.stringify(currentUser));
+        currentUser = parsedSession;
         userBadgeId.textContent = currentUser.name;
         inputSurv.value = currentUser.id;
         
@@ -860,10 +931,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Restore last active panel (AFTER REFRESH SAME PAGE)
         const lastPanel = sessionStorage.getItem('current_panel') || 'home';
-        if (lastPanel === 'admin') {
-          if (isAdmin()) showAdminPanel();
-          else showHomePanel();
-        }
+        if (lastPanel === 'admin') showAdminPanel();
         else if (lastPanel === 'major') showMajorPanel();
         else if (lastPanel === 'all_entries') showAllEntriesPanel();
         else if (lastPanel === 'barred') showBarredPanel();
@@ -902,7 +970,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (inputCD) inputCD.value = 'CD-01';
     inputType.value     = '';
     inputAmount.value   = '';
-    if (inputCashier) inputCashier.value = '';
+    if (inputCashier) inputCashier.value = '-';
     inputGuestName.value= '';
     inputCard.value     = '';
     inputOtherInfo.value= '';
@@ -952,15 +1020,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         throw new Error(data.error || 'Login failed.');
       }
 
-      // Save user to session - ALWAYS 100% CAPITAL LETTERS
-      currentUser = {
-        ...data.user,
-        id: String(data.user.id || '').toUpperCase(),
-        name: String(data.user.name || data.user.id || '').toUpperCase()
-      };
+      // Save user to session
+      currentUser = data.user;
       localStorage.setItem('surv_session', JSON.stringify(currentUser));
-      localStorage.setItem('surv_last_activity', String(Date.now()));
-      lastActivityUpdate = Date.now();
       
       // Update badge and field
       userBadgeId.textContent = currentUser.name;
@@ -990,21 +1052,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Automatically convert username to UPPERCASE in real time as user types
-  if (usernameInput) {
-    usernameInput.addEventListener('input', () => {
-      const start = usernameInput.selectionStart;
-      const end = usernameInput.selectionEnd;
-      usernameInput.value = usernameInput.value.toUpperCase();
-      if (start !== null && end !== null) {
-        usernameInput.setSelectionRange(start, end);
-      }
-    });
-  }
-
   // Logout action
   if (btnLogout) btnLogout.addEventListener('click', () => {
-    performLogout();
+    localStorage.removeItem('surv_session');
+    sessionStorage.removeItem('current_panel');
+    currentUser = null;
+    allEntries = [];
+    applyUserWallpaper(null);
+    updateSurvFieldState();
+    hideAllPanels();
+    if (btnAdminUsers) btnAdminUsers.style.display = 'none';
+    if (btnSupervisorLog) btnSupervisorLog.style.display = 'none';
+
+    showView('login');
   });
 
   // ==========================================================================
@@ -1018,20 +1078,21 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!response.ok) throw new Error('Failed to retrieve entries.');
       const data = await response.json();
       allEntries = data.entries || [];
+      window.allEntries = allEntries;
       if (data.currentBusinessDate) {
         currentBusinessDateStr = data.currentBusinessDate;
-        updateAllDateTimeDisplays();
+        currentBusinessDate = data.currentBusinessDate;
+        window.currentBusinessDateStr = data.currentBusinessDate;
+        window.currentBusinessDate = data.currentBusinessDate;
+        updateGamingDateDisplay();
         // Refresh the hidden datetime input so future entries use the correct business date
         if (inputDateTime) inputDateTime.value = getLocalTimeISOString();
       }
 
       const currentDayEntries = allEntries.filter(isEntryForToday);
-      renderEntries(currentDayEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+      renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
       calculateStatistics(currentDayEntries);
       populateDataLists(allEntries);
-      if (typeof renderModalEntriesView === 'function') {
-        renderModalEntriesView(currentDayEntries);
-      }
       if(allEntriesPanelCard && allEntriesPanelCard.style.display !== 'none') {
         updateAllEntriesView();
       }
@@ -1059,6 +1120,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       lucide.createIcons();
     }
   }
+  window.fetchEntries = fetchEntries;
 
   // Calculate stats based on fetched entries
   function calculateStatistics(entries) {
@@ -1145,39 +1207,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // De-activate all nav buttons
     document.querySelectorAll('.btn-nav').forEach(btn => btn.classList.remove('active'));
 
-    // Keep wrapper locked inside single screen and auto-fit 100%
+    // Keep wrapper locked inside single screen
     const wrapper = document.querySelector('.content-wrapper');
     if (wrapper) {
-      wrapper.style.maxWidth = '100%';
-      wrapper.style.width = '100%';
+      wrapper.style.maxWidth = '';
       wrapper.style.overflow = 'hidden';
       wrapper.style.height = '100%';
-      wrapper.style.flex = '1 1 0';
     }
     
-    // Lock outer viewport so no outer page scroller ever appears
-    document.documentElement.style.overflow = 'hidden';
-    document.documentElement.style.overflowY = 'hidden';
     document.body.style.overflow = 'hidden';
     document.body.style.overflowY = 'hidden';
-  }
-
-  function focusHomeMessageBox() {
-    function doFocus() {
-      const qInput = document.getElementById('officer-quick-input');
-      if (qInput && qInput.offsetParent !== null) {
-        qInput.focus();
-        try {
-          const valLen = qInput.value.length;
-          qInput.setSelectionRange(valLen, valLen);
-        } catch (e) {}
-      }
-    }
-    doFocus();
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(doFocus);
-    setTimeout(doFocus, 50);
-    setTimeout(doFocus, 150);
-    setTimeout(doFocus, 300);
   }
 
   function showHomePanel() {
@@ -1187,17 +1226,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if(tableSearchInput) tableSearchInput.value = '';
 
     // Auto-fit 100% in one page with zero page scrolling (Telegram layout on mobile & desktop)
-    document.documentElement.style.overflow = 'hidden';
-    document.documentElement.style.overflowY = 'hidden';
     document.body.style.overflow = 'hidden';
     document.body.style.overflowY = 'hidden';
     const wrapper = document.querySelector('.content-wrapper');
     if (wrapper) {
-      wrapper.style.maxWidth = '100%';
-      wrapper.style.width = '100%';
       wrapper.style.overflow = 'hidden';
       wrapper.style.height = '100%';
-      wrapper.style.flex = '1 1 0';
     }
     const appFooter = document.querySelector('.app-footer');
     if (appFooter) appFooter.style.display = 'none';
@@ -1232,16 +1266,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     if(btnHome) btnHome.classList.add('active');
     fetchEntries();
-    focusHomeMessageBox();
+    focusMessageBox();
   }
 
   function showAdminPanel() {
-    if (!isAdmin()) {
-      alert('Access restricted: Only Admin can access Add Member / user management.');
+    if (!isUserAdmin()) {
+      if (window.showAppNotification) {
+        window.showAppNotification('ONLY ADMIN CAN ADD MEMBER', 'error');
+      }
       showHomePanel();
       return;
     }
-
     sessionStorage.setItem('current_panel', 'admin');
     hideAllPanels();
 
@@ -1348,7 +1383,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       allEntriesPanelCard.style.setProperty('display', 'flex', 'important');
       if(btnAllEntries) btnAllEntries.classList.add('active');
       
-      updateAllEntriesHeaderDateTime();
+      updateGamingDateDisplay();
 
       // Always select the current business day
       const todayDate = currentBusinessDateStr || getBusinessDate();
@@ -1401,7 +1436,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if(btnHome) btnHome.addEventListener('click', () => {
     if(typeof hideAllPanels === 'function') hideAllPanels();
     if(typeof showHomePanel === 'function') showHomePanel();
-    focusHomeMessageBox();
+    focusMessageBox();
   });
   function showBarredPanel() {
     sessionStorage.setItem('current_panel', 'barred');
@@ -1444,27 +1479,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   if(btnAdminUsers) btnAdminUsers.addEventListener('click', showAdminPanel);
   if(btnMajor) btnMajor.addEventListener('click', showMajorPanel);
   if(btnAllEntries) btnAllEntries.addEventListener('click', showAllEntriesPanel);
-  if(btnAllEntriesHome) btnAllEntriesHome.addEventListener('click', () => {
-    if(typeof showHomePanel === 'function') showHomePanel();
-    focusHomeMessageBox();
-  });
+  if(btnAllEntriesHome) btnAllEntriesHome.addEventListener('click', showHomePanel);
+  const btnCloseAdminPanel = document.getElementById('btn-close-admin-panel');
+  if(btnCloseAdminPanel) btnCloseAdminPanel.addEventListener('click', showHomePanel);
 
   // Add Entries (Log Modal) Event Listeners
-  const btnAllEntriesAddLog = document.getElementById('btn-all-entries-add-log');
-  const btnOpenAddFromCustom = document.getElementById('btn-open-add-from-custom');
-
   if (btnSupervisorLog) btnSupervisorLog.addEventListener('click', openLogModal);
   if (btnOpenLogModal) btnOpenLogModal.addEventListener('click', openLogModal);
-  if (btnAllEntriesAddLog) btnAllEntriesAddLog.addEventListener('click', openLogModal);
-  if (btnOpenAddFromCustom) btnOpenAddFromCustom.addEventListener('click', openLogModal);
   if (btnCloseLogModal) btnCloseLogModal.addEventListener('click', closeLogModal);
-  const btnModalViewEntries = document.getElementById('btn-modal-view-entries');
-  if (btnModalViewEntries) {
-    btnModalViewEntries.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (typeof toggleModalEntriesView === 'function') toggleModalEntriesView();
-    });
-  }
   if (supervisorLogModal) {
     supervisorLogModal.addEventListener('click', (e) => {
       if (e.target === supervisorLogModal) closeLogModal();
@@ -1486,6 +1508,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (res.ok) {
         const data = await res.json();
         globalBarredList = data.barred || [];
+        window.globalBarredList = globalBarredList;
       }
     } catch (e) {
       console.error('Failed to fetch global barred list:', e);
@@ -1540,7 +1563,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
 
-      const displayName = String(guestName || (match ? (match.guestname || match.name || match.Name || 'BARRED GUEST') : 'BARRED GUEST')).toUpperCase();
+      const displayName = guestName || (match ? (match.guestname || match.name || match.Name || 'BARRED GUEST') : 'BARRED GUEST');
       if (warningName) {
         warningName.textContent = displayName;
       }
@@ -1557,11 +1580,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       details += `
-        <div style="display:flex; flex-direction:column; gap:6px; text-align:left; font-size:0.95rem; text-transform: uppercase;">
-          <div><strong style="color:#ef4444; text-transform: uppercase;">REASON:</strong> <span style="color:#fff; text-transform: uppercase;">${escapeHTML(String(reasonText || 'NO REASON SPECIFIED').toUpperCase())}</span></div>
-          ${dateText ? `<div><strong style="color:#94a3b8; text-transform: uppercase;">DATE:</strong> <span style="color:#fff; text-transform: uppercase;">${escapeHTML(formatDateDMY(dateText))}</span></div>` : ''}
-          ${instText ? `<div><strong style="color:#94a3b8; text-transform: uppercase;">INSTRUCTION:</strong> <span style="color:#fff; text-transform: uppercase;">${escapeHTML(String(instText).toUpperCase())}</span></div>` : ''}
-          ${propText ? `<div><strong style="color:#94a3b8; text-transform: uppercase;">PROPERTY:</strong> <span style="color:#fff; text-transform: uppercase;">${escapeHTML(String(propText).toUpperCase())}</span></div>` : ''}
+        <div style="display:flex; flex-direction:column; gap:6px; text-align:left; font-size:0.95rem;">
+          <div><strong style="color:#ef4444;">REASON:</strong> <span style="color:#fff;">${escapeHTML(reasonText || 'No reason specified')}</span></div>
+          ${dateText ? `<div><strong style="color:#94a3b8;">DATE:</strong> <span style="color:#fff;">${escapeHTML(dateText)}</span></div>` : ''}
+          ${instText ? `<div><strong style="color:#94a3b8;">INSTRUCTION:</strong> <span style="color:#fff;">${escapeHTML(instText)}</span></div>` : ''}
+          ${propText ? `<div><strong style="color:#94a3b8;">PROPERTY:</strong> <span style="color:#fff;">${escapeHTML(propText)}</span></div>` : ''}
         </div>
       `;
 
@@ -1572,27 +1595,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       warningModal.style.display = 'flex';
       if (window.lucide) lucide.createIcons();
 
-      function handleCloseWarning(e) {
+      function handleAcknowledge(e) {
         if (e) e.preventDefault();
         warningModal.style.display = 'none';
+        if (btnClose) btnClose.removeEventListener('click', handleAcknowledge);
         resolve(true);
       }
 
-      const closeTriggers = [
-        document.getElementById('btn-close-barred-warning'),
-        document.getElementById('btn-x-close-barred-warning'),
-        document.getElementById('btn-cancel-barred-warning')
-      ].filter(Boolean);
-
-      closeTriggers.forEach(btn => {
-        btn.onclick = handleCloseWarning;
-      });
-
-      warningModal.onclick = (e) => {
-        if (e.target === warningModal) {
-          handleCloseWarning(e);
-        }
-      };
+      if (btnClose) {
+        btnClose.onclick = handleAcknowledge;
+      } else {
+        resolve(true);
+      }
     });
   }
 
@@ -1608,6 +1622,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await fetch('/api/barred');
       const data = await res.json();
       globalBarredList = data.barred || [];
+      window.globalBarredList = globalBarredList;
     } catch (e) {
       container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--danger);font-weight:700;">Failed to load barred guests.</div>';
       return;
@@ -1622,8 +1637,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (filtered.length === 0) {
       container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No barred guests found.</div>';
-      const barredExcelView = document.getElementById('barred-excel-view');
-      if (barredExcelView) barredExcelView.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No barred guests found.</div>';
       return;
     }
 
@@ -1662,26 +1675,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      if (g.pdfData && (!g.photo || !String(g.photo).startsWith('data:image/'))) {
-        photoHtml = `
-          <div class="barred-photo-placeholder btn-view-pdf" data-pdf="${g.pdfData}" title="Click to view PDF document" style="cursor:pointer;background:rgba(56,189,248,0.12);color:#38bdf8;border:1.5px solid rgba(56,189,248,0.4);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:6px;height:100%;">
-            <i data-lucide="file-text" style="width:26px;height:26px;"></i>
-            <span style="font-size:10px;font-weight:800;color:#38bdf8;">VIEW PDF</span>
-          </div>`;
-      }
-
       cardsHtml += `
-        <div class="barred-guest-card-box" data-id="${g.id}">
+        <div class="barred-guest-card-box" data-id="${g.id}" title="Click to view/edit guest" style="cursor: pointer;">
           <div class="barred-card-header">
             <span class="barred-badge-title">BARRED GUEST</span>
-            <div class="barred-card-actions" style="display: ${barredEditMode ? 'flex' : 'none'};">
-              <button class="btn-card-action btn-card-edit" data-id="${g.id}" title="Edit Barred Guest">
-                <i data-lucide="edit-2" style="width:13px;height:13px;"></i>
-              </button>
-              <button class="btn-card-action btn-card-delete" data-id="${g.id}" title="Delete Barred Guest">
-                <i data-lucide="trash-2" style="width:13px;height:13px;"></i>
-              </button>
-            </div>
           </div>
           <div class="barred-card-body">
             <div class="barred-photo-col" data-id="${g.id}" title="Click to upload/change photo">
@@ -1695,7 +1692,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               </div>
               <div class="barred-field-row">
                 <span class="barred-field-label">DATE:</span>
-                <span class="barred-field-value">${escapeHTML(String(formatDateDMY(dateVal) || '-'))}</span>
+                <span class="barred-field-value">${escapeHTML(String(dateVal || '-'))}</span>
               </div>
               <div class="barred-field-row">
                 <span class="barred-field-label">REASON:</span>
@@ -1709,15 +1706,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <span class="barred-field-label">PROPERTY:</span>
                 <span class="barred-field-value">${escapeHTML(String(propVal || '-'))}</span>
               </div>
-              ${g.pdfData ? `
-              <div class="barred-field-row" style="margin-top:4px;">
-                <span class="barred-field-label">DOCUMENT:</span>
-                <span class="barred-field-value">
-                  <a href="${g.pdfData}" download="${escapeHTML(nameVal || 'barred')}.pdf" target="_blank" style="color:#38bdf8;font-weight:700;display:inline-flex;align-items:center;gap:4px;text-decoration:none;">
-                    <i data-lucide="file-text" style="width:14px;height:14px;"></i> VIEW / DOWNLOAD PDF
-                  </a>
-                </span>
-              </div>` : ''}
             </div>
           </div>
         </div>
@@ -1726,61 +1714,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     cardsHtml += '</div>';
 
     container.innerHTML = cardsHtml;
-    renderBarredExcelView(filtered);
     if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
 
-    // Attach listeners for Edit
-    container.querySelectorAll('.btn-card-edit').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id');
+    // Attach listeners for Card Click (Opens Edit modal with prefilled data)
+    container.querySelectorAll('.barred-guest-card-box').forEach(card => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.barred-photo-col') || e.target.tagName === 'INPUT') return;
+        const id = card.getAttribute('data-id');
         const g = filtered.find(x => String(x.id) === String(id));
-        if(!g) return;
-        
-        editingBarredId = id;
-        document.getElementById('barred-guestname').value = g.guestname || g.Name || g['Guest Name'] || g.GUESTNAME || g.name || '';
-        document.getElementById('barred-reason').value = g.reason || g.Reason || g.REASON || '';
-        document.getElementById('barred-date').value = g.date || g.Date || g.DATE || '';
-        document.getElementById('barred-inst').value = g.inst || g.Inst || g.INST || '';
-        document.getElementById('barred-property').value = g.property || g.Property || g.PROPERTY || '';
-        document.getElementById('barred-otherinfo').value = g.otherinfo || g.Otherinfo || '';
-        
-        const photoPreview = document.getElementById('barred-photo-preview');
-        const photoPh = document.getElementById('barred-photo-placeholder');
-        if (g.photo && g.photo.startsWith('data:image/')) {
-           barredPhotoBase64 = g.photo;
-           if (photoPreview) { photoPreview.src = g.photo; photoPreview.style.display = 'block'; }
-           if (photoPh) photoPh.style.display = 'none';
-        } else {
-           barredPhotoBase64 = null;
-           if (photoPreview) { photoPreview.src = ''; photoPreview.style.display = 'none'; }
-           if (photoPh) photoPh.style.display = '';
-        }
-        
-        const barredGuestModal = document.getElementById('barred-guest-modal');
-        const modalTitle = barredGuestModal ? barredGuestModal.querySelector('h3') : null;
-        if (modalTitle) modalTitle.innerHTML = '<i data-lucide="edit" style="vertical-align: middle; margin-right: 8px;"></i>EDIT BARRED GUEST';
-        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
-        if (barredGuestModal) barredGuestModal.style.display = 'flex';
-      });
-    });
-    
-    // Attach listeners for Delete
-    container.querySelectorAll('.btn-card-delete').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const id = btn.getAttribute('data-id');
-        if (!(await customConfirm('Are you sure you want to delete this barred guest?'))) return;
-        try {
-          const r = await fetch(`/api/barred?id=${id}`, { method: 'DELETE' });
-          if (r.ok) {
-            showToast('Barred guest deleted successfully.', 'success');
-            await fetchAndRenderBarredGuests();
-            await fetchGlobalBarredList();
-          } else {
-            showToast('Failed to remove barred guest.', 'error');
-          }
-        } catch (e) {
-          showToast('Error removing barred guest.', 'error');
-        }
+        if (g) openEditBarredGuest(g);
       });
     });
 
@@ -1822,82 +1764,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Render Barred Guests in authentic Excel Spreadsheet Grid on Website
-  function renderBarredExcelView(guests) {
-    const container = document.getElementById('barred-excel-view');
-    if (!container) return;
-
-    if (!guests || guests.length === 0) {
-      container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No barred guests found.</div>`;
-      return;
-    }
-
-    let html = `
-      <div class="excel-table-scroll-wrapper" style="width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;">
-        <table class="excel-grid-table" style="width: 100%; min-width: max-content; table-layout: auto;">
-          <thead>
-            <tr class="excel-col-letter-row">
-              <th class="excel-row-num" style="width: 38px; min-width: 38px;"></th>
-              <th style="min-width: 90px;">A</th>
-              <th style="min-width: 160px;">B</th>
-              <th style="min-width: 110px;">C</th>
-              <th style="min-width: 220px;">D</th>
-              <th style="min-width: 150px;">E</th>
-              <th style="min-width: 120px;">F</th>
-              <th style="min-width: 150px;">G</th>
-            </tr>
-            <tr>
-              <th class="excel-row-num">1</th>
-              <th class="excel-cell excel-header-cell" style="min-width: 90px;">PHOTO</th>
-              <th class="excel-cell excel-header-cell" style="min-width: 160px;">GUEST NAME</th>
-              <th class="excel-cell excel-header-cell" style="min-width: 110px;">DATE</th>
-              <th class="excel-cell excel-header-cell" style="min-width: 220px;">REASON / INCIDENT</th>
-              <th class="excel-cell excel-header-cell" style="min-width: 150px;">INSTRUCTION</th>
-              <th class="excel-cell excel-header-cell" style="min-width: 120px;">PROPERTY</th>
-              <th class="excel-cell excel-header-cell" style="min-width: 150px;">OTHER INFO / DOC</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
-
-    guests.forEach((g, idx) => {
-      const rowNum = idx + 2;
-      let photoHtml = '<span style="color:#94a3b8;font-size:11px;">NO PHOTO</span>';
-      if (g.photo && (String(g.photo).startsWith('data:image/') || String(g.photo).startsWith('http'))) {
-        photoHtml = `<img src="${g.photo}" style="max-width:55px;max-height:55px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1;" alt="photo" />`;
-      } else if (g.pdfData) {
-        photoHtml = `<span style="color:#0284c7;font-weight:700;font-size:11px;"><i data-lucide="file-text" style="width:14px;height:14px;vertical-align:middle;"></i> PDF</span>`;
-      }
-
-      let docHtml = '';
-      if (g.pdfData) {
-        docHtml = ` <a href="${g.pdfData}" download="${escapeHTML(g.guestname || 'barred')}.pdf" target="_blank" style="color:#0284c7;font-weight:700;margin-left:4px;"><i data-lucide="file-text" style="width:12px;height:12px;vertical-align:middle;"></i> PDF</a>`;
-      }
-
-      html += `
-        <tr>
-          <td class="excel-row-num">${rowNum}</td>
-          <td class="excel-cell" style="text-align:center;padding:4px;">${photoHtml}</td>
-          <td class="excel-cell" style="font-weight:800;color:#0f172a;font-size:13.5px;">${escapeHTML(String(g.guestname || '-'))}</td>
-          <td class="excel-cell">${escapeHTML(String(formatDateDMY(g.date) || '-'))}</td>
-          <td class="excel-cell" style="color:#b91c1c;font-weight:600;">${escapeHTML(String(g.reason || '-'))}</td>
-          <td class="excel-cell">${escapeHTML(String(g.inst || '-'))}</td>
-          <td class="excel-cell">${escapeHTML(String(g.property || '-'))}</td>
-          <td class="excel-cell">${escapeHTML(String(g.otherinfo || '-'))}${docHtml}</td>
-        </tr>
-      `;
-    });
-
-    html += `
-          </tbody>
-        </table>
-      </div>
-    `;
-
-    container.innerHTML = html;
-    if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
-  }
-
   // STAFF DIRECTORY
   async function fetchAndRenderStaff() {
     const tableHead = document.getElementById('staff-list-table-head');
@@ -1906,7 +1772,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     tableBody.innerHTML = '<tr><td colspan="100%" style="text-align:center;padding:40px;color:var(--text-muted);">Loading...</td></tr>';
 
-    staffList = [];
+    let staffList = [];
     try {
       const res = await fetch('/api/staff');
       const data = await res.json();
@@ -1974,7 +1840,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Barred Guest Panel UI Event Listeners
   const btnOpenBarredModal = document.getElementById('btn-open-barred-modal');
   const btnCloseBarredModal = document.getElementById('btn-close-barred-modal');
-  const btnCancelBarredModal = document.getElementById('btn-cancel-barred-modal');
   const barredGuestModal = document.getElementById('barred-guest-modal');
   const barredGuestForm = document.getElementById('barred-guest-form');
   const barredSearch = document.getElementById('barred-search');
@@ -1986,9 +1851,39 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnImportBarredDoc = document.getElementById('btn-import-barred-doc');
   const barredDocUpload = document.getElementById('barred-doc-upload');
   const btnDeleteAllBarred = document.getElementById('btn-delete-all-barred');
-  const btnToggleBarredEdit = document.getElementById('btn-toggle-barred-edit');
+  const btnBarredSearchToggle = document.getElementById('btn-barred-search-toggle');
+  const btnDeleteSingleBarred = document.getElementById('btn-delete-single-barred');
   let editingBarredId = null;
   let barredPhotoBase64 = null;
+
+  function openEditBarredGuest(g) {
+    if (!g) return;
+    editingBarredId = g.id;
+    document.getElementById('barred-guestname').value = g.guestname || g.Name || g['Guest Name'] || g.GUESTNAME || g.name || '';
+    document.getElementById('barred-reason').value = g.reason || g.Reason || g.REASON || '';
+    document.getElementById('barred-date').value = g.date || g.Date || g.DATE || '';
+    document.getElementById('barred-inst').value = g.inst || g.Inst || g.INST || '';
+    document.getElementById('barred-property').value = g.property || g.Property || g.PROPERTY || '';
+    document.getElementById('barred-otherinfo').value = g.otherinfo || g.Otherinfo || '';
+    
+    const photoPreview = document.getElementById('barred-photo-preview');
+    const photoPh = document.getElementById('barred-photo-placeholder');
+    if (g.photo && g.photo.startsWith('data:image/')) {
+       barredPhotoBase64 = g.photo;
+       if (photoPreview) { photoPreview.src = g.photo; photoPreview.style.display = 'block'; }
+       if (photoPh) photoPh.style.display = 'none';
+    } else {
+       barredPhotoBase64 = null;
+       if (photoPreview) { photoPreview.src = ''; photoPreview.style.display = 'none'; }
+       if (photoPh) photoPh.style.display = '';
+    }
+    
+    const modalTitle = barredGuestModal ? barredGuestModal.querySelector('h3') : null;
+    if (modalTitle) modalTitle.innerHTML = '<i data-lucide="edit" style="vertical-align: middle; margin-right: 8px;"></i>EDIT BARRED GUEST';
+    if (btnDeleteSingleBarred) btnDeleteSingleBarred.style.display = 'inline-flex';
+    if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+    if (barredGuestModal) barredGuestModal.style.display = 'flex';
+  }
 
   if (btnOpenBarredModal) {
     btnOpenBarredModal.addEventListener('click', () => {
@@ -1997,10 +1892,31 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (barredGuestForm) barredGuestForm.reset();
       if (barredPhotoPreview) { barredPhotoPreview.style.display = 'none'; barredPhotoPreview.src = ''; }
       if (barredPhotoPh) barredPhotoPh.style.display = '';
+      if (btnDeleteSingleBarred) btnDeleteSingleBarred.style.display = 'none';
       const modalTitle = barredGuestModal ? barredGuestModal.querySelector('h3') : null;
       if (modalTitle) modalTitle.innerHTML = '<i data-lucide="ban" style="vertical-align:middle;margin-right:8px;"></i>ADD BARRED GUEST';
       if (barredGuestModal) barredGuestModal.style.display = 'flex';
       lucide.createIcons();
+    });
+  }
+
+  if (btnDeleteSingleBarred) {
+    btnDeleteSingleBarred.addEventListener('click', async () => {
+      if (!editingBarredId) return;
+      if (!(await showAppConfirm('Are you sure you want to delete this barred guest?'))) return;
+      try {
+        const r = await fetch(`/api/barred?id=${encodeURIComponent(editingBarredId)}`, { method: 'DELETE' });
+        if (r.ok) {
+          showAppNotification('Barred guest removed successfully.', 'success');
+          if (barredGuestModal) barredGuestModal.style.display = 'none';
+          await fetchAndRenderBarredGuests();
+          await fetchGlobalBarredList();
+        } else {
+          showAppNotification('Failed to remove barred guest.', 'error');
+        }
+      } catch (e) {
+        showAppNotification('Error removing barred guest.', 'error');
+      }
     });
   }
 
@@ -2010,42 +1926,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  if (btnCancelBarredModal) {
-    btnCancelBarredModal.addEventListener('click', () => {
-      if (barredGuestModal) barredGuestModal.style.display = 'none';
-    });
-  }
-
-  // Close modal when clicking on backdrop
   if (barredGuestModal) {
-    window.addEventListener('click', (e) => {
+    barredGuestModal.addEventListener('click', (e) => {
       if (e.target === barredGuestModal) {
         barredGuestModal.style.display = 'none';
       }
     });
   }
 
-  // Global listener for PDF view clicks
-  document.body.addEventListener('click', (e) => {
-    const pdfBtn = e.target.closest('.btn-view-pdf');
-    if (pdfBtn && pdfBtn.dataset.pdf) {
-      const pdfWindow = window.open();
-      if (pdfWindow) {
-        pdfWindow.document.write(`<iframe src="${pdfBtn.dataset.pdf}" frameborder="0" style="border:0; top:0; left:0; bottom:0; right:0; width:100%; height:100%;" allowfullscreen></iframe>`);
-      } else {
-        const downloadLink = document.createElement('a');
-        downloadLink.href = pdfBtn.dataset.pdf;
-        downloadLink.download = 'Barred_Document.pdf';
-        downloadLink.click();
-      }
-    }
-  });
-
   if (btnCloseBarredGuests) {
     btnCloseBarredGuests.addEventListener('click', () => {
       if (barredGuestsPanel) barredGuestsPanel.style.display = 'none';
       showHomePanel();
-      focusHomeMessageBox();
+    });
+  }
+
+  if (btnBarredSearchToggle && barredSearch) {
+    btnBarredSearchToggle.addEventListener('click', () => {
+      if (barredSearch.style.display === 'none' || !barredSearch.style.display) {
+        barredSearch.style.display = 'inline-block';
+        btnBarredSearchToggle.classList.add('active');
+        barredSearch.focus();
+      } else {
+        if (!barredSearch.value) {
+          barredSearch.style.display = 'none';
+          btnBarredSearchToggle.classList.remove('active');
+        } else {
+          barredSearch.value = '';
+          barredSearch.style.display = 'none';
+          btnBarredSearchToggle.classList.remove('active');
+          fetchAndRenderBarredGuests();
+        }
+      }
+    });
+
+    barredSearch.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        barredSearch.value = '';
+        barredSearch.style.display = 'none';
+        btnBarredSearchToggle.classList.remove('active');
+        fetchAndRenderBarredGuests();
+      }
     });
   }
 
@@ -2111,238 +2032,67 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Helper to optimize large photos/screenshots before upload (speeds up multi-upload)
-  async function compressImageIfNeeded(file, maxDimension = 1200, quality = 0.85) {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          let width = img.width;
-          let height = img.height;
-          if (width <= maxDimension && height <= maxDimension && file.size < 500 * 1024) {
-            resolve(e.target.result);
-            return;
-          }
-          if (width > height) {
-            if (width > maxDimension) {
-              height = Math.round((height * maxDimension) / width);
-              width = maxDimension;
-            }
-          } else {
-            if (height > maxDimension) {
-              width = Math.round((width * maxDimension) / height);
-              height = maxDimension;
-            }
-          }
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', quality));
-        };
-        img.onerror = () => resolve(e.target.result);
-        img.src = e.target.result;
-      };
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(file);
-    });
-  }
-
-  // Universal File Parser: Excel (.xlsx, .xls, .csv), Images/Screenshots (.png, .jpg, .jpeg, .webp), Word (.docx), PDF (.pdf, .txt)
+  // Universal File Parser: Photo (image/*, .jpg, .png, etc.), Excel (.xlsx, .xls, .csv), Word (.docx), PDF (.pdf, .txt)
   async function parseBarredFile(file) {
     const name = file.name || '';
     const ext = name.split('.').pop().toLowerCase();
     
-    // 0. IMAGES & SCREENSHOTS (png, jpg, jpeg, webp, gif, bmp)
-    if (file.type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'].includes(ext)) {
-      const base64Img = await compressImageIfNeeded(file);
-      if (!base64Img) return [];
-      let cleanName = name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim();
-      if (/^image|^screenshot|^photo|^file|^img|^\d+$/i.test(cleanName) || cleanName.length < 2) {
-        cleanName = 'BARRED GUEST PHOTO';
-      } else {
-        cleanName = cleanName.toUpperCase();
-      }
+    // 0. PHOTO / IMAGE (.jpg, .jpeg, .png, .webp, .bmp, .gif)
+    if ((file.type && file.type.startsWith('image/')) || ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'].includes(ext)) {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Failed to read photo file'));
+        reader.readAsDataURL(file);
+      });
+      // Extract guest name from filename without extension
+      let baseName = name.replace(/\.[^/.]+$/, '').trim();
+      baseName = baseName.replace(/[_-]+/g, ' ').trim();
+      const guestname = (baseName || 'BARRED GUEST').toUpperCase();
+      const resolvedDate = (typeof currentBusinessDateStr === 'string' && currentBusinessDateStr)
+        ? currentBusinessDateStr
+        : ((typeof getBusinessDate === 'function') ? getBusinessDate() : new Date().toISOString().split('T')[0]);
+      
       return [{
-        guestname: cleanName,
-        photo: base64Img,
-        reason: 'Uploaded from Photo / Screenshot',
-        date: new Date().toISOString().slice(0, 10),
-        inst: 'CHECK PHOTO',
+        guestname: guestname,
+        reason: 'BARRED',
+        date: resolvedDate,
+        inst: '',
         property: '',
-        otherinfo: `File: ${file.name}`
+        otherinfo: '',
+        photo: dataUrl
       }];
     }
 
-    // 1. EXCEL / CSV (.xlsx, .xls, .csv)
+    // 1. EXCEL / CSV
     if (['xlsx', 'xls', 'csv'].includes(ext)) {
       const data = await file.arrayBuffer();
       const imgMap = (typeof extractExcelImages === 'function') ? await extractExcelImages(data) : {};
-      const wb = XLSX.read(data, { type: 'array' });
-      
-      // Find sheet with the most rows
-      let bestWs = null;
-      let maxLen = -1;
-      for (const sName of wb.SheetNames) {
-        const sheet = wb.Sheets[sName];
-        if (sheet && sheet['!ref']) {
-          const range = XLSX.utils.decode_range(sheet['!ref']);
-          const numRows = range.e.r - range.s.r + 1;
-          if (numRows > maxLen) {
-            maxLen = numRows;
-            bestWs = sheet;
-          }
-        }
-      }
-      if (!bestWs) bestWs = wb.Sheets[wb.SheetNames[0]];
-      
-      const rawRows = XLSX.utils.sheet_to_json(bestWs, { header: 1, raw: false, defval: '' });
-      if (!rawRows || rawRows.length === 0) {
-        throw new Error('Excel sheet appears to be empty.');
-      }
-
-      // Detect header row by scanning first 15 rows
-      let headerRowIdx = -1;
-      let colName = -1, colReason = -1, colDate = -1, colInst = -1, colProp = -1, colPhoto = -1, colOther = -1;
-
-      for (let r = 0; r < Math.min(rawRows.length, 15); r++) {
-        const row = rawRows[r].map(c => String(c || '').trim().toLowerCase());
-        let matches = 0;
-        let tempName = -1, tempReason = -1, tempDate = -1, tempInst = -1, tempProp = -1, tempPhoto = -1, tempOther = -1;
-
-        row.forEach((cell, idx) => {
-          if (!cell) return;
-          if (/^(guest\s*name|full\s*name|customer\s*name|player\s*name|member\s*name|name|guest|player|customer|person|patron|member|suspect|individual|client|who)$/i.test(cell) ||
-              (/\bname\b/i.test(cell) && !/reason|incident|hotel|property|bank|card/i.test(cell)) ||
-              (/\bguest\b/i.test(cell))) {
-            tempName = idx;
-            matches++;
-          } else if (/reason|remark|incident|offense|cause|action|status|comment|note|description|violation|matter|why|details/i.test(cell)) {
-            tempReason = idx;
-            matches++;
-          } else if (/date|time|dt|when|dated/i.test(cell)) {
-            tempDate = idx;
-            matches++;
-          } else if (/inst|order|period|duration|type|penalty|valid|instruction|action\s*taken/i.test(cell)) {
-            tempInst = idx;
-            matches++;
-          } else if (/prop|casino|loc|branch|unit|venue|hotel|premises|club|place/i.test(cell)) {
-            tempProp = idx;
-            matches++;
-          } else if (/photo|pic|image|face|img/i.test(cell)) {
-            tempPhoto = idx;
-            matches++;
-          } else if (/other|info|contact|phone|mobile|id|passport|aadhaar|card|address/i.test(cell)) {
-            tempOther = idx;
-            matches++;
-          }
-        });
-
-        if (matches >= 1 && (tempName !== -1 || matches >= 2)) {
-          headerRowIdx = r;
-          colName = tempName;
-          colReason = tempReason;
-          colDate = tempDate;
-          colInst = tempInst;
-          colProp = tempProp;
-          colPhoto = tempPhoto;
-          colOther = tempOther;
-          break;
-        }
-      }
-
-      // Fallback column positions if no header was detected
-      if (headerRowIdx === -1) {
-        headerRowIdx = 0;
-        colName = 0;
-        colReason = 1;
-        colDate = 2;
-        colProp = 3;
-        colInst = 4;
-      } else {
-        const row0 = rawRows[headerRowIdx];
-        if (colName === -1) {
-          for (let c = 0; c < row0.length; c++) {
-            if (c !== colReason && c !== colDate && c !== colInst && c !== colProp) {
-              colName = c;
-              break;
-            }
-          }
-        }
-        if (colReason === -1) {
-          for (let c = 0; c < row0.length; c++) {
-            if (c !== colName && c !== colDate && c !== colInst && c !== colProp) {
-              colReason = c;
-              break;
-            }
-          }
-        }
-      }
-
+      const wb = XLSX.read(data);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      let rows = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
+      rows = rows.filter(s => {
+        const vals = Object.values(s).map(v => String(v).toUpperCase().trim());
+        return !(vals.includes('NAME') && vals.includes('REASON'));
+      });
       const guests = [];
-      const startRow = headerRowIdx + 1;
-
-      for (let r = startRow; r < rawRows.length; r++) {
-        const row = rawRows[r];
-        if (!row || row.length === 0) continue;
-        const nonBlank = row.filter(c => String(c || '').trim() !== '');
-        if (nonBlank.length === 0) continue;
-
-        let gName = colName >= 0 && row[colName] ? String(row[colName]).trim() : '';
-        let gReason = colReason >= 0 && row[colReason] ? String(row[colReason]).trim() : '';
-        let gDate = colDate >= 0 && row[colDate] ? String(row[colDate]).trim() : '';
-        let gInst = colInst >= 0 && row[colInst] ? String(row[colInst]).trim() : '';
-        let gProp = colProp >= 0 && row[colProp] ? String(row[colProp]).trim() : '';
-        let gPhoto = colPhoto >= 0 && row[colPhoto] ? row[colPhoto] : null;
-        let gOther = colOther >= 0 && row[colOther] ? String(row[colOther]).trim() : '';
-
-        // If name wasn't in designated column, find the best non-empty text
-        if (!gName) {
-          for (let c = 0; c < row.length; c++) {
-            const val = String(row[c] || '').trim();
-            if (val && !/^\d+$/.test(val) && !/^\d{4}-\d{2}-\d{2}/.test(val) && c !== colReason) {
-              gName = val;
-              break;
-            }
-          }
+      rows.forEach(r => {
+        const g = {};
+        for (const [k, v] of Object.entries(r)) {
+          const kLow = k.toLowerCase().trim();
+          if (kLow.includes('name')) g.guestname = String(v).trim().toUpperCase();
+          else if (kLow.includes('reason')) g.reason = String(v).trim().toUpperCase();
+          else if (kLow.includes('date')) g.date = String(v).trim();
+          else if (kLow.includes('inst')) g.inst = String(v).trim().toUpperCase();
+          else if (kLow.includes('prop')) g.property = String(v).trim().toUpperCase();
+          else if (kLow.includes('photo')) g.photo = v;
+          else if (kLow.includes('other')) g.otherinfo = String(v).trim().toUpperCase();
         }
-
-        if (!gName) continue;
-
-        // Ignore accidental repeating header row
-        const upper = gName.toUpperCase();
-        if (upper === 'NAME' || upper === 'GUEST NAME' || upper === 'GUEST' || upper === 'FULL NAME') continue;
-
-        // Check for embedded photo from Excel drawings
-        if (imgMap[r]) {
-          gPhoto = imgMap[r];
+        if (r.__rowNum__ !== undefined && imgMap[r.__rowNum__]) {
+          g.photo = imgMap[r.__rowNum__];
         }
-
-        // Collect extra unmapped non-empty columns into otherinfo so NOTHING is lost
-        const extraData = [];
-        row.forEach((c, idx) => {
-          if (idx !== colName && idx !== colReason && idx !== colDate && idx !== colInst && idx !== colProp && idx !== colPhoto) {
-            const v = String(c || '').trim();
-            if (v) extraData.push(v);
-          }
-        });
-        if (extraData.length > 0 && !gOther) {
-          gOther = extraData.join(' | ');
-        }
-
-        guests.push({
-          guestname: gName,
-          reason: gReason || '-',
-          date: gDate || '',
-          inst: gInst || '',
-          property: gProp || '',
-          photo: gPhoto || null,
-          otherinfo: gOther || ''
-        });
-      }
-
+        if (g.guestname) guests.push(g);
+      });
       return guests;
     }
 
@@ -2374,15 +2124,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             for (let c = 0; c < cells.length; c++) {
               const val = cells[c].textContent.trim();
               const h = headers[c] || '';
-              if (/name|guest|player|customer|person/i.test(h)) g.guestname = val;
-              else if (/reason|remark|incident|offense|cause|action|status|comment|details/i.test(h)) g.reason = val;
-              else if (/date|time|dt/i.test(h)) g.date = val;
-              else if (/inst|order|period|type/i.test(h)) g.inst = val;
-              else if (/prop|casino|loc|venue|hotel/i.test(h)) g.property = val;
-              else if (/other|info|contact|card/i.test(h)) g.otherinfo = val;
+              if (h.includes('name')) g.guestname = val.toUpperCase();
+              else if (h.includes('reason')) g.reason = val.toUpperCase();
+              else if (h.includes('date')) g.date = val;
+              else if (h.includes('inst')) g.inst = val.toUpperCase();
+              else if (h.includes('prop')) g.property = val.toUpperCase();
+              else if (h.includes('other')) g.otherinfo = val.toUpperCase();
             }
-            if (!g.guestname && cells[0]) g.guestname = cells[0].textContent.trim();
-            if (g.guestname && g.guestname.toUpperCase() !== 'NAME') guests.push(g);
+            if (g.guestname) guests.push(g);
           }
         }
       }
@@ -2391,9 +2140,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         const paras = xmlDoc.getElementsByTagName('w:p');
         for (let i = 0; i < paras.length; i++) {
           const txt = paras[i].textContent.trim();
-          if (!txt || txt.length < 2) continue;
+          if (!txt) continue;
           const parts = txt.split(/[,;\t|]+/);
-          const g = { guestname: parts[0].trim(), reason: parts[1] ? parts[1].trim() : '-' };
+          const g = {};
+          parts.forEach(p => {
+            const idx = p.indexOf(':');
+            if (idx > -1) {
+              const k = p.substring(0, idx).trim().toLowerCase();
+              const v = p.substring(idx + 1).trim();
+              if (k.includes('name')) g.guestname = v.toUpperCase();
+              else if (k.includes('reason')) g.reason = v.toUpperCase();
+              else if (k.includes('date')) g.date = v;
+              else if (k.includes('inst')) g.inst = v.toUpperCase();
+              else if (k.includes('prop')) g.property = v.toUpperCase();
+            }
+          });
           if (g.guestname) guests.push(g);
         }
       }
@@ -2402,29 +2163,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 3. PDF (.pdf) or TEXT (.txt)
     if (ext === 'pdf' || ext === 'txt' || ext === 'doc') {
-      if (ext === 'pdf') {
-        const base64Pdf = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-
-        let cleanTitle = name.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').trim().toUpperCase();
-        if (!cleanTitle || cleanTitle.length < 2) cleanTitle = 'BARRED NOTICE DOCUMENT';
-
-        return [{
-          guestname: cleanTitle,
-          reason: 'Official Barred PDF Document',
-          date: new Date().toISOString().slice(0, 10),
-          inst: 'VIEW / DOWNLOAD PDF',
-          property: '',
-          otherinfo: `PDF Document: ${file.name}`,
-          pdfData: base64Pdf
-        }];
-      }
-
-      // Plaintext (.txt)
       const text = await file.text();
       const cleanLines = text.split(/[\r\n]+/).map(l => l.trim()).filter(l => l.length > 0);
       const guests = [];
@@ -2436,26 +2174,22 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (idx > -1) {
             const k = p.substring(0, idx).trim().toLowerCase();
             const v = p.substring(idx + 1).trim();
-            if (/name|guest|player|customer|person/i.test(k)) g.guestname = v;
-            else if (/reason|remark|incident|offense|cause/i.test(k)) g.reason = v;
-            else if (/date|time|dt/i.test(k)) g.date = v;
-            else if (/inst|order|period/i.test(k)) g.inst = v;
-            else if (/prop|casino|loc/i.test(k)) g.property = v;
+            if (k.includes('name')) g.guestname = v.toUpperCase();
+            else if (k.includes('reason')) g.reason = v.toUpperCase();
+            else if (k.includes('date')) g.date = v;
+            else if (k.includes('inst')) g.inst = v.toUpperCase();
+            else if (k.includes('prop')) g.property = v.toUpperCase();
           }
         });
-        if (!g.guestname && parts[0]) {
-          g.guestname = parts[0].trim();
-          g.reason = parts[1] ? parts[1].trim() : '-';
-        }
         if (g.guestname) guests.push(g);
       });
       return guests;
     }
 
-    throw new Error('Unsupported format. Please select an Excel (.xlsx, .xls, .csv), PDF (.pdf), or Image / Screenshot (.png, .jpg, .jpeg, .webp).');
+    throw new Error('Unsupported format. Please select Photo, Excel (.xlsx, .xls, .csv), Word (.docx), or PDF (.pdf) file.');
   }
 
-  // Single Unified Upload button listener (Photo, Excel, Word, PDF)
+  // Import button listener (Photo, PDF, Excel, Word in ONE button) - Symbol / Icon only
   if (btnImportBarredDoc && barredDocUpload) {
     btnImportBarredDoc.addEventListener('click', () => barredDocUpload.click());
     barredDocUpload.addEventListener('change', async () => {
@@ -2463,23 +2197,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (files.length === 0) return;
       try {
         btnImportBarredDoc.disabled = true;
-        btnImportBarredDoc.innerHTML = `<i data-lucide="loader" class="spin" style="width: 18px; height: 18px;"></i>`;
+        btnImportBarredDoc.innerHTML = `<i data-lucide="loader-2" class="spin" style="width: 18px; height: 18px;"></i>`;
         if (window.lucide) lucide.createIcons();
-
-        if (files.length > 1) {
-          showToast(`Processing ${files.length} photos/files...`, 'info');
-        }
 
         let allGuests = [];
         for (const file of files) {
           const parsed = await parseBarredFile(file);
-          if (parsed && parsed.length > 0) {
+          if (Array.isArray(parsed) && parsed.length > 0) {
             allGuests = allGuests.concat(parsed);
           }
         }
 
-        if (allGuests.length === 0) {
-          showToast('No barred records could be read from selected file(s).', 'error');
+        if (!allGuests || allGuests.length === 0) {
+          if (window.showAppNotification) {
+            window.showAppNotification('No valid barred guest records found in selected file(s).', 'warning');
+          } else {
+            alert('No valid barred guest records found in selected file(s).');
+          }
           return;
         }
 
@@ -2490,14 +2224,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         const result = await res.json();
         if (result.success) {
-          showToast(`Successfully uploaded ${result.count} barred guest record(s)!`, 'success');
+          if (window.showAppNotification) {
+            window.showAppNotification(`Successfully imported ${result.count} barred guest(s)!`, 'success');
+          } else {
+            alert(`Successfully imported ${result.count} barred guest(s)!`);
+          }
           await fetchAndRenderBarredGuests();
           await fetchGlobalBarredList();
         } else {
-          showToast(result.error || 'Upload failed.', 'error');
+          if (window.showAppNotification) {
+            window.showAppNotification(result.error || 'Import failed.', 'error');
+          } else {
+            alert(result.error || 'Import failed.');
+          }
         }
       } catch (err) {
-        showToast('Failed to parse file: ' + err.message, 'error');
+        if (window.showAppNotification) {
+          window.showAppNotification('Failed to parse file: ' + err.message, 'error');
+        } else {
+          alert('Failed to parse file: ' + err.message);
+        }
       } finally {
         barredDocUpload.value = '';
         btnImportBarredDoc.disabled = false;
@@ -2510,76 +2256,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Delete all barred guests
   if (btnDeleteAllBarred) {
     btnDeleteAllBarred.addEventListener('click', async () => {
-      if (!(await customConfirm('Are you sure you want to delete ALL barred guests?'))) return;
+      if (!(await showAppConfirm('Are you sure you want to delete ALL barred guests?'))) return;
       try {
         const res = await fetch('/api/barred?all=true', { method: 'DELETE' });
         const data = await res.json();
         if (res.ok) {
-          showToast('All barred guests have been deleted.', 'success');
+          showAppNotification('All barred guests deleted successfully.', 'success');
           await fetchAndRenderBarredGuests();
           await fetchGlobalBarredList();
         } else {
-          showToast(data.error || 'Failed to delete all barred guests.', 'error');
+          showAppNotification(data.error || 'Failed to delete all barred guests.', 'error');
         }
       } catch (err) {
-        showToast('Error deleting all barred guests.', 'error');
+        showAppNotification('Error deleting all barred guests.', 'error');
       }
     });
   }
 
-  // Toggle Edit mode - controls display of Edit & Delete buttons on cards
-  if (btnToggleBarredEdit) {
-    btnToggleBarredEdit.addEventListener('click', () => {
-      barredEditMode = !barredEditMode;
-      btnToggleBarredEdit.classList.toggle('active', barredEditMode);
-      if (barredEditMode) {
-        btnToggleBarredEdit.style.background = 'rgba(245, 158, 11, 0.25)';
-        btnToggleBarredEdit.style.borderColor = '#f59e0b';
-        btnToggleBarredEdit.style.color = '#f59e0b';
-      } else {
-        btnToggleBarredEdit.style.background = '';
-        btnToggleBarredEdit.style.borderColor = '';
-        btnToggleBarredEdit.style.color = '';
-      }
-      const container = document.getElementById('barred-list-container');
-      if (container) {
-        container.classList.toggle('barred-edit-active', barredEditMode);
-        container.querySelectorAll('.barred-card-actions').forEach(el => {
-          el.style.display = barredEditMode ? 'flex' : 'none';
-        });
-      }
-      showToast(barredEditMode ? 'Edit / Delete Mode: ON' : 'Edit / Delete Mode: OFF', 'info');
-    });
-  }
-
-  // View Toggle Logic for Barred Guests Panel (Cards vs Excel Workbook View)
-  const btnBarredViewCards = document.getElementById('btn-barred-view-cards');
-  const btnBarredViewExcel = document.getElementById('btn-barred-view-excel');
-  const barredExcelView = document.getElementById('barred-excel-view');
-  let barredViewMode = 'cards';
-
-  if (btnBarredViewCards) {
-    btnBarredViewCards.addEventListener('click', () => {
-      barredViewMode = 'cards';
-      btnBarredViewCards.classList.add('active');
-      if (btnBarredViewExcel) btnBarredViewExcel.classList.remove('active');
-      const container = document.getElementById('barred-list-container');
-      if (container) container.style.setProperty('display', 'block', 'important');
-      if (barredExcelView) barredExcelView.style.setProperty('display', 'none', 'important');
-    });
-  }
-
-  if (btnBarredViewExcel) {
-    btnBarredViewExcel.addEventListener('click', () => {
-      barredViewMode = 'excel';
-      btnBarredViewExcel.classList.add('active');
-      if (btnBarredViewCards) btnBarredViewCards.classList.remove('active');
-      const container = document.getElementById('barred-list-container');
-      if (container) container.style.setProperty('display', 'none', 'important');
-      if (barredExcelView) barredExcelView.style.setProperty('display', 'block', 'important');
-      fetchAndRenderBarredGuests();
-    });
-  }
 
   const btnStaffPanel = document.getElementById('btn-staff-panel');
   const staffDirectoryPanelCard = document.getElementById('staff-directory-panel-card');
@@ -2655,14 +2348,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     return value.toString();
   }
 
-  // Helper: Entry to Sentence Form
-  function getEntrySentence(entry, guestNameOverride) {
-    if (!entry) return '';
+  // Helper: Entry to Sentence Form (supports clickable hyperlink for guest name)
+  function getEntrySentence(entry, isHtmlLink = false) {
     const t = (entry.type || '').toUpperCase();
-    const amt = formatKCurrency(Number(entry.amount) || 0);
-    const guest = escapeHTML(guestNameOverride || entry.guestname || 'Unknown');
-    const card = entry.card ? escapeHTML(entry.card) : '';
-    const info = entry.otherinfo ? ` (${escapeHTML(entry.otherinfo)})` : '';
+    const amt = formatKCurrency(Number(entry.amount) || 0).toUpperCase();
+    const rawGuest = (entry.guestname || 'UNKNOWN').toUpperCase();
+    const guest = isHtmlLink
+      ? `<span class="clickable-guest-name" data-guest="${escapeHTML(rawGuest)}" style="cursor:pointer; color:#38bdf8 !important; text-decoration:underline; font-weight:700;">${escapeHTML(rawGuest)}</span>`
+      : escapeHTML(rawGuest);
+    const card = entry.card ? escapeHTML(String(entry.card).toUpperCase()) : '';
+    const info = entry.otherinfo ? ` (${escapeHTML(String(entry.otherinfo).toUpperCase())})` : '';
 
     // CASHIN/CASHOUT: include otherinfo if present
     if (t === 'CASHIN' || t === 'C/IN')   return `${amt} CASHIN BY ${guest}${info}`;
@@ -2677,206 +2372,308 @@ document.addEventListener('DOMContentLoaded', async () => {
     return `${amt} ${t} BY ${guest}${info}`;
   }
 
-  // Helper: Entry to Sentence Form with Clickable Guest Hyperlink (HTML)
-  function getEntrySentenceHTML(entry) {
-    if (!entry) return '';
-    const t = (entry.type || '').toUpperCase();
-    const amt = formatKCurrency(Number(entry.amount) || 0);
-    const rawGuest = (entry.guestname || 'UNKNOWN').trim().toUpperCase();
-    const eDate = entry.businessDate || (entry.datetime ? getBusinessDate(entry.datetime) : '');
-    const dateAttr = eDate ? ` data-date="${escapeHTML(eDate)}"` : '';
-    const guestLink = (rawGuest && rawGuest !== 'UNKNOWN' && rawGuest !== '—' && rawGuest !== '-')
-      ? `<a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(rawGuest)}"${dateAttr}>${escapeHTML(rawGuest)}</a>`
-      : escapeHTML(rawGuest);
-    const card = entry.card ? escapeHTML(entry.card) : '';
-    const info = entry.otherinfo ? ` (${escapeHTML(entry.otherinfo)})` : '';
-
-    if (t === 'CASHIN' || t === 'C/IN')   return `${amt} CASHIN BY ${guestLink}${info}`;
-    if (t === 'CASHOUT' || t === 'C/OUT')  return `${amt} CASHOUT BY ${guestLink}${info}`;
-    if (t === 'ISSUE')    return `${amt} ISSUE TO ${guestLink} FROM ${card} CARD${info}`;
-    if (t === 'DEPOSIT')  return `${amt} DEPOSIT BY ${guestLink} ON ${card} CARD${info}`;
-    if (t === 'KEYIN')    return `${amt} KEYIN BY ${guestLink}${info}`;
-    if (t === 'KEYOUT')   return `${amt} KEYOUT BY ${guestLink}${info}`;
-    
-    return `${amt} ${t} BY ${guestLink}${info}`;
+  // -------------------------------------------------------------
+  // GUEST NAME ALIASING, CANONICAL SELECTION & SUMMARY POPUP SYSTEM
+  // -------------------------------------------------------------
+  function formatDisplayDate(dateStr) {
+    if (!dateStr) return '';
+    const clean = String(dateStr).split('T')[0];
+    const parts = clean.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    return dateStr;
   }
 
-  // Open Guest Details Popup Modal (GUEST SUMMARY EXCEL TYPE + BELOW ENTRIES NO BOX)
-  function openGuestDetailsPopup(guest, netScore, inOut, entries, explicitDate) {
-    const modal = document.getElementById('major-guest-details-modal');
-    if (!modal) return;
-    const statsEl = document.getElementById('major-modal-stats');
-    const listEl = document.getElementById('major-modal-entries-list');
+  // Check if two raw guest name strings refer to the same person
+  // e.g. GUEST, GUEST NAME, GUEST N, N GUEST, NAME G -> all match
+  function isNameMatch(n1, n2) {
+    if (!n1 || !n2) return false;
+    const s1 = String(n1).trim().toUpperCase();
+    const s2 = String(n2).trim().toUpperCase();
+    if (s1 === s2) return true;
 
-    if (!guest) return;
-    const cleanGuestName = String(guest).trim().toUpperCase().replace(/\s+/g, ' ');
+    const words1 = s1.split(/[\s,._-]+/).filter(Boolean);
+    const words2 = s2.split(/[\s,._-]+/).filter(Boolean);
+    if (words1.length === 0 || words2.length === 0) return false;
 
-    // Determine target business date based on context:
-    // 1. If user is on "All Entries" page, strictly use the selected gaming date (page number reference below: 1, 2, ... 31)
-    // 2. Otherwise (on Home page or anywhere else), strictly show only current day entries (currentBusinessDateStr || getBusinessDate())
-    let targetDate = '';
+    // Full multi-letter words (length > 1) and single-letter initials (length === 1)
+    const fullWords1 = words1.filter(w => w.length > 1);
+    const fullWords2 = words2.filter(w => w.length > 1);
+    const initials1 = words1.filter(w => w.length === 1);
+    const initials2 = words2.filter(w => w.length === 1);
 
-    const allEntriesPanel = document.getElementById('all-entries-panel-card');
-    const isAllEntriesActive = allEntriesPanel && 
-      allEntriesPanel.style.display !== 'none' && 
-      !allEntriesPanel.classList.contains('hidden-panel');
+    // Check shared full words
+    const commonWords = fullWords1.filter(w => fullWords2.includes(w));
 
-    if (isAllEntriesActive) {
-      if (allEntriesDatePicker && allEntriesDatePicker.value) {
-        targetDate = allEntriesDatePicker.value.trim();
-      } else if (typeof activeAllEntriesDay === 'number' && activeAllEntriesDay >= 1 && activeAllEntriesDay <= 31) {
-        const base = currentBusinessDateStr || getBusinessDate();
-        const parts = base.split('-');
-        if (parts.length === 3) {
-          parts[2] = String(activeAllEntriesDay).padStart(2, '0');
-          targetDate = parts.join('-');
-        }
+    if (commonWords.length > 0) {
+      const diff1 = fullWords1.filter(w => !commonWords.includes(w));
+      const diff2 = fullWords2.filter(w => !commonWords.includes(w));
+
+      // If both have different secondary full words (e.g. "GUEST A" vs "GUEST NAME"), they are distinct
+      if (diff1.length > 0 && diff2.length > 0) {
+        return false;
       }
-    } else if (explicitDate && /^\d{4}-\d{2}-\d{2}$/.test(String(explicitDate).trim())) {
-      targetDate = String(explicitDate).trim();
+
+      // If one has an extra word and the other has an initial, check if initial matches
+      // e.g. "GUEST N" vs "GUEST NAME": diff2 is ["NAME"], initials1 is ["G"] -> matches!
+      if (diff1.length > 0 && initials2.length > 0) {
+        const matches = diff1.some(w => initials2.includes(w[0]));
+        if (!matches) return false;
+      }
+      if (diff2.length > 0 && initials1.length > 0) {
+        const matches = diff2.some(w => initials1.includes(w[0]));
+        if (!matches) return false;
+      }
+
+      return true;
     }
 
-    if (!targetDate) {
-      targetDate = currentBusinessDateStr || getBusinessDate();
+    // Cross-initial matching without full word overlap:
+    // e.g. "NAME G" vs "GUEST N" or "N GUEST"
+    if (fullWords1.length === 1 && initials1.length === 1 && fullWords2.length === 1 && initials2.length === 1) {
+      if (initials2.includes(fullWords1[0][0]) && initials1.includes(fullWords2[0][0])) {
+        return true;
+      }
     }
 
-    // Always source from full pool of entries
-    const pool = (typeof allEntries !== 'undefined' && Array.isArray(allEntries)) 
-      ? allEntries 
-      : (Array.isArray(entries) ? entries : []);
+    return false;
+  }
 
-    // Filter day entries for targetDate
-    const dayEntries = pool.filter(e => {
-      if (!e) return false;
-      const eDate = e.businessDate || (e.datetime ? getBusinessDate(e.datetime) : '');
-      return eDate === targetDate;
+  // Priority scoring for canonical display name:
+  // 1: GUEST NAME (2 full words)
+  // 2: GUEST N (full word + initial at end)
+  // 3: N GUEST (initial at start + full word)
+  // 4: NAME G
+  // 5: GUEST
+  function getCanonicalNamePriority(name) {
+    if (!name) return 0;
+    const s = String(name).trim().toUpperCase();
+    const words = s.split(/[\s,._-]+/).filter(Boolean);
+    if (words.length === 0) return 0;
+
+    const fullWords = words.filter(w => w.length > 1);
+    const initials = words.filter(w => w.length === 1);
+
+    // 1st: Two or more full words ("GUEST NAME") -> tier 3000
+    if (fullWords.length >= 2) {
+      return 3000 + (fullWords.length * 100) + s.length;
+    }
+    // 2nd: Full word followed by initial ("GUEST N") -> tier 2000
+    if (fullWords.length === 1 && initials.length >= 1 && words[words.length - 1].length === 1) {
+      return 2000 + s.length;
+    }
+    // 3rd: Initial followed by full word ("N GUEST") -> tier 1800
+    if (fullWords.length === 1 && initials.length >= 1 && words[0].length === 1) {
+      return 1800 + s.length;
+    }
+    // 4th: Other single full word + initial ("NAME G") -> tier 1600
+    if (fullWords.length === 1 && initials.length >= 1) {
+      return 1600 + s.length;
+    }
+    // 5th: Single full word ("GUEST" or "NAME") -> tier 1400
+    if (fullWords.length === 1) {
+      return 1400 + s.length;
+    }
+
+    return 1000 + s.length;
+  }
+
+  // Group candidate entries linked to targetName and pick canonical name
+  function getGuestCluster(targetName, candidateEntries) {
+    if (!targetName || !Array.isArray(candidateEntries)) {
+      return { canonicalName: (targetName || '').toUpperCase(), entries: [] };
+    }
+    const target = String(targetName).trim().toUpperCase();
+
+    // Find all directly matching entries
+    let clusterEntries = candidateEntries.filter(e => {
+      const gn = (e.guestname || '').trim();
+      return isNameMatch(target, gn);
     });
 
-    // Multi-hop cluster all names of this guest on targetDate
-    const matchedNames = new Set([cleanGuestName]);
-    let added = true;
-    while (added) {
-      added = false;
-      for (const e of dayEntries) {
-        const g = (e.guestname || '').trim().toUpperCase().replace(/\s+/g, ' ');
-        if (!g || g === 'UNKNOWN' || g === '—' || g === '-') continue;
-        if (matchedNames.has(g)) continue;
-        for (const m of matchedNames) {
-          if (areGuestNamesSimilar(g, m)) {
-            matchedNames.add(g);
-            added = true;
-            break;
+    if (clusterEntries.length === 0) {
+      clusterEntries = candidateEntries.filter(e => (e.guestname || '').trim().toUpperCase() === target);
+    }
+
+    // Transitive expansion (if A matches B and B matches C)
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const e of candidateEntries) {
+        if (!clusterEntries.includes(e)) {
+          const gn = (e.guestname || '').trim();
+          if (clusterEntries.some(m => isNameMatch((m.guestname || '').trim(), gn))) {
+            clusterEntries.push(e);
+            changed = true;
           }
         }
       }
     }
 
-    // Matching entries on this date
-    const currentGuestEntries = dayEntries.filter(e => {
-      const g = (e.guestname || '').trim().toUpperCase().replace(/\s+/g, ' ');
-      return matchedNames.has(g) || areGuestNamesSimilar(g, cleanGuestName);
-    });
+    // Determine canonical name based on priority among names present in cluster
+    const uniqueNames = [...new Set(clusterEntries.map(e => (e.guestname || '').trim().toUpperCase()))].filter(Boolean);
+    uniqueNames.sort((a, b) => getCanonicalNamePriority(b) - getCanonicalNamePriority(a));
 
-    // Pick best full name from active currentGuestEntries:
-    // First priority is MANTHAN GOSAVI (Tier 1)
-    // If MANTHAN GOSAVI entry is deleted, it picks MANTHAN G (Tier 2)
-    const { bestName: fullGuestName } = (typeof findBestFullGuestName === 'function')
-      ? findBestFullGuestName(cleanGuestName, currentGuestEntries)
-      : { bestName: cleanGuestName };
+    const canonicalName = uniqueNames.length > 0 ? uniqueNames[0] : target;
 
-    // Sort chronologically
-    currentGuestEntries.sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+    return {
+      canonicalName,
+      entries: clusterEntries
+    };
+  }
+  window.getGuestCluster = getGuestCluster;
 
-    // Calculate totals strictly for targetDate
-    let totalIn = 0;
-    let totalOut = 0;
-    currentGuestEntries.forEach(e => {
-      const t = (e.type || '').toUpperCase().trim();
-      const amt = Number(e.amount) || 0;
-      if (typeof isTotalInType === 'function' && isTotalInType(t)) totalIn += amt;
-      else if (typeof isTotalOutType === 'function' && isTotalOutType(t)) totalOut += amt;
-    });
-    const calculatedResult = totalOut - totalIn;
+  // Open Guest Summary Popup
+  function openGuestSummaryPopup(guestName, candidateEntries, activeDateStr) {
+    const modal = document.getElementById('guest-summary-modal');
+    if (!modal) return;
 
-    const inStr = Number(totalIn).toLocaleString('en-IN');
-    const outStr = Number(totalOut).toLocaleString('en-IN');
-    // Result displays absolute number formatted with Indian commas, matching Excel snapshot (media_1793886618191_256c680a.png)
-    const resStr = Math.abs(calculatedResult).toLocaleString('en-IN');
+    // Cluster matching entries
+    const cluster = getGuestCluster(guestName, candidateEntries);
+    const { canonicalName, entries } = cluster;
 
-    // Style matching Excel card in user's image:
-    // RESULT < 0 (loss for player/win for casino): #ffc7ce bg, #800000 text
-    // RESULT > 0 (win for player): #c6efce bg, #006100 text
-    // RESULT === 0: #ffffff bg, #000000 text
-    let resBg = '#ffffff';
-    let resColor = '#000000';
-    if (calculatedResult < 0) {
-      resBg = '#ffc7ce';
-      resColor = '#800000';
-    } else if (calculatedResult > 0) {
-      resBg = '#c6efce';
-      resColor = '#006100';
+    // Determine target full date string
+    let resolvedDateStr = activeDateStr || currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+    if (typeof resolvedDateStr === 'number' || (typeof resolvedDateStr === 'string' && /^\d{1,2}$/.test(resolvedDateStr.trim()))) {
+      const dayNum = parseInt(resolvedDateStr, 10);
+      const base = currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+      const ym = base.slice(0, 7);
+      resolvedDateStr = `${ym}-${String(dayNum).padStart(2, '0')}`;
     }
 
-    if (statsEl) {
-      statsEl.innerHTML = `
-        <div style="width: 100%; border: 1.5px solid #000000; box-shadow: 0 4px 14px rgba(0,0,0,0.45); overflow: hidden; font-family: Calibri, 'Segoe UI', Arial, sans-serif; background: #ffffff;">
-          <div style="background: #1e3a8a; color: #ffffff; font-weight: 800; font-size: 13.5px; padding: 7px 12px; border-bottom: 1.5px solid #000000; text-align: center; letter-spacing: 0.5px; text-transform: uppercase;">
-            DATE: ${escapeHTML(formatDateDMY(targetDate))}
-          </div>
-          <div style="background: #8ea9db; color: #800000; font-weight: 800; font-size: 14px; padding: 7px 12px; border-bottom: 1.5px solid #000000; text-align: center; letter-spacing: 0.5px;">
-            GUEST SUMMARY
-          </div>
-          <div style="background: #d9e1f2; color: #000000; font-weight: 700; font-size: 13.5px; padding: 6px 12px; border-bottom: 1px solid #000000; text-align: center;">
-            GUEST NAME: ${escapeHTML(fullGuestName || cleanGuestName)}
-          </div>
-          <div style="background: #ffffff; color: #000000; font-weight: 700; font-size: 13.5px; padding: 6px 12px; border-bottom: 1px solid #000000; text-align: center;">
-            TOTAL IN: ${inStr}
-          </div>
-          <div style="background: #ffffff; color: #000000; font-weight: 700; font-size: 13.5px; padding: 6px 12px; border-bottom: 1px solid #000000; text-align: center;">
-            TOTAL OUT: ${outStr}
-          </div>
-          <div style="background: ${resBg}; color: ${resColor}; font-weight: 800; font-size: 13.5px; padding: 6px 12px; text-align: center; border-bottom: 1px solid #000000;">
-            RESULT: ${resStr}
-          </div>
-          <div style="background: #ffff00; height: 16px; width: 100%;"></div>
+    // Format display date: DD-MM-YYYY
+    const displayDate = formatDisplayDate(resolvedDateStr);
+    const dateEl = document.getElementById('guest-summary-modal-date');
+    if (dateEl) dateEl.textContent = displayDate;
+
+    // Calculate In / Out / Result
+    let totalIn = 0;
+    let totalOut = 0;
+    entries.forEach(e => {
+      const amt = Number(e.amount) || 0;
+      const t = e.type || '';
+      if (isTotalInType(t)) {
+        totalIn += amt;
+      } else if (isTotalOutType(t)) {
+        totalOut += amt;
+      }
+    });
+
+    const netResult = totalOut - totalIn;
+    const isNegative = netResult < 0;
+    const totalInStr = formatIndianNumber(totalIn);
+    const totalOutStr = formatIndianNumber(totalOut);
+    const resFormatted = formatIndianNumber(Math.abs(netResult));
+    // Color: Fluorescent Green (#00B050) if positive/zero, Bright Red (#FF0000) if minus (NO +/- sign)
+    const resColor = isNegative ? '#FF0000' : '#00B050';
+
+    // Render Excel Style Guest Summary Card (matching user's Excel template exactly)
+    const cardContainer = document.getElementById('guest-summary-card-container') || document.querySelector('.guest-summary-card-box');
+    if (cardContainer) {
+      cardContainer.innerHTML = `
+        <div class="guest-summary-header-cyan" style="display: block !important; visibility: visible !important;">
+          GUEST SUMMARY
         </div>
+        <div class="guest-summary-body-green" style="display: flex !important; visibility: visible !important;">
+          <div class="summary-row" style="display: flex !important;">
+            <span class="summary-lbl">NAME :-</span>
+            <span id="guest-summary-modal-name" class="summary-val">${escapeHTML(canonicalName || guestName || '—')}</span>
+          </div>
+          <div class="summary-row" style="display: flex !important;">
+            <span class="summary-lbl">TOTAL IN :-</span>
+            <span id="guest-summary-modal-in" class="summary-val">${totalInStr}</span>
+          </div>
+          <div class="summary-row" style="display: flex !important;">
+            <span class="summary-lbl">TOTAL OUT :-</span>
+            <span id="guest-summary-modal-out" class="summary-val">${totalOutStr}</span>
+          </div>
+          <div class="summary-row summary-row-result" style="display: flex !important; visibility: visible !important; min-height: 32px !important; border-bottom: 1.5px solid #000000 !important;">
+            <span class="summary-lbl" style="font-weight: 900 !important;">RESULT :-</span>
+            <span id="guest-summary-modal-result" class="summary-val summary-val-result" style="color: ${resColor} !important; font-weight: 900 !important; font-size: 1.05rem !important;">${escapeHTML(resFormatted)}</span>
+          </div>
+        </div>
+        <div class="guest-summary-footer-yellow" style="display: block !important; visibility: visible !important; height: 20px !important; min-height: 20px !important; background: #FFFF00 !important; border-top: 1.5px solid #000000 !important;"></div>
       `;
     }
 
+    // Also directly set text and color on element references if present
+    const nameEl = document.getElementById('guest-summary-modal-name');
+    const inEl = document.getElementById('guest-summary-modal-in');
+    const outEl = document.getElementById('guest-summary-modal-out');
+    const resultEl = document.getElementById('guest-summary-modal-result');
+    if (nameEl) nameEl.textContent = canonicalName || guestName || '—';
+    if (inEl) inEl.textContent = totalInStr;
+    if (outEl) outEl.textContent = totalOutStr;
+    if (resultEl) {
+      resultEl.textContent = resFormatted;
+      resultEl.style.color = resColor;
+      resultEl.style.setProperty('color', resColor, 'important');
+    }
+
+    const countEl = document.getElementById('guest-summary-modal-count');
+    if (countEl) {
+      countEl.textContent = `${entries.length} ${entries.length === 1 ? 'ENTRY' : 'ENTRIES'}`;
+    }
+
+    // Sort entries chronologically
+    const sortedEntries = [...entries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+
+    // Populate Entries List below
+    const listEl = document.getElementById('guest-summary-modal-entries');
     if (listEl) {
-      if (currentGuestEntries.length === 0) {
-        listEl.innerHTML = `
-          <div style="color: #94a3b8; font-size: 12px; font-weight: 700; text-align: center; padding: 14px 0; text-transform: uppercase; letter-spacing: 0.5px;">
-            NO ENTRIES FOR ${escapeHTML(formatDateDMY(targetDate))}
-          </div>
-        `;
+      if (sortedEntries.length === 0) {
+        listEl.innerHTML = `<div style="text-align:center; padding: 20px; color: #94a3b8; font-size: 0.9rem;">No entries found for this guest on ${displayDate}</div>`;
       } else {
-        listEl.innerHTML = `
-          <div style="padding: 10px 0 4px 0; width: 100%;">
-            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 5px; width: 100%; align-items: center;">
-              ${currentGuestEntries.map(e => {
-                const dt = String(e.datetime || '').trim();
-                const tPart = dt.includes('T') ? dt.split('T')[1] : (dt.includes(' ') ? dt.split(' ')[1] : '');
-                const eTime = tPart ? tPart.slice(0, 5) : '';
-                return `
-                  <li style="background: transparent !important; border: none !important; box-shadow: none !important; padding: 3px 0 !important; font-size: 12.5px !important; font-weight: 700 !important; color: #ffffff !important; width: 100% !important; letter-spacing: 0.3px !important; display: flex !important; justify-content: center !important; align-items: center !important; gap: 14px !important; text-transform: uppercase !important;">
-                    ${eTime ? `<span style="color: #38bdf8; font-family: monospace; font-size: 13px; font-weight: 800; letter-spacing: 0.5px;">${escapeHTML(eTime)}</span>` : ''}
-                    <span>${escapeHTML(String(getEntrySentence(e, fullGuestName) || '').toUpperCase())}</span>
-                  </li>
-                `;
-              }).join('')}
-            </ul>
-          </div>
-        `;
+        listEl.innerHTML = sortedEntries.map(e => {
+          const t = (e.type || '').toUpperCase();
+          const isCredit = isTotalInType(t);
+          const typeBorder = isCredit ? '#10b981' : '#ef4444';
+          const dtObj = parseEntryDateTime(e.datetime);
+          const time = dtObj.time || '—';
+          const sentence = getEntrySentence(e, false);
+
+          return `
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 3.5px solid ${typeBorder}; border-radius: 6px; padding: 7px 12px; display: flex; align-items: center; gap: 14px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.84rem;">
+              <span style="color: #38bdf8; font-weight: 700; min-width: 48px; flex-shrink: 0; letter-spacing: 0.5px;">${time}</span>
+              <span style="color: #f1f5f9; font-weight: 600; flex: 1; word-break: break-word;">${escapeHTML(sentence)}</span>
+            </div>
+          `;
+        }).join('');
       }
     }
 
-    if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
     modal.style.display = 'flex';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+  window.openGuestSummaryPopup = openGuestSummaryPopup;
+
+  function closeGuestSummaryPopup() {
+    const modal = document.getElementById('guest-summary-modal');
+    if (modal) modal.style.display = 'none';
   }
 
-  // Alias for backward-compatibility with Major Patron
-  const openMajorGuestModal = openGuestDetailsPopup;
+  const btnCloseGuestSummary = document.getElementById('btn-close-guest-summary-modal');
+  if (btnCloseGuestSummary) {
+    btnCloseGuestSummary.addEventListener('click', closeGuestSummaryPopup);
+  }
+  const guestSummaryModalEl = document.getElementById('guest-summary-modal');
+  if (guestSummaryModalEl) {
+    guestSummaryModalEl.addEventListener('click', (e) => {
+      if (e.target === guestSummaryModalEl) closeGuestSummaryPopup();
+    });
+  }
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeGuestSummaryPopup();
+    }
+  });
+
+  // Open Major Guest Details Modal (forward to unified Guest Summary Popup)
+  function openMajorGuestModal(guest, netScore, inOut, entries) {
+    const candidateEntries = Array.isArray(entries) && entries.length > 0 ? entries : allEntries.filter(isEntryForToday);
+    openGuestSummaryPopup(guest, candidateEntries, currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+  }
 
   function closeMajorGuestModal() {
     const modal = document.getElementById('major-guest-details-modal');
@@ -2893,26 +2690,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (e.target === majorGuestModal) closeMajorGuestModal();
     });
   }
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && majorGuestModal && majorGuestModal.style.display !== 'none' && majorGuestModal.style.display !== '') {
-      closeMajorGuestModal();
-      e.stopImmediatePropagation();
-    }
-  });
-
-  // Global click delegate for Guest Name Hyperlinks
-  document.addEventListener('click', (e) => {
-    const link = e.target.closest('.guest-hyperlink');
-    if (link) {
-      e.preventDefault();
-      e.stopPropagation();
-      const guestName = link.getAttribute('data-guest') || link.textContent.trim();
-      const explicitDate = link.getAttribute('data-date');
-      if (guestName && guestName !== '—' && guestName !== '-' && guestName.toUpperCase() !== 'UNKNOWN') {
-        openGuestDetailsPopup(guestName, null, null, null, explicitDate);
-      }
-    }
-  });
 
   // Track view mode for Major Patron: 'cards' or 'entries_by_guest'
   let majorViewMode = 'cards';
@@ -2950,237 +2727,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     );
   }
 
-  // =========================================================================
-  // SMART GUEST NAME NORMALIZATION & SIMILARITY MATCHER
-  // Automatically groups name variations of the same patron:
-  // e.g. MANTHAN GOSAVI <-> GOSAVI MANTHAN <-> MANTHAN G <-> G MANTHAN <-> M GOSAVI
-  // =========================================================================
-  function cleanGuestTokens(str) {
-    if (!str) return [];
-    return String(str).toUpperCase()
-      .replace(/[^A-Z0-9\s]/g, ' ')
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-  }
-
-  function matchGuestTokenPair(t1, t2) {
-    if (t1 === t2) return true;
-    if (t1.length === 1 || t2.length === 1) {
-      return t1[0] === t2[0];
-    }
-    return false;
-  }
-
-  function areGuestNamesSimilar(nameA, nameB) {
-    const tokA = cleanGuestTokens(nameA);
-    const tokB = cleanGuestTokens(nameB);
-    if (!tokA.length || !tokB.length) return false;
-
-    // Exact string match after token cleaning
-    if (tokA.join(' ') === tokB.join(' ')) return true;
-
-    // Same words in any order (e.g. MANTHAN GOSAVI vs GOSAVI MANTHAN)
-    const sortedA = [...tokA].sort().join(' ');
-    const sortedB = [...tokB].sort().join(' ');
-    if (sortedA === sortedB) return true;
-
-    // 2 tokens vs 2 tokens:
-    // e.g. MANTHAN GOSAVI vs MANTHAN G, G MANTHAN, M GOSAVI, GOSAVI M
-    if (tokA.length === 2 && tokB.length === 2) {
-      const matchDirect = matchGuestTokenPair(tokA[0], tokB[0]) && matchGuestTokenPair(tokA[1], tokB[1]);
-      const matchSwapped = matchGuestTokenPair(tokA[0], tokB[1]) && matchGuestTokenPair(tokA[1], tokB[0]);
-      if (matchDirect || matchSwapped) return true;
-    }
-
-    // 1 token vs 2 tokens: e.g. MANTHAN vs MANTHAN GOSAVI or GOSAVI vs MANTHAN GOSAVI
-    if ((tokA.length === 1 && tokB.length === 2) || (tokA.length === 2 && tokB.length === 1)) {
-      const single = tokA.length === 1 ? tokA[0] : tokB[0];
-      const double = tokA.length === 1 ? tokB : tokA;
-      if (single.length >= 3) {
-        if ((double[0].length >= 3 && single === double[0]) || (double[1].length >= 3 && single === double[1])) {
-          return true;
-        }
-      }
-    }
-
-    // 3 tokens vs 2 tokens: e.g. MANTHAN R GOSAVI vs MANTHAN GOSAVI
-    if ((tokA.length === 3 && tokB.length === 2) || (tokA.length === 2 && tokB.length === 3)) {
-      const three = tokA.length === 3 ? tokA : tokB;
-      const two = tokA.length === 3 ? tokB : tokA;
-      const matchFirstLast = (matchGuestTokenPair(three[0], two[0]) && matchGuestTokenPair(three[2], two[1])) ||
-                             (matchGuestTokenPair(three[0], two[1]) && matchGuestTokenPair(three[2], two[0]));
-      if (matchFirstLast) return true;
-    }
-
-    // 1 token of 2 chars vs 2 tokens: e.g. MG vs MANTHAN GOSAVI
-    if (tokA.length === 1 && tokA[0].length === 2 && tokB.length === 2) {
-      if ((tokA[0][0] === tokB[0][0] && tokA[0][1] === tokB[1][0]) ||
-          (tokA[0][0] === tokB[1][0] && tokA[0][1] === tokB[0][0])) {
-        return true;
-      }
-    }
-    if (tokB.length === 1 && tokB[0].length === 2 && tokA.length === 2) {
-      if ((tokB[0][0] === tokA[0][0] && tokB[0][1] === tokA[1][0]) ||
-          (tokB[0][0] === tokA[1][0] && tokB[0][1] === tokA[0][0])) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  function getGuestNameScore(name) {
-    const tokens = cleanGuestTokens(name);
-    let score = 0;
-    const fullWords = tokens.filter(t => t.length > 1);
-    const initials = tokens.filter(t => t.length === 1);
-    
-    // Tier 1: Two or more full words (e.g. MANTHAN GOSAVI, GOSAVI MANTHAN) -> FIRST GUESTNAME
-    if (fullWords.length >= 2) {
-      score += 1000;
-    }
-    // Tier 2: First full word + initial (e.g. MANTHAN G) -> IF MANTHAN GOSAVI DELETED THAN TAKE MANTHAN G
-    else if (fullWords.length === 1 && initials.length >= 1 && tokens[0].length > 1) {
-      score += 500;
-    }
-    // Tier 3: Initial + full last word (e.g. M GOSAVI)
-    else if (fullWords.length === 1 && initials.length >= 1 && tokens[0].length === 1) {
-      score += 400;
-    }
-    // Tier 4: Single full word (e.g. MANTHAN, GOSAVI)
-    else if (fullWords.length === 1) {
-      score += 100;
-    }
-
-    tokens.forEach(t => {
-      score += t.length * 10;
-    });
-    return score;
-  }
-
-  // Finds the most complete full name (e.g. MANTHAN GOSAVI) from active entries, falling back to MANTHAN G if deleted
-  function findBestFullGuestName(guestName, candidateEntries) {
-    if (!guestName) return { bestName: '', matchedNames: [] };
-    const searchName = String(guestName).trim().toUpperCase().replace(/\s+/g, ' ');
-
-    const candidateNames = new Set();
-    if (Array.isArray(candidateEntries)) {
-      candidateEntries.forEach(e => {
-        if (e && e.guestname) {
-          const gn = String(e.guestname).trim().toUpperCase().replace(/\s+/g, ' ');
-          if (gn && gn !== 'UNKNOWN' && gn !== '—' && gn !== '-') candidateNames.add(gn);
-        }
-      });
-    }
-
-    const matchedNames = new Set([searchName]);
-    let addedNew = true;
-    const allPool = new Set([searchName, ...candidateNames]);
-
-    while (addedNew) {
-      addedNew = false;
-      for (const name of allPool) {
-        if (matchedNames.has(name)) continue;
-        for (const matched of matchedNames) {
-          if (areGuestNamesSimilar(name, matched)) {
-            matchedNames.add(name);
-            addedNew = true;
-            break;
-          }
-        }
-      }
-    }
-
-    // Pick from active candidate entries first (so if MANTHAN GOSAVI is deleted, it picks MANTHAN G)
-    const activeNamesInCluster = Array.from(candidateNames).filter(n => {
-      return matchedNames.has(n) || areGuestNamesSimilar(n, searchName);
-    });
-
-    let bestName = searchName;
-    let bestScore = getGuestNameScore(bestName);
-
-    if (activeNamesInCluster.length > 0) {
-      bestName = activeNamesInCluster[0];
-      bestScore = getGuestNameScore(bestName);
-      for (const name of activeNamesInCluster) {
-        const score = getGuestNameScore(name);
-        if (score > bestScore) {
-          bestScore = score;
-          bestName = name;
-        } else if (score === bestScore && name.length > bestName.length) {
-          bestName = name;
-        }
-      }
-    } else {
-      for (const name of matchedNames) {
-        const score = getGuestNameScore(name);
-        if (score > bestScore) {
-          bestScore = score;
-          bestName = name;
-        } else if (score === bestScore && name.length > bestName.length) {
-          bestName = name;
-        }
-      }
-    }
-
-    return { bestName: bestName.replace(/\s+/g, ' '), matchedNames: Array.from(matchedNames) };
-  }
-
-  // Consolidates entries into unique guest clusters (same patron under one box)
-  function clusterGuestEntries(entries) {
-    const clusters = [];
-
-    entries.forEach(e => {
-      const raw = (e.guestname || 'UNKNOWN').trim();
-      if (!raw) return;
-
-      let targetCluster = null;
-      for (const cluster of clusters) {
-        for (const existingName of cluster.names) {
-          if (areGuestNamesSimilar(raw, existingName)) {
-            targetCluster = cluster;
-            break;
-          }
-        }
-        if (targetCluster) break;
-      }
-
-      if (!targetCluster) {
-        targetCluster = {
-          name: raw.toUpperCase(),
-          names: new Set([raw.toUpperCase()]),
-          totalIn: 0,
-          totalOut: 0,
-          result: 0,
-          entries: []
-        };
-        clusters.push(targetCluster);
-      } else {
-        targetCluster.names.add(raw.toUpperCase());
-        // Pick the most complete name as the canonical display name
-        if (getGuestNameScore(raw) > getGuestNameScore(targetCluster.name)) {
-          targetCluster.name = raw.toUpperCase();
-        }
-      }
-
-      targetCluster.entries.push(e);
-      const t = (e.type || '').toUpperCase().trim();
-      const amt = Number(e.amount) || 0;
-      if (isTotalInType(t)) {
-        targetCluster.totalIn += amt;
-      } else if (isTotalOutType(t)) {
-        targetCluster.totalOut += amt;
-      }
-    });
-
-    clusters.forEach(c => {
-      c.result = c.totalOut - c.totalIn;
-    });
-
-    return clusters;
-  }
-
   // Render Major
   function renderMajor() {
     if(!majorListContainer) return;
@@ -3190,36 +2736,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Update toggle button text & icon according to active view mode
     const btnToggleMajor = document.getElementById('btn-toggle-major-view');
     if (btnToggleMajor) {
-      if (majorViewMode === 'entries_by_guest') {
-        btnToggleMajor.className = 'btn btn-primary';
-        btnToggleMajor.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
-        btnToggleMajor.style.color = '#fff';
-        btnToggleMajor.innerHTML = '<i data-lucide="layout-grid" style="width: 16px; height: 16px; color: #fff;"></i> <span id="btn-toggle-major-view-text">VIEW PATRON CARDS</span>';
-      } else {
-        btnToggleMajor.className = 'btn btn-secondary';
-        btnToggleMajor.style.background = 'rgba(167, 139, 250, 0.12)';
-        btnToggleMajor.style.color = '#c4b5fd';
-        btnToggleMajor.innerHTML = '<i data-lucide="list" style="width: 16px; height: 16px; color: #a78bfa;"></i> <span id="btn-toggle-major-view-text">VIEW EACH ENTRIES BY GUEST NAME</span>';
-      }
+      btnToggleMajor.className = 'unified-tool-btn' + (majorViewMode === 'entries_by_guest' ? ' active' : '');
+      btnToggleMajor.style.background = '';
+      btnToggleMajor.style.color = '';
+      btnToggleMajor.innerHTML = majorViewMode === 'entries_by_guest'
+        ? '<i data-lucide="layout-grid"></i>'
+        : '<i data-lucide="list"></i>';
     }
 
-    // Group strictly by Guest Name with Smart Clustering (combines MANTHAN GOSAVI, GOSAVI MANTHAN, MANTHAN G, G MANTHAN, M GOSAVI)
-    const currentEntries = allEntries.filter(isEntryForToday);
-    const guestClusters = clusterGuestEntries(currentEntries);
-    const guestMap = {};
-    guestClusters.forEach(g => {
-      guestMap[g.name] = g;
-      g.names.forEach(alias => {
-        guestMap[alias] = g;
+    // CURRENT GAMING DAY ENTRIES: SHOW ALL GUESTS (NO REPEATED GUEST)
+    const todayEntries = allEntries.filter(isEntryForToday);
+    const currentEntries = todayEntries;
+    const guestGroups = [];
+    const assignedEntryIds = new Set();
+
+    currentEntries.forEach(e => {
+      if (assignedEntryIds.has(e.id)) return;
+      const rawGuest = (e.guestname || '').trim();
+      if (!rawGuest) return;
+
+      const cluster = getGuestCluster(rawGuest, currentEntries);
+      cluster.entries.forEach(ce => assignedEntryIds.add(ce.id));
+
+      let totalIn = 0;
+      let totalOut = 0;
+      cluster.entries.forEach(ce => {
+        const amt = Number(ce.amount) || 0;
+        const t = ce.type || '';
+        if (isTotalInType(t)) totalIn += amt;
+        else if (isTotalOutType(t)) totalOut += amt;
+      });
+
+      guestGroups.push({
+        name: cluster.canonicalName,
+        entries: cluster.entries,
+        totalIn,
+        totalOut
       });
     });
 
-    // Filter guests matching search query
-    let guestList = guestClusters;
+    let guestList = guestGroups;
     if (query) {
-      guestList = guestList.filter(g => {
-        return g.name.toLowerCase().includes(query) || Array.from(g.names).some(n => n.toLowerCase().includes(query));
-      });
+      guestList = guestList.filter(g => g.name.toLowerCase().includes(query));
     }
 
     // -------------------------------------------------------------
@@ -3242,18 +2800,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       let groupsHtml = '';
       guestList.forEach(g => {
-        // Result = Total Out minus Total In
+        // Result = Total Out minus Total In (NO +/- sign: Red if minus, Fluorescent Green if positive/0)
         const netResult = g.totalOut - g.totalIn;
         const isNegative = netResult < 0;
-        const resultColorClass = isNegative ? 'text-red' : (netResult > 0 ? 'text-green' : 'text-neutral');
-        let formattedResult = formatCurrency(Math.abs(netResult));
-        if (isNegative) {
-          formattedResult = '-' + formattedResult;
-        } else if (netResult > 0) {
-          formattedResult = '+' + formattedResult;
-        } else {
-          formattedResult = '₹0';
-        }
+        const resultColorClass = isNegative ? 'text-red' : 'text-green';
+        const formattedResult = formatCurrency(Math.abs(netResult));
 
         // Sort guest entries chronologically
         const sortedEntries = [...g.entries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
@@ -3342,17 +2893,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       const netResult = totalOut - totalIn;
       const totalVolume = totalIn + totalOut;
 
-      // If result is minus, make it RED, otherwise GREEN
+      // If result is minus, make it RED, otherwise GREEN (NO +/- sign)
       const isNegative = netResult < 0;
-      const resultColorClass = isNegative ? 'text-red' : (netResult > 0 ? 'text-green' : 'text-neutral');
-      let formattedResult = formatCurrency(Math.abs(netResult));
-      if (isNegative) {
-        formattedResult = '-' + formattedResult;
-      } else if (netResult > 0) {
-        formattedResult = '+' + formattedResult;
-      } else {
-        formattedResult = '₹0';
-      }
+      const resultColorClass = isNegative ? 'text-red' : 'text-green';
+      const formattedResult = formatCurrency(Math.abs(netResult));
 
       // 4-Column Grid Card on Left (Exactly 1 box per guest name)
       leftCardsHtml += `
@@ -3373,9 +2917,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
       `;
 
-      // Check if qualifies for ABOVE TOTAL 500000
-      const isAbove500k = totalVolume >= 500000 || totalIn >= 500000 || totalOut >= 500000 || Math.abs(netResult) >= 500000;
-      if (isAbove500k) {
+      // Check if qualifies for ABOVE TOTAL 490K
+      const isAbove490k = totalVolume >= 490000 || totalIn >= 490000 || totalOut >= 490000 || Math.abs(netResult) >= 490000;
+      if (isAbove490k) {
         aboveCardsHtml += `
           <div class="mp-above-card" data-guest="${escapeHTML(g.name)}" title="Click to view details for ${escapeHTML(g.name)}">
             <div class="mp-above-name">${escapeHTML(g.name)}</div>
@@ -3392,7 +2936,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       leftCardsHtml = `
         <div class="mp-empty-state">
           <i data-lucide="user-x" style="width:36px;height:36px;opacity:0.4;margin-bottom:8px;"></i>
-          <p style="margin: 0;">${query ? 'No matching patrons found.' : 'No transactions recorded today.'}</p>
+          <p style="margin: 0;">${query ? 'No matching patrons found.' : 'No patron transactions recorded today.'}</p>
         </div>
       `;
     }
@@ -3401,7 +2945,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       aboveCardsHtml = `
         <div class="mp-above-empty">
           <i data-lucide="shield-check" style="width:32px;height:32px;opacity:0.4;margin-bottom:6px;"></i>
-          <p style="margin: 0; font-size: 0.85rem;">No patrons above 500,000</p>
+          <p style="margin: 0; font-size: 0.85rem;">No patrons above 490,000</p>
         </div>
       `;
     }
@@ -3418,11 +2962,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         <!-- Center Divider -->
         <div class="major-divider"></div>
 
-        <!-- Right: ABOVE TOTAL 500000 (with independent scrollbar if many guests) -->
+        <!-- Right: ABOVE TOTAL 490K (with independent scrollbar if many guests) -->
         <div class="major-right-section">
           <div class="major-sidebar-header">
             <i data-lucide="trending-up" style="width: 18px; height: 18px; color: #fbbf24;"></i>
-            <span>ABOVE TOTAL 500000</span>
+            <span>ABOVE TOTAL 490K</span>
           </div>
           <div class="major-sidebar-list">
             ${aboveCardsHtml}
@@ -3435,10 +2979,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     majorListContainer.querySelectorAll('.mp-grid-card, .mp-above-card').forEach(card => {
       card.addEventListener('click', () => {
         const guestName = card.getAttribute('data-guest');
-        if (guestName && guestMap[guestName]) {
-          const g = guestMap[guestName];
-          const net = g.totalOut - g.totalIn;
-          openMajorGuestModal(g.name, net, { in: g.totalIn, out: g.totalOut }, g.entries);
+        if (guestName) {
+          openGuestSummaryPopup(guestName, todayEntries, currentBusinessDateStr || currentBusinessDate || getBusinessDate());
         }
       });
     });
@@ -3455,25 +2997,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  if(majorSearch) {
-    majorSearch.addEventListener('input', renderMajor);
+  const btnMajorSearchAction = document.getElementById('btn-major-search-action');
+  if (btnMajorSearchAction && majorSearch) {
+    btnMajorSearchAction.addEventListener('click', () => {
+      if (majorSearch.style.display === 'none' || !majorSearch.style.display) {
+        majorSearch.style.display = 'inline-block';
+        btnMajorSearchAction.classList.add('active');
+        majorSearch.focus();
+      } else {
+        if (!majorSearch.value) {
+          majorSearch.style.display = 'none';
+          btnMajorSearchAction.classList.remove('active');
+        } else {
+          majorSearch.value = '';
+          majorSearch.style.display = 'none';
+          btnMajorSearchAction.classList.remove('active');
+          renderMajor();
+        }
+      }
+    });
+
     majorSearch.addEventListener('keydown', (e) => {
-      if(e.key === 'Enter') {
+      if (e.key === 'Escape') {
+        majorSearch.value = '';
+        majorSearch.style.display = 'none';
+        btnMajorSearchAction.classList.remove('active');
+        renderMajor();
+      } else if (e.key === 'Enter') {
         e.preventDefault();
         renderMajor();
       }
     });
-  }
-
-  const btnMajorSearchAction = document.getElementById('btn-major-search-action');
-  if(btnMajorSearchAction) {
-    btnMajorSearchAction.addEventListener('click', renderMajor);
+    majorSearch.addEventListener('input', renderMajor);
   }
 
   const refreshMajorBtn = document.getElementById('refreshMajor');
-  if(refreshMajorBtn) {
+  if (refreshMajorBtn) {
     refreshMajorBtn.addEventListener('click', () => {
-      if(majorSearch) majorSearch.value = '';
+      if (majorSearch) {
+        majorSearch.value = '';
+        majorSearch.style.display = 'none';
+      }
+      if (btnMajorSearchAction) btnMajorSearchAction.classList.remove('active');
       renderMajor();
     });
   }
@@ -3483,1058 +3048,686 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateAllEntriesView();
   }
 
-  const customStylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <numFmts count="1">
-    <numFmt numFmtId="164" formatCode="#,##0"/>
-  </numFmts>
-  <fonts count="5">
-    <!-- 0: Regular -->
-    <font><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/></font>
-    <!-- 1: Bold Black -->
-    <font><b/><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/></font>
-    <!-- 2: Bold Dark Maroon/Red for Header -->
-    <font><b/><sz val="11"/><color rgb="FF800000"/><name val="Calibri"/></font>
-    <!-- 3: Bold Red -->
-    <font><b/><sz val="11"/><color rgb="FF9C0006"/><name val="Calibri"/></font>
-    <!-- 4: Bold Green -->
-    <font><b/><sz val="11"/><color rgb="FF006100"/><name val="Calibri"/></font>
-  </fonts>
-  <fills count="7">
-    <!-- 0: none -->
-    <fill><patternFill patternType="none"/></fill>
-    <!-- 1: gray125 -->
-    <fill><patternFill patternType="gray125"/></fill>
-    <!-- 2: Light Blue Header #9BC2E6 -->
-    <fill><patternFill patternType="solid"><fgColor rgb="FF9BC2E6"/></patternFill></fill>
-    <!-- 3: Bright Yellow Separator #FFFF00 -->
-    <fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/></patternFill></fill>
-    <!-- 4: Soft Red Fill #FFC7CE -->
-    <fill><patternFill patternType="solid"><fgColor rgb="FFFFC7CE"/></patternFill></fill>
-    <!-- 5: Fluorescent Green Fill #C6EFCE -->
-    <fill><patternFill patternType="solid"><fgColor rgb="FFC6EFCE"/></patternFill></fill>
-    <!-- 6: Soft Ice Blue Fill for Guest Name Box #D9E1F2 -->
-    <fill><patternFill patternType="solid"><fgColor rgb="FFD9E1F2"/></patternFill></fill>
-  </fills>
-  <borders count="2">
-    <!-- 0: None -->
-    <border><left/><right/><top/><bottom/><diagonal/></border>
-    <!-- 1: Solid Dark Black Medium Borders for All Excel Cells -->
-    <border>
-      <left style="medium"><color rgb="FF000000"/></left>
-      <right style="medium"><color rgb="FF000000"/></right>
-      <top style="medium"><color rgb="FF000000"/></top>
-      <bottom style="medium"><color rgb="FF000000"/></bottom>
-      <diagonal/>
-    </border>
-  </borders>
-  <cellStyleXfs count="1">
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
-  </cellStyleXfs>
-  <cellXfs count="9">
-    <!-- 0: Normal -->
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-    <!-- 1: Header (Light Blue, Bold Maroon, Centered & Middle Align, All Borders, NO WRAP) -->
-    <xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
-      <alignment horizontal="center" vertical="center" wrapText="0"/>
-    </xf>
-    <!-- 2: Data Text / Regular Cells (Bold Black, Centered & Middle Align, All Borders, NO WRAP) -->
-    <xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
-      <alignment horizontal="center" vertical="center" wrapText="0"/>
-    </xf>
-    <!-- 3: Data Amount (Bold Black, Centered & Middle Align, All Borders, Comma Format, NO WRAP) -->
-    <xf numFmtId="164" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1" applyNumberFormat="1">
-      <alignment horizontal="center" vertical="center" wrapText="0"/>
-    </xf>
-    <!-- 4: Yellow Separator Cell in Guest Summary (Solid Yellow Fill, All Borders) -->
-    <xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
-      <alignment horizontal="center" vertical="center" wrapText="0"/>
-    </xf>
-    <!-- 5: Empty Cell with Borders and Centered Alignment -->
-    <xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1">
-      <alignment horizontal="center" vertical="center" wrapText="0"/>
-    </xf>
-    <!-- 6: Red Style for Negative RESULT (Soft Red Fill, Bold Red Text, Centered & Middle Align, All Borders) -->
-    <xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
-      <alignment horizontal="center" vertical="center" wrapText="0"/>
-    </xf>
-    <!-- 7: Fluorescent Green Style for Positive RESULT (Fluorescent Green Fill, Bold Green Text, Centered & Middle Align, All Borders) -->
-    <xf numFmtId="0" fontId="4" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
-      <alignment horizontal="center" vertical="center" wrapText="0"/>
-    </xf>
-    <!-- 8: Guest Name Box (Soft Ice Blue Fill, Bold Black Text, Centered & Middle Align, All Borders, NO WRAP) -->
-    <xf numFmtId="0" fontId="1" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
-      <alignment horizontal="center" vertical="center" wrapText="0"/>
-    </xf>
-  </cellXfs>
-</styleSheet>`;
+  // Excel Export Helper using SheetJS / xlsx-js-style - DATE WISE 1..31 SHEETS
+  // Matching required format: Cyan headers, Ice-blue rows, Guest Summary in Col J, Auto-fit widths
+  function formatExcelSentence(entry) {
+    const t = (entry.type || '').toUpperCase();
+    const amt = formatKCurrency(Number(entry.amount) || 0).toUpperCase();
+    const guest = (entry.guestname || 'UNKNOWN').toUpperCase();
+    const card = entry.card ? String(entry.card).toUpperCase() : '';
+    const info = entry.otherinfo ? ` (${String(entry.otherinfo).toUpperCase()})` : '';
 
-  async function applyExcelStyles(buffer) {
-    if (!window.JSZip) return buffer;
-    try {
-      const zip = new window.JSZip();
-      const loadedZip = await zip.loadAsync(buffer);
-      loadedZip.file('xl/styles.xml', customStylesXml);
+    if (t === 'CASHIN' || t === 'C/IN') return `${amt} CASHIN BY ${guest}${info}`;
+    if (t === 'CASHOUT' || t === 'C/OUT') return `${amt} CASHOUT BY ${guest}${info}`;
+    if (t === 'ISSUE') return `${amt} ISSUE TO ${guest} FROM ${card} CARD${info}`;
+    if (t === 'DEPOSIT') return `${amt} DEPOSIT BY ${guest} ON ${card} CARD${info}`;
+    if (t === 'KEYIN') return `${amt} KEYIN BY ${guest}${info}`;
+    if (t === 'KEYOUT') return `${amt} KEYOUT BY ${guest}${info}`;
+    return `${amt} ${t} BY ${guest}${info}`;
+  }
 
-      const sheetFiles = Object.keys(loadedZip.files).filter(name => name.startsWith('xl/worksheets/sheet') && name.endsWith('.xml'));
+  function buildClientStyledSheet(dayEntries) {
+    dayEntries = Array.isArray(dayEntries) ? dayEntries : [];
+    const headers = [
+      'DATE', 'TIME', 'TYPE', 'AMOUNT', 'GUEST NAME', 'CARD', 'OTHER INFO', 'SURV ID', 'SENTENCE ENTRIES', 'GUEST SUMMARY'
+    ];
 
-      for (const sheetFile of sheetFiles) {
-        let xml = await loadedZip.file(sheetFile).async('string');
+    const guestGroups = [];
+    const assignedEntryIds = new Set();
 
-        // Style header row 1
-        xml = xml.replace(/(<row r="1"[^>]*>)([\s\S]*?)(<\/row>)/, (match, openTag, rowContent, closeTag) => {
-          const styledContent = rowContent.replace(/<c r="([A-I])1"([^>]*)>/g, '<c r="$11" s="1"$2>');
-          return openTag + styledContent + closeTag;
-        });
+    dayEntries.forEach(e => {
+      if (assignedEntryIds.has(e.id)) return;
+      const rawGuest = (e.guestname || '').trim();
+      if (!rawGuest) return;
 
-        // Style data rows
-        xml = xml.replace(/<row r="([0-9]+)"([^>]*>)([\s\S]*?)(<\/row>)/g, (match, rowNumStr, rowTagRest, rowContent, closeTag) => {
-          const r = parseInt(rowNumStr, 10);
-          if (r === 1) return match;
+      const cluster = getGuestCluster(rawGuest, dayEntries);
+      cluster.entries.forEach(ce => assignedEntryIds.add(ce.id));
 
-          const cellMap = {};
-          const cellRegex = /<c r="([A-I])\d+"([^>]*)>(?:<v>([\s\S]*?)<\/v>)?<\/c>|<c r="([A-I])\d+"([^>]*)\/>/g;
-          let m;
-          while ((m = cellRegex.exec(rowContent)) !== null) {
-            const col = m[1] || m[4];
-            const attrs = m[2] || m[5] || '';
-            const body = m[3] || '';
-            cellMap[col] = { col, attrs, body };
+      let totalIn = 0;
+      let totalOut = 0;
+      cluster.entries.forEach(ce => {
+        const amt = Number(ce.amount) || 0;
+        const t = ce.type || '';
+        if (isTotalInType(t)) totalIn += amt;
+        else if (isTotalOutType(t)) totalOut += amt;
+      });
+
+      guestGroups.push({
+        name: cluster.canonicalName,
+        totalIn,
+        totalOut
+      });
+    });
+
+    guestGroups.sort((a, b) => a.name.localeCompare(b.name));
+
+    const summaryRows = [];
+    guestGroups.forEach(g => {
+      const netResult = g.totalOut - g.totalIn;
+      const isMinus = netResult < 0;
+      // NO +/- SIGN: Directly show formatted number, color-coded red for minus, fluorescent green for plus/0
+      const resFormatted = Math.abs(netResult).toLocaleString('en-IN');
+
+      summaryRows.push({
+        text: `NAME :- ${g.name}`,
+        type: 'guest_name'
+      });
+      summaryRows.push({
+        text: `TOTAL IN :- ${g.totalIn.toLocaleString('en-IN')}`,
+        type: 'guest_in'
+      });
+      summaryRows.push({
+        text: `TOTAL OUT :- ${g.totalOut.toLocaleString('en-IN')}`,
+        type: 'guest_out'
+      });
+      summaryRows.push({
+        text: `RESULT :- ${resFormatted}`,
+        type: 'guest_result',
+        isMinus: isMinus
+      });
+      summaryRows.push({
+        text: '',
+        type: 'separator_yellow'
+      });
+    });
+
+    const numDataRows = Math.max(dayEntries.length, summaryRows.length);
+    const totalRows = numDataRows + 1;
+
+    // Styles definition - ALL CELLS MIDDLE ALIGNED IN CENTRAL BOX
+    const headerStyle = {
+      fill: { fgColor: { rgb: '00A2E8' } },
+      font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: '000000' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: {
+        top: { style: 'thin', color: { rgb: '000000' } },
+        bottom: { style: 'thin', color: { rgb: '000000' } },
+        left: { style: 'thin', color: { rgb: '000000' } },
+        right: { style: 'thin', color: { rgb: '000000' } }
+      }
+    };
+
+    const blueDataStyle = {
+      fill: { fgColor: { rgb: 'D9E1F2' } },
+      font: { name: 'Calibri', sz: 10, color: { rgb: '000000' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: {
+        top: { style: 'thin', color: { rgb: '000000' } },
+        bottom: { style: 'thin', color: { rgb: '000000' } },
+        left: { style: 'thin', color: { rgb: '000000' } },
+        right: { style: 'thin', color: { rgb: '000000' } }
+      }
+    };
+
+    const summaryGreenStyle = {
+      fill: { fgColor: { rgb: 'D9EAD3' } },
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '000000' } },
+      alignment: { vertical: 'center', horizontal: 'center' },
+      border: {
+        top: { style: 'thin', color: { rgb: '000000' } },
+        bottom: { style: 'thin', color: { rgb: '000000' } },
+        left: { style: 'thin', color: { rgb: '000000' } },
+        right: { style: 'thin', color: { rgb: '000000' } }
+      }
+    };
+
+    const summaryRedResultStyle = {
+      fill: { fgColor: { rgb: 'D9EAD3' } },
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: 'FF0000' } },
+      alignment: { vertical: 'center', horizontal: 'center' },
+      border: {
+        top: { style: 'thin', color: { rgb: '000000' } },
+        bottom: { style: 'thin', color: { rgb: '000000' } },
+        left: { style: 'thin', color: { rgb: '000000' } },
+        right: { style: 'thin', color: { rgb: '000000' } }
+      }
+    };
+
+    const summaryGreenResultStyle = {
+      fill: { fgColor: { rgb: 'D9EAD3' } },
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '00B050' } },
+      alignment: { vertical: 'center', horizontal: 'center' },
+      border: {
+        top: { style: 'thin', color: { rgb: '000000' } },
+        bottom: { style: 'thin', color: { rgb: '000000' } },
+        left: { style: 'thin', color: { rgb: '000000' } },
+        right: { style: 'thin', color: { rgb: '000000' } }
+      }
+    };
+
+    const yellowSeparatorStyle = {
+      fill: { fgColor: { rgb: 'FFFF00' } },
+      alignment: { vertical: 'center', horizontal: 'center' },
+      border: {
+        top: { style: 'thin', color: { rgb: '000000' } },
+        bottom: { style: 'thin', color: { rgb: '000000' } },
+        left: { style: 'thin', color: { rgb: '000000' } },
+        right: { style: 'thin', color: { rgb: '000000' } }
+      }
+    };
+
+    const ws = {};
+    const colLetter = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    const colWidths = headers.map(h => h.length);
+
+    headers.forEach((h, cIdx) => {
+      ws[`${colLetter[cIdx]}1`] = {
+        t: 's',
+        v: h,
+        s: headerStyle
+      };
+    });
+
+    for (let r = 0; r < numDataRows; r++) {
+      const rowNum = r + 2;
+      const entry = dayEntries[r];
+      const summary = summaryRows[r];
+
+      let dt = '', tm = '';
+      if (entry && entry.datetime) {
+        const dtObj = parseEntryDateTime(entry.datetime);
+        dt = dtObj.dmy || '';
+        tm = dtObj.time || '';
+      }
+
+      const rowValues = [
+        entry ? dt : '',
+        entry ? tm : '',
+        entry ? (entry.type || '').toUpperCase() : '',
+        entry ? (Number(entry.amount) || 0) : '',
+        entry ? (entry.guestname || '').toUpperCase() : '',
+        entry ? (entry.card ? String(entry.card) : '') : '',
+        entry ? (entry.otherinfo || '') : '',
+        entry ? (entry.surv || '') : '',
+        entry ? formatExcelSentence(entry) : ''
+      ];
+
+      // Columns A through I - ALL MIDDLE ALIGNED IN CENTRAL BOX
+      rowValues.forEach((val, cIdx) => {
+        const cellRef = `${colLetter[cIdx]}${rowNum}`;
+        const isNum = typeof val === 'number';
+
+        // Hyperlink styling for Guest Name in Excel (Column E, cIdx === 4)
+        let cellFont = blueDataStyle.font;
+        if (cIdx === 4 && val) {
+          cellFont = { name: 'Calibri', sz: 10, bold: true, color: { rgb: '0000FF' }, underline: true };
+        }
+
+        ws[cellRef] = {
+          t: isNum ? 'n' : 's',
+          v: val,
+          s: {
+            ...blueDataStyle,
+            font: cellFont,
+            alignment: { horizontal: 'center', vertical: 'center' }
           }
-
-          const cols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
-          let newRowContent = '';
-
-          for (const col of cols) {
-            const cellRef = col + r;
-            const existing = cellMap[col];
-            let val = existing ? existing.body : '';
-
-            if (col === 'I') {
-              if (val === '__YELLOW__') {
-                newRowContent += `<c r="${cellRef}" s="4"/>`;
-              } else if (val.includes('__POS__')) {
-                val = val.replace('__POS__', '');
-                newRowContent += `<c r="${cellRef}" s="7" t="str"><v>${val}</v></c>`;
-              } else if (val.includes('__NEG__')) {
-                val = val.replace('__NEG__', '');
-                newRowContent += `<c r="${cellRef}" s="6" t="str"><v>${val}</v></c>`;
-              } else if (val.startsWith('GUEST NAME:')) {
-                // Particular Guest Box header with soft ice blue background
-                newRowContent += `<c r="${cellRef}" s="8" t="str"><v>${val}</v></c>`;
-              } else if (val) {
-                // TOTAL IN and TOTAL OUT do not have background color (clean bold s="2")
-                newRowContent += `<c r="${cellRef}" s="2" t="str"><v>${val}</v></c>`;
-              } else {
-                newRowContent += `<c r="${cellRef}" s="5"/>`;
-              }
-            } else if (col === 'D') {
-              if (val && !isNaN(val)) {
-                newRowContent += `<c r="${cellRef}" s="3" t="n"><v>${val}</v></c>`;
-              } else if (val) {
-                newRowContent += `<c r="${cellRef}" s="2" t="str"><v>${val}</v></c>`;
-              } else {
-                newRowContent += `<c r="${cellRef}" s="5"/>`;
-              }
-            } else {
-              if (val) {
-                newRowContent += `<c r="${cellRef}" s="2" t="str"><v>${val}</v></c>`;
-              } else {
-                newRowContent += `<c r="${cellRef}" s="5"/>`;
-              }
-            }
-          }
-
-          return `<row r="${r}"${rowTagRest}${newRowContent}${closeTag}`;
-        });
-
-        // Auto-fit column widths (<cols>): guarantee wide columns so words never wrap or truncate
-        const defaultColWidths = {
-          'A': 22, // DATE & TIME
-          'B': 12, // SURV ID
-          'C': 12, // TYPE
-          'D': 16, // AMOUNT
-          'E': 26, // GUEST NAME
-          'F': 14, // CARD
-          'G': 20, // OTHER INFO
-          'H': 48, // SENTENCE FORMAT
-          'I': 36  // GUEST SUMMARY
         };
 
-        const colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
-        const maxColLen = {};
-        const scanCellRegex = /<c r="([A-I])\d+"[^>]*>(?:<v>([\s\S]*?)<\/v>)?<\/c>/g;
-        let sm;
-        while ((sm = scanCellRegex.exec(xml)) !== null) {
-          const col = sm[1];
-          let rawVal = sm[2] || '';
-          rawVal = rawVal.replace('__POS__', '').replace('__NEG__', '').replace('__YELLOW__', '');
-          if (!maxColLen[col] || rawVal.length > maxColLen[col]) {
-            maxColLen[col] = rawVal.length;
+        const valLen = String(val).length;
+        if (valLen > colWidths[cIdx]) colWidths[cIdx] = valLen;
+      });
+
+      const jCellRef = `J${rowNum}`;
+      if (summary) {
+        let cellStyle = summaryGreenStyle;
+        if (summary.type === 'guest_result') {
+          cellStyle = summary.isMinus ? summaryRedResultStyle : summaryGreenResultStyle;
+        } else if (summary.type === 'separator_yellow') {
+          cellStyle = yellowSeparatorStyle;
+        }
+
+        ws[jCellRef] = {
+          t: 's',
+          v: summary.text,
+          s: cellStyle
+        };
+
+        const sLen = summary.text.length;
+        if (sLen > colWidths[9]) colWidths[9] = sLen;
+      } else {
+        ws[jCellRef] = {
+          t: 's',
+          v: '',
+          s: {
+            fill: { fgColor: { rgb: 'D9EAD3' } },
+            border: {
+              top: { style: 'thin', color: { rgb: '000000' } },
+              bottom: { style: 'thin', color: { rgb: '000000' } },
+              left: { style: 'thin', color: { rgb: '000000' } },
+              right: { style: 'thin', color: { rgb: '000000' } }
+            }
           }
-        }
-
-        let colsXml = '<cols>';
-        colLetters.forEach((col, idx) => {
-          const colIdx = idx + 1;
-          const computed = (maxColLen[col] || 0) + 4;
-          const finalW = Math.max(computed, defaultColWidths[col]);
-          colsXml += `<col min="${colIdx}" max="${colIdx}" width="${finalW}" customWidth="1"/>`;
-        });
-        colsXml += '</cols>';
-
-        if (xml.includes('<cols>') || xml.includes('<cols ')) {
-          xml = xml.replace(/<cols[\s\S]*?<\/cols>/, colsXml);
-        } else {
-          xml = xml.replace('<sheetData', colsXml + '<sheetData');
-        }
-
-        loadedZip.file(sheetFile, xml);
-      }
-
-      return await loadedZip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
-    } catch (err) {
-      console.error('Failed to apply Excel styles, returning original buffer:', err);
-      return buffer;
-    }
-  }
-
-  // Excel Export Helper using SheetJS with Smart Clustering
-  function computeGuestSummariesForExcel(entries) {
-    const guestList = clusterGuestEntries(entries);
-    guestList.forEach(g => {
-      g.result = (g.totalOut || 0) - (g.totalIn || 0);
-    });
-    guestList.sort((a, b) => b.totalIn - a.totalIn);
-    return guestList;
-  }
-
-  function buildWorksheetForExcel(entries) {
-    const aoa = [];
-    const header = [
-      'DATE & TIME',
-      'SURV ID',
-      'TYPE',
-      'AMOUNT',
-      'GUEST NAME',
-      'CARD',
-      'OTHER INFO',
-      'SENTENCE FORMAT',
-      'GUEST SUMMARY'
-    ];
-    aoa.push(header);
-
-    const guestSummaries = computeGuestSummariesForExcel(entries);
-    const cardRowCount = guestSummaries.length > 0 ? (guestSummaries.length * 5) : 0;
-    const maxRows = Math.max(entries.length, cardRowCount, 25);
-    for (let i = 0; i < maxRows; i++) {
-      const row = new Array(9).fill('');
-      if (i < entries.length) {
-        const e = entries[i];
-        row[0] = String((e.datetime || '').replace('T', ' ')).toUpperCase();
-        row[1] = String(e.surv || '').toUpperCase();
-        row[2] = String(e.type || '').toUpperCase();
-        row[3] = Number(e.amount) || 0;
-        row[4] = String(e.guestname || '').toUpperCase();
-        row[5] = String(e.card || '').toUpperCase();
-        row[6] = String(e.otherinfo || '').toUpperCase();
-        row[7] = String(getEntrySentence(e) || '').toUpperCase();
-      }
-      aoa.push(row);
-    }
-
-    // Populate Guest Summary Cards starting directly at COLUMN I (Row 2, below GUEST SUMMARY header)
-    let cardRow = 1;
-    guestSummaries.forEach(g => {
-      const upperName = String(g.name || '').toUpperCase();
-      const inStr = Number(g.totalIn || 0).toLocaleString('en-IN');
-      const outStr = Number(g.totalOut || 0).toLocaleString('en-IN');
-      const resVal = Number(g.result || 0);
-      const resStr = Math.abs(resVal).toLocaleString('en-IN');
-      const marker = resVal < 0 ? '__NEG__' : '__POS__';
-
-      while (aoa.length <= cardRow + 4) {
-        aoa.push(new Array(9).fill(''));
-      }
-
-      // Row 1 of card
-      aoa[cardRow][8] = `GUEST NAME: ${upperName}`;
-      // Row 2 of card
-      aoa[cardRow + 1][8] = `TOTAL IN: ${inStr}`;
-      // Row 3 of card
-      aoa[cardRow + 2][8] = `TOTAL OUT: ${outStr}`;
-      // Row 4 of card (No +/- sign, Indian Rupee format, marker stripped during XML styling)
-      aoa[cardRow + 3][8] = `RESULT: ${resStr}${marker}`;
-      // Row 5: Clean divider (marked for yellow background)
-      aoa[cardRow + 4][8] = '__YELLOW__';
-
-      cardRow += 5;
-    });
-
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-    // Set standard comma number format for Amount column (Col D)
-    for (let r = 1; r <= entries.length; r++) {
-      const cellRef = XLSX.utils.encode_cell({ r: r, c: 3 });
-      if (ws[cellRef] && typeof ws[cellRef].v === 'number') {
-        ws[cellRef].z = '#,##0';
+        };
       }
     }
 
-    // Dynamic Auto-fit for all column widths based on maximum content length
-    const defaultMinWidths = [
-      22, // A: DATE & TIME
-      12, // B: SURV ID
-      12, // C: TYPE
-      16, // D: AMOUNT
-      26, // E: GUEST NAME
-      14, // F: CARD
-      20, // G: OTHER INFO
-      48, // H: SENTENCE FORMAT
-      36  // I: GUEST SUMMARY
-    ];
-
-    const colWidths = [];
-    for (let c = 0; c < 9; c++) {
-      let maxLen = 0;
-      for (let r = 0; r < aoa.length; r++) {
-        let val = aoa[r] ? aoa[r][c] : '';
-        if (val !== undefined && val !== null && val !== '') {
-          val = String(val).replace('__POS__', '').replace('__NEG__', '').replace('__YELLOW__', '');
-          const str = (typeof val === 'number') ? val.toLocaleString('en-IN') : String(val);
-          if (str.length > maxLen) maxLen = str.length;
-        }
-      }
-      const minW = defaultMinWidths[c] || 12;
-      colWidths.push({ wch: Math.max(maxLen + 4, minW) });
-    }
-    ws['!cols'] = colWidths;
-
-    // Auto-fit row heights for clean, spacious presentation
-    const rowHeights = [{ hpt: 26 }]; // Header row
-    for (let r = 1; r < aoa.length; r++) {
-      rowHeights.push({ hpt: 20 }); // Data rows
-    }
-    ws['!rows'] = rowHeights;
+    ws['!ref'] = `A1:J${Math.max(totalRows, 2)}`;
+    // Auto-fit column widths: max content length + 4 characters padding (minimum 11)
+    ws['!cols'] = colWidths.map(w => ({ wch: Math.max(w + 4, 11) }));
+    // Auto-fit to page in landscape print / view
+    ws['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 };
 
     return ws;
   }
 
-  async function exportToExcel(entriesToExport, filename = 'Surveillance_Export', specificDate = '') {
-    if(!window.XLSX) {
+  function exportToExcelDateWise1to31(entriesList, filenamePrefix = 'Surveillance_Export') {
+    if (!window.XLSX) {
       alert("Excel library not loaded yet.");
       return;
     }
+
+    // Determine target month from date picker, currentBusinessDate, or today
+    const pickerVal = allEntriesDatePicker ? allEntriesDatePicker.value : '';
+    let targetYearMonth = pickerVal ? pickerVal.slice(0, 7) : (currentBusinessDateStr ? currentBusinessDateStr.slice(0, 7) : new Date().toISOString().slice(0, 7));
+
+    // Group entries for this month by day 1..31
+    const dayGroups = {};
+    for (let d = 1; d <= 31; d++) {
+      dayGroups[d] = [];
+    }
+
+    const sourceData = (Array.isArray(entriesList) && entriesList.length > 0) ? entriesList : allEntries;
+
+    sourceData.forEach(e => {
+      const eDate = getEntryDate(e);
+      if (eDate && eDate.startsWith(targetYearMonth)) {
+        const d = parseInt(eDate.split('-')[2], 10);
+        if (d >= 1 && d <= 31) {
+          dayGroups[d].push(e);
+        }
+      }
+    });
+
     const wb = XLSX.utils.book_new();
 
-    // Check if exporting a particular date or multiple dates
-    const dates = new Set(entriesToExport.map(e => (e.businessDate || (e.datetime ? e.datetime.slice(0, 10) : '')).trim()).filter(Boolean));
-    let fileNameFinal = '';
-
-    if (specificDate || dates.size <= 1) {
-      const sheetName = specificDate || (dates.size === 1 ? Array.from(dates)[0] : 'Entries');
-      const ws = buildWorksheetForExcel(entriesToExport);
-      XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31));
-      const fileDate = specificDate || (dates.size === 1 ? Array.from(dates)[0] : new Date().toISOString().slice(0,10));
-      fileNameFinal = `${filename}_${fileDate}.xlsx`;
-    } else {
-      // Multiple dates (Full Month): Group entries by day and create sheets 1 to 31 in order
-      const dayMap = {};
-      entriesToExport.forEach(e => {
-        const dt = e.businessDate || e.datetime || '';
-        let day = '';
-        if (dt.includes('-')) {
-          const parts = dt.slice(0, 10).split('-');
-          if (parts[2]) day = String(Number(parts[2]));
-        }
-        if (!day) day = '1';
-        if (!dayMap[day]) dayMap[day] = [];
-        dayMap[day].push(e);
-      });
-
-      for (let d = 1; d <= 31; d++) {
-        const sheetName = String(d);
-        const dayEntries = dayMap[sheetName] || [];
-        const ws = buildWorksheetForExcel(dayEntries);
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    // Create exactly 1.......31 sheets in numerical order
+    for (let d = 1; d <= 31; d++) {
+      const sheetName = String(d);
+      const dayEntries = dayGroups[d] || [];
+      if (dayEntries.length > 0) {
+        dayEntries.sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
       }
-
-      fileNameFinal = `${filename}_${new Date().toISOString().slice(0,10)}.xlsx`;
+      const ws = buildClientStyledSheet(dayEntries);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
     }
 
-    if (window.JSZip) {
-      try {
-        const rawBuffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
-        const styledBuffer = await applyExcelStyles(rawBuffer);
-        const blob = new Blob([styledBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileNameFinal;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        return;
-      } catch (err) {
-        console.error('Styled export failed, falling back to standard write:', err);
-      }
-    }
-
-    XLSX.writeFile(wb, fileNameFinal);
+    XLSX.writeFile(wb, `${filenamePrefix}_${targetYearMonth}_DateWise_1-31.xlsx`);
   }
 
-  // View Toggle Logic for Home Screen (Sentence vs Table)
-  const btnHomeViewSentence = document.getElementById('btn-home-view-sentence');
-  const btnHomeViewTable = document.getElementById('btn-home-view-table');
-  const homeSentenceView = document.getElementById('home-entries-sentence-view');
-  const homeTableView = document.getElementById('home-entries-table-view');
-
-  if (btnHomeViewSentence && btnHomeViewTable) {
-    btnHomeViewSentence.addEventListener('click', () => {
-      btnHomeViewSentence.classList.add('active');
-      btnHomeViewTable.classList.remove('active');
-      btnHomeViewSentence.style.background = 'var(--primary)';
-      btnHomeViewSentence.style.color = '#fff';
-      btnHomeViewSentence.style.border = 'none';
-      btnHomeViewTable.style.background = 'rgba(255,255,255,0.08)';
-      btnHomeViewTable.style.color = '#94a3b8';
-      btnHomeViewTable.style.border = '1px solid rgba(255,255,255,0.15)';
-      if (homeSentenceView) homeSentenceView.style.setProperty('display', 'block', 'important');
-      if (homeTableView) homeTableView.style.setProperty('display', 'none', 'important');
-    });
-
-    btnHomeViewTable.addEventListener('click', () => {
-      btnHomeViewTable.classList.add('active');
-      btnHomeViewSentence.classList.remove('active');
-      btnHomeViewTable.style.background = 'var(--primary)';
-      btnHomeViewTable.style.color = '#fff';
-      btnHomeViewTable.style.border = 'none';
-      btnHomeViewSentence.style.background = 'rgba(255,255,255,0.08)';
-      btnHomeViewSentence.style.color = '#94a3b8';
-      btnHomeViewSentence.style.border = '1px solid rgba(255,255,255,0.15)';
-      if (homeTableView) homeTableView.style.setProperty('display', 'block', 'important');
-      if (homeSentenceView) homeSentenceView.style.setProperty('display', 'none', 'important');
-    });
+  function exportToExcel(entriesToExport, filename = 'Surveillance_Export') {
+    exportToExcelDateWise1to31(entriesToExport, filename);
   }
 
-  // View Toggle Logic for All Entries Panel (Table vs Sentence vs Excel vs Guest Wise vs Custom Entries)
+  // View Toggle Logic for All Entries Panel (TABLE, SENTENCE, EXCEL, GUESTWISE)
   const btnViewNormal = document.getElementById('btn-view-normal');
   const btnViewSentence = document.getElementById('btn-view-sentence');
   const btnViewExcel = document.getElementById('btn-view-excel');
-  const btnViewGuestwise = document.getElementById('btn-view-guestwise');
-  const btnViewCustomEntries = document.getElementById('btn-view-custom-entries');
 
-  const expandedGuestwiseNames = new Set();
+  const allEntriesNormalView = document.getElementById('all-entries-normal-view');
+  const allEntriesExcelView = document.getElementById('all-entries-excel-view');
 
-  if (btnViewNormal) {
-    btnViewNormal.addEventListener('click', (e) => {
-      e.preventDefault();
-      allEntriesViewMode = 'table';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-    });
-  }
+  let allEntriesViewMode = 'table'; // 'table', 'sentence', 'excel'
 
-  if (btnViewSentence) {
-    btnViewSentence.addEventListener('click', (e) => {
-      e.preventDefault();
-      allEntriesViewMode = 'sentence';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-    });
-  }
-
-  if (btnViewExcel) {
-    btnViewExcel.addEventListener('click', (e) => {
-      e.preventDefault();
-      allEntriesViewMode = 'excel';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-    });
-  }
-
-  if (btnViewGuestwise) {
-    btnViewGuestwise.addEventListener('click', (e) => {
-      e.preventDefault();
-      allEntriesViewMode = 'guestwise';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-    });
-  }
-
-  if (btnViewCustomEntries) {
-    btnViewCustomEntries.addEventListener('click', (e) => {
-      e.preventDefault();
-      allEntriesViewMode = 'custom-entries';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-    });
-  }
-
-  // Delegated click listener across the document to guarantee sub-button triggers work even when clicking inner SVG / path
-  document.addEventListener('click', (e) => {
-    const modalViewBtn = e.target.closest('#btn-modal-view-entries');
-    if (modalViewBtn) {
-      e.preventDefault();
-      if (typeof toggleModalEntriesView === 'function') toggleModalEntriesView();
-      return;
-    }
-    const customBtn = e.target.closest('#btn-view-custom-entries');
-    if (customBtn) {
-      e.preventDefault();
-      allEntriesViewMode = 'custom-entries';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-      return;
-    }
-    const guestwiseBtn = e.target.closest('#btn-view-guestwise');
-    if (guestwiseBtn) {
-      e.preventDefault();
-      allEntriesViewMode = 'guestwise';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-      return;
-    }
-    const excelBtn = e.target.closest('#btn-view-excel');
-    if (excelBtn) {
-      e.preventDefault();
-      allEntriesViewMode = 'excel';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-      return;
-    }
-    const sentenceBtn = e.target.closest('#btn-view-sentence');
-    if (sentenceBtn) {
-      e.preventDefault();
-      allEntriesViewMode = 'sentence';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-      return;
-    }
-    const normalBtn = e.target.closest('#btn-view-normal');
-    if (normalBtn) {
-      e.preventDefault();
-      allEntriesViewMode = 'table';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-      return;
-    }
-  });
-
-  // Render All Entries in authentic Excel Spreadsheet Grid on Website
-  function renderAllEntriesExcelView(entries) {
-    const container = document.getElementById('all-entries-excel-view');
-    if (!container) return;
-
-    if (!entries || entries.length === 0) {
-      container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No records found matching the filters.</div>`;
-      return;
-    }
-
-    const guestSummaries = computeGuestSummariesForExcel(entries);
-
-    // Flatten guest summary cards into row-by-row elements - ALL CAPITAL LETTERS & INDIAN RUPEE FORMAT
-    const cardRows = [];
-    guestSummaries.forEach(g => {
-      const upperName = String(g.name || '').toUpperCase();
-      const inStr = Number(g.totalIn || 0).toLocaleString('en-IN');
-      const outStr = Number(g.totalOut || 0).toLocaleString('en-IN');
-      const resVal = Number(g.result || 0);
-      const resStr = Math.abs(resVal).toLocaleString('en-IN');
-      const resType = resVal < 0 ? 'res-minus' : 'res-plus';
-      cardRows.push({ type: 'top', text: `GUEST NAME: ${upperName}`, guest: upperName });
-      cardRows.push({ type: 'in', text: `TOTAL IN: ${inStr}` });
-      cardRows.push({ type: 'out', text: `TOTAL OUT: ${outStr}` });
-      cardRows.push({ type: resType, text: `RESULT: ${resStr}` });
-      cardRows.push({ type: 'blank', text: '' });
-    });
-
-    let html = `
-      <div class="excel-table-scroll-wrapper" style="width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;">
-        <table class="excel-grid-table" style="width: 100%; min-width: 100%; table-layout: auto;">
-          <thead>
-            <tr class="excel-col-letter-row">
-              <th class="excel-row-num" style="width: 32px; min-width: 32px;"></th>
-              <th style="min-width: 110px;">A</th>
-              <th style="min-width: 55px;">B</th>
-              <th style="min-width: 60px;">C</th>
-              <th style="min-width: 70px;">D</th>
-              <th style="min-width: 95px;">E</th>
-              <th style="min-width: 55px;">F</th>
-              <th style="min-width: 75px;">G</th>
-              <th style="min-width: 170px;">H</th>
-              <th style="min-width: 150px;">I</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td class="excel-row-num">1</td>
-              <td class="excel-cell excel-header-cell" style="min-width: 110px;">DATE &amp; TIME</td>
-              <td class="excel-cell excel-header-cell" style="min-width: 55px;">SURV ID</td>
-              <td class="excel-cell excel-header-cell" style="min-width: 60px;">TYPE</td>
-              <td class="excel-cell excel-header-cell" style="min-width: 70px;">AMOUNT</td>
-              <td class="excel-cell excel-header-cell" style="min-width: 95px;">GUEST NAME</td>
-              <td class="excel-cell excel-header-cell" style="min-width: 55px;">CARD</td>
-              <td class="excel-cell excel-header-cell" style="min-width: 75px;">OTHER INFO</td>
-              <td class="excel-cell excel-header-cell" style="min-width: 170px;">SENTENCE FORMAT</td>
-              <td class="excel-cell excel-header-cell" style="min-width: 150px;">GUEST SUMMARY</td>
-            </tr>
-    `;
-
-    // Subsequent data rows
-    const maxRows = Math.max(entries.length, cardRows.length);
-    for (let i = 0; i < maxRows; i++) {
-      const rowNum = i + 2;
-      const e = entries[i] || null;
-      const card = cardRows[i] || null;
-
-      let cardClass = 'excel-cell excel-guest-card-cell';
-      let cardText = '';
-      if (card) {
-        if (card.type === 'top') {
-          cardClass += ' excel-card-top';
-          const gName = card.guest || (card.text.replace(/^GUEST NAME:\s*/i, ''));
-          cardText = `GUEST NAME: <a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(gName)}" style="color:#000000 !important;text-decoration:underline !important;">${escapeHTML(gName)}</a>`;
-        }
-        else if (card.type === 'in') { cardClass += ' excel-card-in'; cardText = escapeHTML(card.text); }
-        else if (card.type === 'out') { cardClass += ' excel-card-out'; cardText = escapeHTML(card.text); }
-        else if (card.type === 'res-plus') { cardClass += ' excel-card-result excel-card-result-plus'; cardText = escapeHTML(card.text); }
-        else if (card.type === 'res-minus') { cardClass += ' excel-card-result excel-card-result-minus'; cardText = escapeHTML(card.text); }
-        else if (card.type === 'res-zero' || card.type === 'res') { cardClass += ' excel-card-result excel-card-result-zero'; cardText = escapeHTML(card.text); }
-        else if (card.type === 'blank') { cardClass = 'excel-cell excel-card-blank'; cardText = ''; }
-      } else {
-        cardClass = 'excel-cell excel-card-blank';
-      }
-
-      html += `
-        <tr>
-          <td class="excel-row-num">${rowNum}</td>
-          <td class="excel-cell">${e ? escapeHTML(String(formatDateTimeDMY(e.datetime)).toUpperCase()) : ''}</td>
-          <td class="excel-cell" style="font-weight:600;">${e ? escapeHTML(String(e.surv || '').toUpperCase()) : ''}</td>
-          <td class="excel-cell" style="font-weight:600;">${e ? escapeHTML(String(e.type || '').toUpperCase()) : ''}</td>
-          <td class="excel-cell" style="text-align:center;font-weight:700;">${e ? Number(e.amount || 0).toLocaleString('en-IN') : ''}</td>
-          <td class="excel-cell" style="font-weight:700;">${e && e.guestname ? `<a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(e.guestname)}" data-date="${escapeHTML(e.businessDate || (e.datetime ? getBusinessDate(e.datetime) : ''))}">${escapeHTML(String(e.guestname).toUpperCase())}</a>` : ''}</td>
-          <td class="excel-cell">${e ? escapeHTML(String(e.card || '').toUpperCase()) : ''}</td>
-          <td class="excel-cell">${e ? escapeHTML(String(e.otherinfo || '').toUpperCase()) : ''}</td>
-          <td class="excel-cell" style="color:#0369a1;font-weight:700;">${e ? getEntrySentenceHTML(e) : ''}</td>
-          <td class="${cardClass}">${cardText}</td>
-        </tr>
-      `;
-    }
-
-    html += `
-          </tbody>
-        </table>
-      </div>
-    `;
-
-    container.innerHTML = html;
-  }
-
-  // Render All Entries by Guest Wise View
-  function renderAllEntriesGuestwiseView(entries) {
-    const container = document.getElementById('all-entries-guestwise-view');
-    if (!container) return;
-
-    if (!entries || entries.length === 0) {
-      container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No records found matching the filters.</div>`;
-      return;
-    }
-
-    // Group entries into clustered unique guests (combines name variations like MANTHAN GOSAVI, GOSAVI MANTHAN, MANTHAN G, etc.)
-    const guestList = clusterGuestEntries(entries);
-    guestList.forEach(g => {
-      g.entries.sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
-    });
-    // Sort guests alphabetically by name
-    guestList.sort((a, b) => a.name.localeCompare(b.name));
-
-    // Top Header with Expand/Collapse All (Only Symbol, Small Compact Size)
-    let html = `
-      <div class="guestwise-top-bar">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <i data-lucide="users" style="width: 17px; height: 17px; color: #a78bfa;" title="Guest Wise Entries"></i>
-          <span style="font-size: 0.72rem; background: rgba(167, 139, 250, 0.2); color: #c4b5fd; padding: 1px 8px; border-radius: 10px; font-weight: 700;" title="Total Unique Guests">
-            ${guestList.length}
-          </span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <button type="button" id="btn-guestwise-toggle-all" class="btn-guestwise-action">
-            Expand All
-          </button>
-        </div>
-      </div>
-    `;
-
-    // Render Guest Cards (Small Compact Size)
-    guestList.forEach(g => {
-      const isNegative = g.result < 0;
-      const resultColorClass = isNegative ? 'text-red' : (g.result > 0 ? 'text-green' : 'text-neutral');
-      let formattedResult = formatCurrency(Math.abs(g.result));
-      if (isNegative) {
-        formattedResult = '-' + formattedResult;
-      } else if (g.result > 0) {
-        formattedResult = '+' + formattedResult;
-      } else {
-        formattedResult = '₹0';
-      }
-
-      const isOpen = expandedGuestwiseNames.has(g.name);
-      const openClass = isOpen ? ' is-open' : '';
-      const bodyDisplay = isOpen ? 'display: flex;' : 'display: none;';
-
-      // Build Sentence Rows for this guest
-      const sentencesHtml = g.entries.map(e => {
-        const t = (e.type || '').toUpperCase();
-        const isCredit = isTotalInType(t);
-        const borderCol = isCredit ? '#10b981' : '#ef4444';
-        const amtColor = isCredit ? '#10b981' : '#ef4444';
-        const time = e.datetime ? e.datetime.replace('T', ' ').slice(11, 16) : '';
-        const sentence = getEntrySentenceHTML(e);
-
-        return `
-          <div class="guestwise-sentence-item" style="border-left-color: ${borderCol};">
-            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex: 1;">
-              ${time ? `<span style="font-size: 0.75rem; color: #94a3b8; font-family: monospace; background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 4px;">${escapeHTML(time)}</span>` : ''}
-              <span style="font-weight: 700; color: #f8fafc; font-size: 0.82rem; line-height: 1.35;">${sentence}</span>
-            </div>
-            <div style="font-weight: 800; font-family: monospace; font-size: 0.88rem; color: ${amtColor}; white-space: nowrap; margin-left: 8px;">
-              ${formatCurrency(e.amount)}
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      html += `
-        <div class="guestwise-card${openClass}" data-guest="${escapeHTML(g.name)}">
-          <!-- Clickable Header: Displays GUEST NAME (Compact Small Size) -->
-          <div class="guestwise-header" title="Click to view all entries and result for ${escapeHTML(g.name)}">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <div style="width: 26px; height: 26px; border-radius: 50%; background: rgba(167, 139, 250, 0.15); display: flex; align-items: center; justify-content: center; color: #a78bfa; flex-shrink: 0;">
-                <i data-lucide="user" style="width: 14px; height: 14px;"></i>
-              </div>
-              <div>
-                <div class="guestwise-name"><a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(g.name)}">${escapeHTML(g.name)}</a></div>
-                <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">
-                  ${g.entries.length} ${g.entries.length === 1 ? 'TRANSACTION' : 'TRANSACTIONS'}
-                </div>
-              </div>
-            </div>
-
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <div style="text-align: right;">
-                <span style="font-size: 0.68rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">RESULT: </span>
-                <strong class="${resultColorClass}" style="font-family: monospace; font-size: 0.92rem; margin-left: 2px;">${formattedResult}</strong>
-              </div>
-              <i data-lucide="chevron-down" class="guestwise-chevron" style="width: 15px; height: 15px; color: #94a3b8;"></i>
-            </div>
-          </div>
-
-          <!-- Expanded Body: Displays Result Stats & All Entries in Sentence Form -->
-          <div class="guestwise-body" style="${bodyDisplay}">
-            <!-- Result and Totals Summary Strip -->
-            <div class="guestwise-summary-strip">
-              <div class="guestwise-stat-box" style="background: rgba(56, 189, 248, 0.08); border-color: rgba(56, 189, 248, 0.25);">
-                <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">TOTAL IN</div>
-                <div style="font-size: 0.95rem; font-weight: 800; color: #38bdf8; font-family: monospace;">${formatCurrency(g.totalIn)}</div>
-              </div>
-              <div class="guestwise-stat-box" style="background: rgba(251, 146, 60, 0.08); border-color: rgba(251, 146, 60, 0.25);">
-                <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">TOTAL OUT</div>
-                <div style="font-size: 0.95rem; font-weight: 800; color: #fb923c; font-family: monospace;">${formatCurrency(g.totalOut)}</div>
-              </div>
-              <div class="guestwise-stat-box" style="background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.15);">
-                <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">RESULT</div>
-                <div class="${resultColorClass}" style="font-size: 0.95rem; font-weight: 800; font-family: monospace;">${formattedResult}</div>
-              </div>
-            </div>
-
-            <!-- Sentence Form List Header -->
-            <div style="font-size: 0.72rem; color: #a78bfa; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
-              TRANSACTIONS IN SENTENCE FORM:
-            </div>
-
-            <!-- List of All Entries for this guest in Sentence Form -->
-            <div style="display: flex; flex-direction: column; gap: 6px;">
-              ${sentencesHtml}
-            </div>
-          </div>
-        </div>
-      `;
-    });
-
-    container.innerHTML = html;
-    if (window.lucide) lucide.createIcons();
-
-    // Attach click handlers to headers
-    container.querySelectorAll('.guestwise-header').forEach(header => {
-      header.addEventListener('click', () => {
-        const card = header.closest('.guestwise-card');
-        if (!card) return;
-        const gName = card.getAttribute('data-guest');
-        const body = card.querySelector('.guestwise-body');
-        const isCurrentlyOpen = card.classList.contains('is-open');
-
-        if (isCurrentlyOpen) {
-          card.classList.remove('is-open');
-          if (body) body.style.display = 'none';
-          expandedGuestwiseNames.delete(gName);
-        } else {
-          card.classList.add('is-open');
-          if (body) body.style.display = 'flex';
-          expandedGuestwiseNames.add(gName);
-        }
-
-        // Update toggle all button text if present
-        const toggleAllBtn = container.querySelector('#btn-guestwise-toggle-all');
-        if (toggleAllBtn) {
-          const allCards = container.querySelectorAll('.guestwise-card');
-          const allOpen = Array.from(allCards).every(c => c.classList.contains('is-open'));
-          toggleAllBtn.textContent = allOpen ? 'Collapse All' : 'Expand All';
-        }
-      });
-    });
-
-    // Attach Toggle All click handler
-    const btnToggleAll = container.querySelector('#btn-guestwise-toggle-all');
-    if (btnToggleAll) {
-      const allCards = container.querySelectorAll('.guestwise-card');
-      const allOpen = allCards.length > 0 && Array.from(allCards).every(c => c.classList.contains('is-open'));
-      btnToggleAll.textContent = allOpen ? 'Collapse All' : 'Expand All';
-
-      btnToggleAll.addEventListener('click', () => {
-        const currentlyAllOpen = Array.from(container.querySelectorAll('.guestwise-card')).every(c => c.classList.contains('is-open'));
-        container.querySelectorAll('.guestwise-card').forEach(c => {
-          const gName = c.getAttribute('data-guest');
-          const b = c.querySelector('.guestwise-body');
-          if (currentlyAllOpen) {
-            c.classList.remove('is-open');
-            if (b) b.style.display = 'none';
-            expandedGuestwiseNames.delete(gName);
-          } else {
-            c.classList.add('is-open');
-            if (b) b.style.display = 'flex';
-            expandedGuestwiseNames.add(gName);
-          }
-        });
-        btnToggleAll.textContent = currentlyAllOpen ? 'Expand All' : 'Collapse All';
-      });
-    }
-  }
-
-  // Render All Entries Custom Table View:
-  // Shows ONLY: TIME, CD, CASHIER, TYPE, AMOUNT, GUEST NAME, CARD, OTHER INFO
-  function renderAllEntriesCustomView(entries) {
-    const tableBody = document.getElementById('all-entries-custom-table-body');
-    if (!tableBody) return;
-
-    if (!entries || entries.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:35px; color:var(--text-muted); font-weight:700;">No records found matching the filters.</td></tr>`;
-      return;
-    }
-
-    let rowsHtml = '';
-    entries.forEach(entry => {
-      // 1. TIME: Extract clean HH:MM:SS or HH:MM from datetime
-      let timeStr = '-';
-      if (entry.datetime) {
-        if (entry.datetime.includes('T')) {
-          const tPart = entry.datetime.split('T')[1].split('.')[0];
-          timeStr = tPart.slice(0, 8);
-        } else if (entry.datetime.includes(' ')) {
-          timeStr = entry.datetime.split(' ')[1].slice(0, 8);
-        } else {
-          timeStr = entry.datetime;
-        }
-      }
-
-      // 2. CD: Entry CD or '-'
-      const cdStr = escapeHTML(entry.cd || '-');
-
-      // 3. CASHIER: Entry Cashier or '-'
-      const cashierStr = escapeHTML(entry.cashier || '-');
-
-      // 4. TYPE: Badge with appropriate styling
-      const rawType = (entry.type || '').toUpperCase();
-      let typeBadge = { cls: 'badge-synced', label: rawType || '-' };
-      if (['CASHIN', 'C/IN', 'ISSUE', 'KEYIN', 'BUY IN'].includes(rawType)) {
-        typeBadge = { cls: 'badge-credit', label: rawType };
-      } else if (['CASHOUT', 'C/OUT', 'DEPOSIT', 'KEYOUT', 'WIN'].includes(rawType)) {
-        typeBadge = { cls: 'badge-debit', label: rawType };
-      }
-
-      // 5. AMOUNT: Result styling (Plus Green, Minus Red, Zero Neutral)
-      const numAmt = Number(entry.amount) || 0;
-      const isCredit = ['CASHIN', 'C/IN', 'ISSUE', 'KEYIN', 'BUY IN'].includes(rawType);
-      const isDebit = ['CASHOUT', 'C/OUT', 'DEPOSIT', 'KEYOUT', 'WIN'].includes(rawType);
-      const amtFormatted = formatCurrency(Math.abs(numAmt));
-      let amtColorClass = 'text-neutral';
-      let signPrefix = '';
-      if (isCredit) {
-        amtColorClass = 'text-green';
-        signPrefix = '+';
-      } else if (isDebit || numAmt < 0) {
-        amtColorClass = 'text-red';
-        signPrefix = '-';
-      }
-
-      // 6. GUEST NAME: Clean uppercase guest name
-      const guestNameStr = escapeHTML(entry.guestname || '-');
-
-      // 7. CARD: Card number or '-'
-      const cardStr = entry.card ? `<code style="background:rgba(255,255,255,0.06); padding:2px 6px; border-radius:4px; color:#cbd5e1;">${escapeHTML(entry.card)}</code>` : '<span style="color:var(--text-muted)">—</span>';
-
-      // 8. OTHER INFO: Clean other info with tooltip
-      const otherInfoStr = entry.otherinfo ? escapeHTML(entry.otherinfo) : '<span style="color:var(--text-muted)">—</span>';
-
-      rowsHtml += `
-        <tr>
-          <td><strong style="font-family: monospace; font-size: 0.9rem; color: #cbd5e1;">${timeStr}</strong></td>
-          <td><span style="color: #38bdf8; font-weight: 700; font-size: 0.88rem;">${cdStr}</span></td>
-          <td><span style="color: #fbbf24; font-weight: 700; font-size: 0.88rem;">${cashierStr}</span></td>
-          <td><span class="badge ${typeBadge.cls}">${typeBadge.label}</span></td>
-          <td class="table-amount ${amtColorClass}" style="font-weight: 800; font-size: 0.92rem;">${signPrefix}${amtFormatted}</td>
-          <td>${entry.guestname ? `<a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(entry.guestname)}" style="font-size: 0.9rem;">${escapeHTML(String(guestNameStr).toUpperCase())}</a>` : `<strong style="color: #ffffff; font-weight: 700; font-size: 0.9rem;">${guestNameStr}</strong>`}</td>
-          <td>${cardStr}</td>
-          <td title="${escapeHTML(entry.otherinfo || '')}">
-            <div style="max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-              ${otherInfoStr}
-            </div>
-          </td>
-        </tr>
-      `;
-    });
-
-    tableBody.innerHTML = rowsHtml;
-    lucide.createIcons();
-  }
-
-  // Render Entries Table inside Add Entries (Log Form) Modal
-  function renderModalEntriesView(entries) {
-    const tableBody = document.getElementById('modal-entries-table-body');
-    if (!tableBody) return;
-
-    let source = entries || allEntries || [];
-    const curDate = (typeof currentBusinessDateStr !== 'undefined' && currentBusinessDateStr) ? currentBusinessDateStr : '';
-    if (curDate) {
-      const forDate = source.filter(e => (e.businessDate || (e.datetime ? getBusinessDate(e.datetime) : '')) === curDate);
-      if (forDate.length > 0) source = forDate;
-    }
-
-    if (!source || source.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:25px; color:var(--text-muted); font-weight:700;">No records found. Enter a record above and click SAVE.</td></tr>`;
-      return;
-    }
-
-    const sorted = [...source].sort((a, b) => new Date(b.datetime || 0) - new Date(a.datetime || 0));
-
-    let rowsHtml = '';
-    sorted.forEach(entry => {
-      let timeStr = '-';
-      if (entry.datetime) {
-        if (entry.datetime.includes('T')) {
-          timeStr = entry.datetime.split('T')[1].split('.')[0].slice(0, 8);
-        } else if (entry.datetime.includes(' ')) {
-          timeStr = entry.datetime.split(' ')[1].slice(0, 8);
-        } else {
-          timeStr = entry.datetime;
-        }
-      }
-
-      const cdStr = escapeHTML(entry.cd || '-');
-      const cashierStr = escapeHTML(entry.cashier || '-');
-      const rawType = (entry.type || '').toUpperCase();
-      let typeBadge = { cls: 'badge-synced', label: rawType || '-' };
-      if (['CASHIN', 'C/IN', 'ISSUE', 'KEYIN', 'BUY IN'].includes(rawType)) {
-        typeBadge = { cls: 'badge-credit', label: rawType };
-      } else if (['CASHOUT', 'C/OUT', 'DEPOSIT', 'KEYOUT', 'WIN'].includes(rawType)) {
-        typeBadge = { cls: 'badge-debit', label: rawType };
-      }
-
-      const numAmt = Number(entry.amount) || 0;
-      const isCredit = ['CASHIN', 'C/IN', 'ISSUE', 'KEYIN', 'BUY IN'].includes(rawType);
-      const isDebit = ['CASHOUT', 'C/OUT', 'DEPOSIT', 'KEYOUT', 'WIN'].includes(rawType);
-      const amtFormatted = formatCurrency(Math.abs(numAmt));
-      let amtColorClass = 'text-neutral';
-      let signPrefix = '';
-      if (isCredit) {
-        amtColorClass = 'text-green';
-        signPrefix = '+';
-      } else if (isDebit || numAmt < 0) {
-        amtColorClass = 'text-red';
-        signPrefix = '-';
-      }
-
-      const guestNameStr = escapeHTML(entry.guestname || '-');
-      const cardStr = entry.card ? `<code style="background:rgba(255,255,255,0.06); padding:2px 6px; border-radius:4px; color:#cbd5e1;">${escapeHTML(entry.card)}</code>` : '<span style="color:var(--text-muted)">—</span>';
-      const otherInfoStr = entry.otherinfo ? escapeHTML(entry.otherinfo) : '<span style="color:var(--text-muted)">—</span>';
-
-      rowsHtml += `
-        <tr>
-          <td><strong style="font-family: monospace; font-size: 0.9rem; color: #cbd5e1;">${timeStr}</strong></td>
-          <td><span style="color: #38bdf8; font-weight: 700; font-size: 0.88rem;">${cdStr}</span></td>
-          <td><span style="color: #fbbf24; font-weight: 700; font-size: 0.88rem;">${cashierStr}</span></td>
-          <td><span class="badge ${typeBadge.cls}">${typeBadge.label}</span></td>
-          <td class="table-amount ${amtColorClass}" style="font-weight: 800; font-size: 0.92rem;">${signPrefix}${amtFormatted}</td>
-          <td>${entry.guestname ? `<a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(entry.guestname)}" style="font-size: 0.9rem;">${escapeHTML(String(guestNameStr).toUpperCase())}</a>` : `<strong style="color: #ffffff; font-weight: 700; font-size: 0.9rem;">${guestNameStr}</strong>`}</td>
-          <td>${cardStr}</td>
-          <td title="${escapeHTML(entry.otherinfo || '')}">
-            <div style="max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-              ${otherInfoStr}
-            </div>
-          </td>
-        </tr>
-      `;
-    });
-
-    tableBody.innerHTML = rowsHtml;
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-  }
-
-  function toggleModalEntriesView() {
-    const view = document.getElementById('modal-entries-view');
-    const btn = document.getElementById('btn-modal-view-entries');
-    if (!view) return;
-    if (view.style.display === 'none') {
-      view.style.display = 'block';
-      if (btn) btn.classList.add('active');
-      renderModalEntriesView(allEntries);
-    } else {
-      view.style.display = 'none';
+  function switchAllEntriesView(mode) {
+    allEntriesViewMode = mode;
+    [btnViewNormal, btnViewSentence, btnViewExcel].forEach(btn => {
       if (btn) btn.classList.remove('active');
+    });
+
+    if (allEntriesNormalView) allEntriesNormalView.style.setProperty('display', 'none', 'important');
+    if (allEntriesListContainer) allEntriesListContainer.style.setProperty('display', 'none', 'important');
+    if (allEntriesExcelView) allEntriesExcelView.style.setProperty('display', 'none', 'important');
+
+    if (mode === 'table') {
+      if (btnViewNormal) btnViewNormal.classList.add('active');
+      if (allEntriesNormalView) allEntriesNormalView.style.setProperty('display', 'block', 'important');
+    } else if (mode === 'sentence') {
+      if (btnViewSentence) btnViewSentence.classList.add('active');
+      if (allEntriesListContainer) allEntriesListContainer.style.setProperty('display', 'block', 'important');
+    } else if (mode === 'excel') {
+      if (btnViewExcel) btnViewExcel.classList.add('active');
+      if (allEntriesExcelView) allEntriesExcelView.style.setProperty('display', 'flex', 'important');
+    }
+
+    updateAllEntriesView();
+  }
+
+  if (btnViewNormal) btnViewNormal.addEventListener('click', () => switchAllEntriesView('table'));
+  if (btnViewSentence) btnViewSentence.addEventListener('click', () => switchAllEntriesView('sentence'));
+  if (btnViewExcel) btnViewExcel.addEventListener('click', () => switchAllEntriesView('excel'));
+
+  function exportSingleDateExcelClient(dateStr) {
+    if (!window.XLSX) return;
+    const parts = (dateStr || '').split('-');
+    const dmy = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : dateStr;
+    const dayEntries = allEntries.filter(e => {
+      const ed = getEntryDate(e);
+      return ed === dateStr;
+    });
+    dayEntries.sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+    const wb = XLSX.utils.book_new();
+    const ws = buildClientStyledSheet(dayEntries);
+    XLSX.utils.book_append_sheet(wb, ws, `Day ${parseInt(parts[2], 10) || 1}`);
+    XLSX.writeFile(wb, `${dmy}.xlsx`);
+  }
+
+  // Unified Export Function: Exports Excel BOTH WAYS (Date-wise & Month-wise 1..31 Sheets)
+  async function exportBothExcelFormats(targetDateStr) {
+    const targetDate = targetDateStr || (allEntriesDatePicker ? allEntriesDatePicker.value : '') || currentBusinessDateStr || getBusinessDate();
+    const parts = targetDate.split('-');
+    const year = parts[0];
+    const month = parts[1];
+    const targetMonth = `${year}-${month}`;
+    const dmy = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : targetDate;
+
+    if (window.showAppNotification) {
+      window.showAppNotification(`EXPORTING EXCEL BOTH WAYS (DATE: ${dmy} & MONTHLY: 1..31 SHEETS)...`, 'info');
+    }
+
+    // 1. Export Date-Wise Excel (saved to Month Folder on server & downloaded locally)
+    try {
+      const respDate = await fetch(`/api/export-date?date=${encodeURIComponent(targetDate)}`);
+      if (respDate.ok) {
+        const blob = await respDate.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${dmy}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      } else {
+        exportSingleDateExcelClient(targetDate);
+      }
+    } catch (e) {
+      console.error('Date export error, using fallback:', e);
+      exportSingleDateExcelClient(targetDate);
+    }
+
+    // Brief delay to ensure browser handles multiple downloads smoothly
+    await new Promise(r => setTimeout(r, 600));
+
+    // 2. Export Monthly Excel (1..31 Sheets workbook in Month Folder & downloaded locally)
+    try {
+      const respMonth = await fetch(`/api/export-excel?month=${encodeURIComponent(targetMonth)}`);
+      if (respMonth.ok) {
+        const blob = await respMonth.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Monthly_${targetMonth}_DateWise_1-31.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      } else {
+        exportToExcelDateWise1to31(allEntries, 'Surveillance_Export');
+      }
+    } catch (e) {
+      console.error('Month export error, using fallback:', e);
+      exportToExcelDateWise1to31(allEntries, 'Surveillance_Export');
+    }
+
+    if (window.showAppNotification) {
+      window.showAppNotification(`SUCCESSFULLY EXPORTED BOTH WAYS: ${dmy}.XLSX & MONTHLY (1..31 SHEETS) IN MONTH FOLDER!`, 'success');
     }
   }
 
-  if(btnExportAll) {
+  // ONLY ONE EXPORT BUTTON: Exports BOTH WAYS automatically
+  if (btnExportAll) {
     btnExportAll.addEventListener('click', async () => {
-      const dateVal = allEntriesDatePicker ? allEntriesDatePicker.value : '';
-      const query = allEntriesSearch.value.toLowerCase().trim();
+      await exportBothExcelFormats();
+    });
+  }
 
-      let sourceEntries = allEntries;
+  // 1. Focus cursor directly to message box
+  function focusMessageBox() {
+    const quickInput = document.getElementById('officer-quick-input');
+    if (quickInput) {
+      setTimeout(() => {
+        quickInput.focus();
+        quickInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 60);
+    }
+  }
 
-      if (dateVal) {
-        sourceEntries = sourceEntries.filter(entry => {
-          const entryDate = entry.businessDate || (entry.datetime ? getBusinessDate(entry.datetime) : '');
-          return entryDate === dateVal;
-        });
+  // 2. Gaming Date & Time live badge: DD-MM-YYYY HH:MM:SS format
+  function updateGamingDateDisplay() {
+    const gamingDateEl = document.getElementById('all-entries-gaming-date');
+    const homeLiveDatetimeEl = document.getElementById('home-live-datetime');
+    const dateStr = currentBusinessDateStr || getBusinessDate();
+    let formattedDate = dateStr;
+    if (dateStr && dateStr.includes('-')) {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+    }
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    
+    if (gamingDateEl) {
+      gamingDateEl.textContent = `${formattedDate} ${hh}:${mm}:${ss} HRS`;
+    }
+    if (homeLiveDatetimeEl) {
+      homeLiveDatetimeEl.textContent = `${formattedDate} ${hh}:${mm}:${ss} HRS`;
+    }
+  }
+  setInterval(updateGamingDateDisplay, 1000);
+  updateGamingDateDisplay();
+
+  // 3. Search action button in All Entries toolbar (SEARCH ICON ONLY - NO NEED BOX)
+  const btnAllEntriesSearchAction = document.getElementById('btn-all-entries-search-action');
+  const allEntriesSearchInput = document.getElementById('all-entries-search');
+  if (btnAllEntriesSearchAction && allEntriesSearchInput) {
+    btnAllEntriesSearchAction.addEventListener('click', () => {
+      if (allEntriesSearchInput.style.display === 'none' || !allEntriesSearchInput.style.display) {
+        allEntriesSearchInput.style.display = 'inline-block';
+        btnAllEntriesSearchAction.classList.add('active');
+        allEntriesSearchInput.focus();
+      } else {
+        if (!allEntriesSearchInput.value) {
+          allEntriesSearchInput.style.display = 'none';
+          btnAllEntriesSearchAction.classList.remove('active');
+        } else {
+          allEntriesSearchInput.value = '';
+          allEntriesSearchInput.style.display = 'none';
+          btnAllEntriesSearchAction.classList.remove('active');
+          updateAllEntriesView();
+        }
+      }
+    });
+    allEntriesSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        allEntriesSearchInput.value = '';
+        allEntriesSearchInput.style.display = 'none';
+        btnAllEntriesSearchAction.classList.remove('active');
+        updateAllEntriesView();
+      }
+    });
+  }
+
+  // 3b. Home Screen Toolbar View Modes: TABLE, SENTENCE, EXCEL & Date & Search Toggle
+  let homeViewMode = 'table'; // 'table', 'sentence', 'excel'
+  let homeSelectedDate = '';
+
+  const btnHomeViewTable = document.getElementById('btn-home-view-table');
+  const btnHomeViewSentence = document.getElementById('btn-home-view-sentence');
+  const btnHomeViewExcel = document.getElementById('btn-home-view-excel');
+  const homeTableView = document.getElementById('home-table-view');
+  const homeSentenceView = document.getElementById('home-sentence-view');
+  const homeExcelView = document.getElementById('home-excel-view');
+  const homeDatePicker = document.getElementById('home-datepicker');
+  const btnHomeSearchToggle = document.getElementById('btn-home-search-toggle');
+
+  function switchHomeView(mode) {
+    homeViewMode = mode;
+    [btnHomeViewTable, btnHomeViewSentence, btnHomeViewExcel].forEach(btn => {
+      if (btn) btn.classList.remove('active');
+    });
+    if (homeTableView) homeTableView.style.display = 'none';
+    if (homeSentenceView) homeSentenceView.style.display = 'none';
+    if (homeExcelView) homeExcelView.style.display = 'none';
+
+    if (mode === 'table') {
+      if (btnHomeViewTable) btnHomeViewTable.classList.add('active');
+      if (homeTableView) homeTableView.style.display = 'block';
+    } else if (mode === 'sentence') {
+      if (btnHomeViewSentence) btnHomeViewSentence.classList.add('active');
+      if (homeSentenceView) homeSentenceView.style.display = 'block';
+    } else if (mode === 'excel') {
+      if (btnHomeViewExcel) btnHomeViewExcel.classList.add('active');
+      if (homeExcelView) homeExcelView.style.display = 'flex';
+    }
+    renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+  }
+
+  if (btnHomeViewTable) btnHomeViewTable.addEventListener('click', () => switchHomeView('table'));
+  if (btnHomeViewSentence) btnHomeViewSentence.addEventListener('click', () => switchHomeView('sentence'));
+  if (btnHomeViewExcel) btnHomeViewExcel.addEventListener('click', () => switchHomeView('excel'));
+
+  if (homeDatePicker) {
+    homeDatePicker.addEventListener('change', () => {
+      homeSelectedDate = homeDatePicker.value;
+      renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+    });
+  }
+
+  if (btnHomeSearchToggle && tableSearchInput) {
+    btnHomeSearchToggle.addEventListener('click', () => {
+      if (tableSearchInput.style.display === 'none' || !tableSearchInput.style.display) {
+        tableSearchInput.style.display = 'inline-block';
+        btnHomeSearchToggle.classList.add('active');
+        tableSearchInput.focus();
+      } else {
+        tableSearchInput.style.display = 'none';
+        tableSearchInput.value = '';
+        btnHomeSearchToggle.classList.remove('active');
+        renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+      }
+    });
+    tableSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        tableSearchInput.value = '';
+        tableSearchInput.style.display = 'none';
+        btnHomeSearchToggle.classList.remove('active');
+        renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+      }
+    });
+  }
+
+  // 4. Calculate next gaming date YYYY-MM-DD
+  function getNextGamingDate(baseDateStr) {
+    const curStr = baseDateStr || currentBusinessDateStr || getBusinessDate();
+    let dObj;
+    if (curStr && curStr.includes('-')) {
+      const [y, m, d] = curStr.split('-').map(Number);
+      dObj = new Date(y, m - 1, d);
+    } else {
+      dObj = new Date();
+    }
+    dObj.setDate(dObj.getDate() + 1);
+    const ny = dObj.getFullYear();
+    const nm = String(dObj.getMonth() + 1).padStart(2, '0');
+    const nd = String(dObj.getDate()).padStart(2, '0');
+    return `${ny}-${nm}-${nd}`;
+  }
+
+  // 5. New Day sub button on Home Page - symbol only
+  const btnNewDay = document.getElementById('btn-new-day');
+  const newDayModal = document.getElementById('new-day-modal');
+  const btnCancelNewDay = document.getElementById('btn-cancel-new-day');
+  const btnConfirmNewDay = document.getElementById('btn-confirm-new-day');
+  const newDayDateInput = document.getElementById('new-day-date-input');
+  const newDayModalDesc = document.getElementById('new-day-modal-desc');
+
+  if (btnNewDay) {
+    btnNewDay.addEventListener('click', () => {
+      const nextDate = getNextGamingDate();
+      const curDate = currentBusinessDateStr || getBusinessDate();
+      let curFormatted = curDate;
+      if (curDate && curDate.includes('-')) {
+        const p = curDate.split('-');
+        if (p.length === 3) curFormatted = `${p[2]}-${p[1]}-${p[0]}`;
+      }
+      const curDayNum = parseInt(curDate.split('-')[2], 10);
+
+      if (newDayDateInput) newDayDateInput.value = nextDate;
+      if (newDayModalDesc) {
+        newDayModalDesc.textContent = `Ending gaming date ${curFormatted}. Active entries will be archived, saved to Sheet ${curDayNum} in Excel, and exported locally.`;
+      }
+      if (newDayModal) {
+        newDayModal.style.setProperty('display', 'flex', 'important');
+      }
+      if (window.lucide) lucide.createIcons();
+    });
+  }
+
+  if (btnCancelNewDay) {
+    btnCancelNewDay.addEventListener('click', () => {
+      if (newDayModal) newDayModal.style.setProperty('display', 'none', 'important');
+    });
+  }
+
+  if (btnConfirmNewDay) {
+    btnConfirmNewDay.addEventListener('click', async () => {
+      const newDateVal = newDayDateInput ? newDayDateInput.value : '';
+      if (!newDateVal) {
+        alert('Please choose a valid next date.');
+        return;
       }
 
-      if (query) {
-        sourceEntries = sourceEntries.filter(entry => {
-          const nameMatch = entry.guestname && entry.guestname.toLowerCase().includes(query);
-          const cashierMatch = entry.cashier && entry.cashier.toLowerCase().includes(query);
-          const typeMatch = entry.type && entry.type.toLowerCase().includes(query);
-          const survMatch = entry.surv && entry.surv.toLowerCase().includes(query);
-          const cdMatch = entry.cd && entry.cd.toLowerCase().includes(query);
-          const cardMatch = entry.card && entry.card.toLowerCase().includes(query);
-          const otherInfoMatch = entry.otherinfo && entry.otherinfo.toLowerCase().includes(query);
-          const amountMatch = entry.amount && String(entry.amount).includes(query);
+      const oldDate = currentBusinessDateStr || getBusinessDate();
+      const oldDayNum = parseInt(oldDate.split('-')[2], 10);
 
-          return nameMatch || cashierMatch || typeMatch || survMatch || cdMatch || cardMatch || otherInfoMatch || amountMatch;
-        });
+      // Export previous day entries in Excel BOTH WAYS (Date-wise in Month folder & Month-wise 31 sheets)
+      try {
+        await exportBothExcelFormats(oldDate);
+      } catch (eErr) {
+        console.error('Error during Excel export on New Day:', eErr);
       }
 
-      exportToExcel(sourceEntries, 'Surveillance_Export', dateVal);
+      // Call server /api/newday to archive old entries and advance business date
+      try {
+        const resp = await fetch('/api/newday', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newDate: newDateVal })
+        });
+        const result = await resp.json();
+
+        currentBusinessDateStr = newDateVal;
+        currentBusinessDate = newDateVal;
+        if (newDayModal) newDayModal.style.setProperty('display', 'none', 'important');
+
+        // Re-fetch entries: active list is now clean for the new day
+        await fetchEntries();
+
+        // Update gaming date display
+        updateGamingDateDisplay();
+
+        // Navigate to Home panel and directly focus cursor to message box
+        showHomePanel();
+        focusMessageBox();
+
+        let oldDateFmt = oldDate;
+        if (oldDate.includes('-')) {
+          const p = oldDate.split('-');
+          oldDateFmt = `${p[2]}-${p[1]}-${p[0]}`;
+        }
+        let newDateFmt = newDateVal;
+        if (newDateVal.includes('-')) {
+          const p = newDateVal.split('-');
+          newDateFmt = `${p[2]}-${p[1]}-${p[0]}`;
+        }
+
+        alert(`NEW DAY STARTED!\nGAMING DATE: ${newDateFmt}\nPREVIOUS ENTRIES FROM ${oldDateFmt} EXPORTED BOTH WAYS (DATE-WISE & MONTH-WISE IN MONTH FOLDER).`);
+      } catch (err) {
+        alert('Error starting new day: ' + err.message);
+      }
     });
   }
 
@@ -4549,13 +3742,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     if(!adminSendList) return;
     adminSendList.innerHTML = '';
     
-    // Recalculate major entries using smart guest clustering
-    const todayEntries = allEntries.filter(isEntryForToday);
-    const guestClusters = clusterGuestEntries(todayEntries);
+    // Recalculate major entries
+    const guestTotals = {};
 
-    guestClusters.forEach(gObj => {
-      const g = gObj.name;
-      const result = gObj.result;
+    allEntries.forEach(e => {
+      if(!isEntryForToday(e)) return;
+      const g = (e.guestname || 'Unknown').trim();
+      const t = (e.type || '').toUpperCase();
+      let amt = Number(e.amount) || 0;
+      
+      if(guestTotals[g] === undefined) { guestTotals[g] = 0; }
+      
+      // Calculate RESULT = OUT - IN
+      if (['CASHOUT', 'DEPOSIT', 'KEYOUT'].includes(t)) {
+        guestTotals[g] += amt;
+      } else if (['CASHIN', 'ISSUE', 'KEYIN'].includes(t)) {
+        guestTotals[g] -= amt;
+      }
+    });
+
+    for (const [g, result] of Object.entries(guestTotals)) {
       if (Math.abs(result) > 49000) {
         let resultStr = formatCurrency(Math.abs(result));
         if (result < 0) {
@@ -4584,7 +3790,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         row.appendChild(delBtn);
         adminSendList.appendChild(row);
       }
-    });
+    }
     lucide.createIcons();
   }
 
@@ -4609,87 +3815,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Collect all known cashier names from entries, defaults and staff
-  function getAllKnownCashiers() {
-    const defaultCashiers = ['C-1', 'C-2', 'C-3', 'C-4'];
-    const fromEntries = (allEntries || [])
-      .map(e => (e.cashier || '').trim())
-      .filter(c => c && c !== '-' && !c.includes('—'));
-
-    let fromStaff = [];
-    try {
-      if (typeof staffList !== 'undefined' && Array.isArray(staffList)) {
-        fromStaff = staffList.map(s => (s.name || s.username || '').trim()).filter(Boolean);
-      }
-    } catch (e) {}
-
-    const map = new Map();
-    [...defaultCashiers, ...fromEntries, ...fromStaff].forEach(name => {
-      const trimmed = name.trim();
-      const upper = trimmed.toUpperCase();
-      if (upper && !map.has(upper)) {
-        map.set(upper, trimmed);
-      }
-    });
-    return Array.from(map.values());
-  }
-
-  // Render cashier dynamic suggestions below input as user types
-  function renderCashierSuggestions(query = '') {
-    const grid = document.getElementById('cashier-options-grid');
-    if (!grid) return;
-    const q = (query || '').trim().toUpperCase();
-
-    // Cashier previous suggestions deleted: ONLY show when user starts typing!
-    if (!q) {
-      grid.innerHTML = '';
-      grid.style.display = 'none';
-      return;
-    }
-
-    const all = getAllKnownCashiers();
-    const matches = all.filter(c => c.toUpperCase().includes(q));
-    matches.sort((a, b) => {
-      const aStarts = a.toUpperCase().startsWith(q) ? 0 : 1;
-      const bStarts = b.toUpperCase().startsWith(q) ? 0 : 1;
-      if (aStarts !== bStarts) return aStarts - bStarts;
-      return a.localeCompare(b);
-    });
-
-    if (matches.length === 0) {
-      grid.innerHTML = `<div style="padding: 7px 10px; font-size: 0.72rem; color: var(--text-muted); font-style: italic;">No match "${escapeHTML(q)}" (Press Enter to keep)</div>`;
-      grid.style.display = 'flex';
-      return;
-    }
-
-    grid.style.display = 'flex';
-    grid.innerHTML = matches.slice(0, 12).map(c => {
-      let displayHtml = escapeHTML(c);
-      const idx = c.toUpperCase().indexOf(q);
-      if (idx !== -1) {
-        const pre = c.slice(0, idx);
-        const matched = c.slice(idx, idx + q.length);
-        const post = c.slice(idx + q.length);
-        displayHtml = `${escapeHTML(pre)}<span style="color:#38bdf8; font-weight:800; text-decoration:underline;">${escapeHTML(matched)}</span>${escapeHTML(post)}`;
-      }
-      return `<div class="inline-option-item" data-value="${escapeHTML(c)}">${displayHtml}</div>`;
-    }).join('');
-  }
-
-  // Populate datalists for Card, OtherInfo, and GuestName from existing entries (canonical guest names first)
+  // Populate datalists for Card, OtherInfo, and GuestName from existing entries (most recently used first)
   function populateDataLists(entries) {
+    const guests = [];
     const cards = [];
     const others = [];
 
-    // Clustered canonical guest names
-    const guestClusters = clusterGuestEntries(entries);
-    const guests = guestClusters.map(c => c.name);
-
     // entries is sorted newest first, so iterating collects most recent unique values first
     entries.forEach(e => {
+      const guestVal = (e.guestname || '').trim();
       const cardVal = (e.card || '').trim();
       const otherinfoVal = (e.otherinfo || '').trim();
 
+      if (guestVal && !guests.includes(guestVal)) guests.push(guestVal);
       if (cardVal && !cards.includes(cardVal)) cards.push(cardVal);
       if (otherinfoVal && !others.includes(otherinfoVal)) others.push(otherinfoVal);
     });
@@ -4707,15 +3845,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       otherInfoList.innerHTML = others.map(v => `<div class="inline-option-item">${escapeHTML(v)}</div>`).join('');
     }
 
-    renderCashierSuggestions(inputCashier ? inputCashier.value : '');
   }
 
   // Handle click on any inline-option-item to populate the corresponding input
   document.addEventListener('click', (e) => {
-    const item = e.target.classList.contains('inline-option-item') ? e.target : e.target.closest('.inline-option-item');
-    if (item) {
-      const value = item.getAttribute('data-value') || item.textContent.trim();
-      const formGroup = item.closest('.form-group');
+    if (e.target.classList.contains('inline-option-item')) {
+      const value = e.target.getAttribute('data-value') || e.target.textContent;
+      const formGroup = e.target.closest('.form-group');
       if (formGroup) {
         const input = formGroup.querySelector('input[type="text"]');
         if (input) {
@@ -4728,13 +3864,159 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // Reusable styled spreadsheet grid renderer (Column A..J, Cyan headers, Ice-blue rows, Guest summary)
+  function renderStyledExcelGrid(entries, containerEl, titlePill = 'HOME') {
+    if (!containerEl) return;
+    let totalAmt = 0;
+    (entries || []).forEach(e => { totalAmt += (Number(e.amount) || 0); });
+
+    const safeEntries = Array.isArray(entries) ? entries : [];
+    const guestGroups = [];
+    const assignedEntryIds = new Set();
+
+    safeEntries.forEach(e => {
+      if (assignedEntryIds.has(e.id)) return;
+      const rawGuest = (e.guestname || '').trim();
+      if (!rawGuest) return;
+
+      const cluster = getGuestCluster(rawGuest, safeEntries);
+      cluster.entries.forEach(ce => assignedEntryIds.add(ce.id));
+
+      let totalIn = 0;
+      let totalOut = 0;
+      cluster.entries.forEach(ce => {
+        const amt = Number(ce.amount) || 0;
+        const t = ce.type || '';
+        if (isTotalInType(t)) totalIn += amt;
+        else if (isTotalOutType(t)) totalOut += amt;
+      });
+
+      guestGroups.push({
+        name: cluster.canonicalName,
+        totalIn,
+        totalOut
+      });
+    });
+
+    guestGroups.sort((a, b) => a.name.localeCompare(b.name));
+
+    const summaryRows = [];
+    guestGroups.forEach(g => {
+      const netResult = g.totalOut - g.totalIn;
+      const isMinus = netResult < 0;
+      // NO +/- SIGN: Directly show formatted number, color-coded red for minus, fluorescent green for plus/0
+      const resFormatted = Math.abs(netResult).toLocaleString('en-IN');
+
+      summaryRows.push({
+        html: `<td class="cell-guest-info" style="text-align:center; vertical-align:middle;">NAME :- <span class="clickable-guest-name" data-guest="${escapeHTML(g.name)}" style="color: #0000FF !important; cursor: pointer; text-decoration: underline; font-weight: 800;">${escapeHTML(g.name)}</span></td>`
+      });
+      summaryRows.push({
+        html: `<td class="cell-guest-info" style="text-align:center; vertical-align:middle;">TOTAL IN :- ${g.totalIn.toLocaleString('en-IN')}</td>`
+      });
+      summaryRows.push({
+        html: `<td class="cell-guest-info" style="text-align:center; vertical-align:middle;">TOTAL OUT :- ${g.totalOut.toLocaleString('en-IN')}</td>`
+      });
+      summaryRows.push({
+        html: `<td class="${isMinus ? 'cell-guest-result-minus' : 'cell-guest-result-plus'}" style="text-align:center; vertical-align:middle; font-weight:800; color: ${isMinus ? '#FF0000' : '#00B050'} !important;">RESULT :- ${resFormatted}</td>`
+      });
+      summaryRows.push({
+        html: `<td class="cell-guest-separator"></td>`
+      });
+    });
+
+    const maxRows = Math.max((entries || []).length, summaryRows.length);
+    let excelRowsHtml = '';
+
+    for (let r = 0; r < maxRows; r++) {
+      const entry = (entries || [])[r];
+      const summary = summaryRows[r];
+
+      let dt = '—', tm = '—';
+      if (entry && entry.datetime) {
+        const dtObj = parseEntryDateTime(entry.datetime);
+        dt = dtObj.dmy || '—';
+        tm = dtObj.time || '—';
+      }
+
+      const type = entry ? (entry.type || '').toUpperCase() : '';
+      const amt = entry ? (Number(entry.amount) || 0).toLocaleString('en-IN') : '';
+      const guest = entry ? (entry.guestname || '').toUpperCase() : '';
+      const card = entry && entry.card ? String(entry.card) : '';
+      const otherinfo = entry && entry.otherinfo ? entry.otherinfo : '';
+      const surv = entry && entry.surv ? entry.surv : '';
+      const sentence = entry ? getEntrySentence(entry) : '';
+
+      const colJHtml = summary ? summary.html : `<td class="cell-guest-info" style="text-align:center; vertical-align:middle;"></td>`;
+
+      excelRowsHtml += `
+        <tr>
+          <td class="excel-row-num" style="text-align:center; vertical-align:middle;">${r + 1}</td>
+          <td class="cell-blue" style="text-align:center; vertical-align:middle;">${entry ? dt : ''}</td>
+          <td class="cell-blue" style="text-align:center; vertical-align:middle;">${entry ? tm : ''}</td>
+          <td class="cell-blue" style="text-align:center; vertical-align:middle; font-weight:700;">${entry ? escapeHTML(type) : ''}</td>
+          <td class="cell-blue" style="text-align:center; vertical-align:middle; font-family:monospace; font-weight:700;">${entry ? amt : ''}</td>
+          <td class="cell-blue" style="text-align:center; vertical-align:middle; font-weight:700;"><span class="clickable-guest-name" data-guest="${escapeHTML(guest)}" style="color: #0000FF !important; cursor:pointer; text-decoration:underline;">${escapeHTML(guest)}</span></td>
+          <td class="cell-blue" style="text-align:center; vertical-align:middle; font-family:monospace;">${entry ? escapeHTML(card) : ''}</td>
+          <td class="cell-blue" style="text-align:center; vertical-align:middle;">${entry ? escapeHTML(otherinfo) : ''}</td>
+          <td class="cell-blue" style="text-align:center; vertical-align:middle; font-weight:700;">${entry ? escapeHTML(surv) : ''}</td>
+          <td class="cell-blue" style="text-align:center; vertical-align:middle;">${entry ? escapeHTML(sentence) : ''}</td>
+          ${colJHtml}
+        </tr>
+      `;
+    }
+
+    const tableHtml = `
+      <div class="excel-table-wrapper">
+        <table class="excel-table">
+          <thead>
+            <tr>
+              <th class="excel-row-num">#</th>
+              <th class="col-cyan">DATE</th>
+              <th class="col-cyan">TIME</th>
+              <th class="col-cyan">TYPE</th>
+              <th class="col-cyan">AMOUNT</th>
+              <th class="col-cyan">GUEST NAME</th>
+              <th class="col-cyan">CARD</th>
+              <th class="col-cyan">OTHER INFO</th>
+              <th class="col-cyan">SURV ID</th>
+              <th class="col-cyan">SENTENCE ENTRIES</th>
+              <th class="col-cyan">GUEST SUMMARY</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${excelRowsHtml}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    containerEl.innerHTML = tableHtml;
+
+    // Attach click listeners to guest names in spreadsheet
+    containerEl.querySelectorAll('.clickable-guest-name').forEach(span => {
+      span.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const gName = span.getAttribute('data-guest');
+        if (!gName) return;
+        const activeDate = homeSelectedDate || (allEntriesDatePicker ? allEntriesDatePicker.value : null) || currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+        openGuestSummaryPopup(gName, safeEntries, activeDate);
+      });
+    });
+  }
+
   // Render entry rows in table
   function renderEntries(entries, options = {}) {
     try {
       const { limit, isArchive } = options;
       
-      // Filter to today's business session (includes physical-date fallback for timing-bug entries)
-      let processedEntries = Array.isArray(entries) ? entries.filter(isEntryForToday) : [];
+      // Filter to today's business session or homeSelectedDate
+      let processedEntries = Array.isArray(entries) ? entries.filter(e => {
+        if (homeSelectedDate) {
+          const eDate = getEntryDate(e);
+          return eDate === homeSelectedDate;
+        }
+        return isEntryForToday(e);
+      }) : [];
 
       // Sort by latest first
       processedEntries.sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
@@ -4743,32 +4025,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (!isArchive) {
         if (recordCountBadge) {
+          // COUNT ONLY: REMOVED RECORD NAME
           recordCountBadge.textContent = `${displayEntries.length}`;
         }
       }
 
-      const homeSentenceList = document.getElementById('home-sentence-list');
-
       if (displayEntries.length === 0) {
-        if (logsTableBody) {
-          logsTableBody.innerHTML = `
-            <tr>
-              <td colspan="10" class="no-records-row">
-                <div class="empty-state">
-                  <i data-lucide="inbox"></i>
-                  <p>No records found for today matching the filter.</p>
-                </div>
-              </td>
-            </tr>
+        logsTableBody.innerHTML = `
+          <tr>
+            <td colspan="10" class="no-records-row">
+              <div class="empty-state">
+                <i data-lucide="inbox"></i>
+                <p>No records found matching the filter.</p>
+              </div>
+            </td>
+          </tr>
+        `;
+        if (homeSentenceView) {
+          homeSentenceView.innerHTML = `
+            <div class="empty-state">
+              <i data-lucide="inbox"></i>
+              <p>No records found matching the filter.</p>
+            </div>
           `;
         }
-        if (homeSentenceList) {
-          homeSentenceList.innerHTML = `
-            <li class="empty-state" style="padding: 30px; text-align: center; color: var(--text-muted); list-style: none;">
-              <i data-lucide="inbox" style="width: 32px; height: 32px; margin-bottom: 8px;"></i>
-              <p style="margin-top: 8px; font-size: 1.05rem;">No records found for today. Enter a log below and click SEND.</p>
-            </li>
-          `;
+        if (homeExcelView) {
+          renderStyledExcelGrid([], homeExcelView, homeSelectedDate ? `Date: ${homeSelectedDate}` : 'TODAY');
         }
         lucide.createIcons();
         return;
@@ -4783,66 +4065,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     let html = '';
-    let sentenceHtml = '';
-
     displayEntries.forEach(entry => {
-      const displayDate = entry.datetime ? formatDateTimeDMY(entry.datetime) : 'N/A';
-      const timeStr = entry.datetime
-        ? (entry.datetime.includes('T') ? entry.datetime.split('T')[1].slice(0, 5) : entry.datetime.slice(-5))
-        : '—';
+      const displayDate = entry.datetime ? entry.datetime.replace('T', ' ') : 'N/A';
       const cdText = escapeHTML(entry.cd || '—');
       const typeBadge = getTypeBadge(entry.type);
       const amtClass = CREDIT_TYPES.includes((entry.type || '').toUpperCase()) ? 'text-green' : 'text-red';
       const amtFormatted = formatCurrency(Number(entry.amount) || 0);
-      const sentence = getEntrySentenceHTML(entry);
-      const typeKey = (entry.type || '').toLowerCase().replace('/', '-');
-
       const actionButtons = isArchive
         ? '<span class="archive-note">Archive read-only</span>'
         : `
-            <div style="display:flex;gap:6px;">
-              <button class="btn-edit-entry" data-id="${entry.id}" title="Edit this entry"
-                style="background:var(--accent-blue,#3b82f6);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:4px;">
-                <i data-lucide="edit-2" style="width:13px;height:13px;"></i> Edit
+            <div style="display:flex;gap:4px;align-items:center;">
+              <button class="btn-edit-entry" data-id="${entry.id}" title="Edit"
+                style="background:rgba(59,130,246,0.18);color:#60a5fa;border:1px solid rgba(59,130,246,0.4);border-radius:5px;width:24px;height:24px;padding:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all 0.15s ease;">
+                <i data-lucide="edit-2" style="width:12px;height:12px;pointer-events:none;"></i>
               </button>
-              <button class="btn-delete-entry" data-id="${entry.id}" title="Delete this entry"
-                style="background:var(--danger,#ef4444);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:4px;">
-                <i data-lucide="trash-2" style="width:13px;height:13px;"></i> Del
-              </button>
-            </div>
-          `;
-
-      const homeSentenceActions = isArchive
-        ? ''
-        : `
-            <div class="home-sentence-actions">
-              <button type="button" class="btn-edit-entry" data-id="${entry.id}" title="Edit this entry">
-                <i data-lucide="edit-2" style="width:12px;height:12px;"></i> <span>Edit</span>
-              </button>
-              <button type="button" class="btn-delete-entry" data-id="${entry.id}" title="Delete this entry">
-                <i data-lucide="trash-2" style="width:12px;height:12px;"></i> <span>Del</span>
+              <button class="btn-delete-entry" data-id="${entry.id}" title="Delete"
+                style="background:rgba(239,68,68,0.18);color:#f87171;border:1px solid rgba(239,68,68,0.4);border-radius:5px;width:24px;height:24px;padding:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all 0.15s ease;">
+                <i data-lucide="trash-2" style="width:12px;height:12px;pointer-events:none;"></i>
               </button>
             </div>
           `;
 
-      // Home sentence card item (Direct sentence form with increased readable size)
-      sentenceHtml += `
-        <li class="home-sentence-card ${typeKey}">
-          <div class="home-sentence-left">
-            <span class="home-sentence-time-badge">${timeStr}</span>
-          </div>
-          <div class="home-sentence-text">${sentence}</div>
-          ${homeSentenceActions}
-        </li>
-      `;
-
-      // Traditional Table Row
       html += `
         <tr>
           <td><strong>${displayDate}</strong></td>
           <td><span class="badge ${typeBadge.cls}">${typeBadge.label}</span></td>
           <td class="table-amount ${amtClass}">${amtFormatted}</td>
-          <td>${entry.guestname ? `<a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(entry.guestname)}">${escapeHTML(String(entry.guestname).toUpperCase())}</a>` : '—'}</td>
+          <td><span class="clickable-guest-name" data-guest="${escapeHTML(entry.guestname || '')}" style="cursor:pointer; color:#60a5fa; text-decoration:underline;">${escapeHTML(entry.guestname || '—')}</span></td>
           <td>${(() => {
             const rowType = (entry.type||'').toUpperCase();
             const showCard = ['ISSUE','DEPOSIT'].includes(rowType);
@@ -4862,39 +4111,74 @@ document.addEventListener('DOMContentLoaded', async () => {
       `;
     });
 
-    if (logsTableBody) logsTableBody.innerHTML = html;
-    if (homeSentenceList) homeSentenceList.innerHTML = sentenceHtml;
+    logsTableBody.innerHTML = html;
+
+    // Render Home Sentence View
+    if (homeSentenceView) {
+      if (displayEntries.length === 0) {
+        homeSentenceView.innerHTML = `
+          <div class="empty-state">
+            <i data-lucide="inbox"></i>
+            <p>No records found matching the filter.</p>
+          </div>
+        `;
+      } else {
+        homeSentenceView.innerHTML = `<ul class="sentence-list">` + 
+          displayEntries.map(e => `<li class="sentence-item ${(e.type||'').toLowerCase().replace('/', '-')}">${getEntrySentence(e, true)}</li>`).join('') +
+          `</ul>`;
+      }
+    }
+
+    // Render Home Excel View
+    if (homeExcelView) {
+      renderStyledExcelGrid(displayEntries, homeExcelView, homeSelectedDate ? `Date: ${homeSelectedDate}` : 'TODAY');
+    }
+
     lucide.createIcons();
 
-    // Helper to attach Edit and Delete listeners to any container
-    const attachEntryListeners = (container) => {
-      if (!container) return;
-      container.querySelectorAll('.btn-edit-entry')?.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = Number(btn.getAttribute('data-id'));
-          const entry = allEntries.find(e => e.id === id);
-          if (entry) editEntry(entry);
+    // Attach Clickable Guest Name listeners to open Guest Summary Popup (Table & Sentence view)
+    const homeArea = document.getElementById('home-display-area');
+    if (homeArea) {
+      homeArea.querySelectorAll('.clickable-guest-name')?.forEach(span => {
+        span.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const gName = span.getAttribute('data-guest');
+          if (!gName) return;
+          const dayFilter = homeSelectedDate || currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+          const candidateEntries = allEntries.filter(entry => {
+            const eDate = getEntryDate(entry);
+            return eDate === dayFilter;
+          });
+          openGuestSummaryPopup(gName, candidateEntries, dayFilter);
         });
       });
-      container.querySelectorAll('.btn-delete-entry')?.forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const id = Number(btn.getAttribute('data-id'));
-          if (!(await customConfirm('Are you sure you want to delete this entry?'))) return;
-          try {
-            const resp = await fetch(`/api/entries?id=${id}`, { method: 'DELETE' });
-            const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || 'Delete failed.');
-            showToast('Entry deleted successfully.', 'success');
-            await fetchEntries();
-          } catch (err) {
-            showToast(`Error deleting entry: ${err.message}`, 'error');
-          }
-        });
-      });
-    };
+    }
 
-    attachEntryListeners(logsTableBody);
-    attachEntryListeners(homeSentenceList);
+    // Attach Edit listeners
+    logsTableBody.querySelectorAll('.btn-edit-entry')?.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.getAttribute('data-id'));
+        const entry = allEntries.find(e => e.id === id);
+        if (entry) editEntry(entry);
+      });
+    });
+
+    // Attach Delete listeners
+    logsTableBody.querySelectorAll('.btn-delete-entry')?.forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = Number(btn.getAttribute('data-id'));
+        if (!(await showAppConfirm('Are you sure you want to delete this entry?'))) return;
+        try {
+          const resp = await fetch(`/api/entries?id=${id}`, { method: 'DELETE' });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || 'Delete failed.');
+          showAppNotification('Entry deleted successfully.', 'success');
+          await fetchEntries();
+        } catch (err) {
+          showAppNotification(`Error deleting entry: ${err.message}`, 'error');
+        }
+      });
+    });
 
     } catch (err) {
       console.error("renderEntries Error: ", err);
@@ -4946,7 +4230,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const entryPayload = {
       datetime,
-      businessDate: currentBusinessDateStr || getBusinessDate(),
       cd: cd || 'CD-01',
       cashier: cashier || '-',
       type,
@@ -4996,7 +4279,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const cdFinal = cd || parsed.cd || 'CD-01';
             const quickPayload = {
               datetime: getLocalTimeISOString(),
-              businessDate: currentBusinessDateStr || getBusinessDate(),
               cd: cdFinal,
               cashier: cashier || '',
               type: parsed.type,
@@ -5061,66 +4343,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Live dynamic suggestions for Cashier as the user types (hidden initially, starts on type)
-  if (inputCashier) {
-    inputCashier.addEventListener('input', (e) => {
-      renderCashierSuggestions(e.target.value);
-    });
-    inputCashier.addEventListener('focus', () => {
-      if (inputCashier.value.trim()) {
-        renderCashierSuggestions(inputCashier.value);
-      } else {
-        const grid = document.getElementById('cashier-options-grid');
-        if (grid) {
-          grid.innerHTML = '';
-          grid.style.display = 'none';
-        }
-      }
-    });
-  }
-
-  // Live dynamic suggestions for Guest Name as the user types
-  if (inputGuestName) {
-    inputGuestName.addEventListener('input', (e) => {
-      const q = e.target.value.trim().toUpperCase();
-      const guestnameList = document.getElementById('guestname-options-grid');
-      if (!guestnameList) return;
-      const guestClusters = clusterGuestEntries(allEntries);
-      const allGuests = guestClusters.map(c => c.name);
-      let matches = allGuests;
-      if (q) {
-        matches = allGuests.filter(g => g.toUpperCase().includes(q));
-      }
-      if (matches.length === 0) {
-        guestnameList.innerHTML = `<div style="padding: 7px 10px; font-size: 0.72rem; color: var(--text-muted); font-style: italic;">New guest: "${escapeHTML(q)}"</div>`;
-      } else {
-        guestnameList.innerHTML = matches.slice(0, 12).map(v => {
-          let displayHtml = escapeHTML(v);
-          if (q) {
-            const idx = v.toUpperCase().indexOf(q);
-            if (idx !== -1) {
-              const pre = v.slice(0, idx);
-              const matched = v.slice(idx, idx + q.length);
-              const post = v.slice(idx + q.length);
-              displayHtml = `${escapeHTML(pre)}<span style="color:#38bdf8; font-weight:800; text-decoration:underline;">${escapeHTML(matched)}</span>${escapeHTML(post)}`;
-            }
-          }
-          return `<div class="inline-option-item" data-value="${escapeHTML(v)}">${displayHtml}</div>`;
-        }).join('');
-      }
-    });
-    inputGuestName.addEventListener('focus', () => {
-      if (allEntries && allEntries.length > 0) {
-        const guestClusters = clusterGuestEntries(allEntries);
-        const allGuests = guestClusters.map(c => c.name);
-        const guestnameList = document.getElementById('guestname-options-grid');
-        if (guestnameList && !inputGuestName.value.trim()) {
-          guestnameList.innerHTML = allGuests.slice(0, 12).map(v => `<div class="inline-option-item" data-value="${escapeHTML(v)}">${escapeHTML(v)}</div>`).join('');
-        }
-      }
-    });
-  }
-
   // ==========================================================================
   // QUICK TEXT ENTRY – shared parsers + reusable widget mount
   // ==========================================================================
@@ -5144,19 +4366,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     return str;
   }
 
+  // ── Multi-entry splitter: handles newlines, semicolons, and comma-separated entries
+  function splitMultiEntries(raw) {
+    if (!raw) return [];
+    const chunks = raw.split(/[\r\n;]+/).map(l => l.trim()).filter(l => l.length > 0);
+    const finalLines = [];
+    chunks.forEach(chunk => {
+      // Split comma separated entries if next part begins with amount (e.g. "50k cashin by a, 20k cashout by b")
+      if (chunk.includes(',')) {
+        const subParts = chunk.split(/,\s*(?=(?:(?:\d+[\.\)\-:]\s*|[-*•]\s*)?\d+(?:[,\.]\d+)?\s*[KL]?\s+[A-Za-z]))/);
+        if (subParts.length > 1) {
+          subParts.forEach(sp => {
+            if (sp.trim()) finalLines.push(sp.trim());
+          });
+          return;
+        }
+      }
+      finalLines.push(chunk);
+    });
+    return finalLines;
+  }
+
   // ── Sentence parser: returns { type, cd, amount, guestname, card, otherinfo } or null
   function parseQuickSentence(raw) {
-    let t = raw.trim().toUpperCase();
+    if (!raw || typeof raw !== 'string') return null;
+    let t = raw.trim();
 
-    // Universal bracket extraction: anything in brackets (...) or ' 9...)' is otherinfo!
+    // 1. Strip leading numbering or bullet points: e.g. "1.", "1)", "1-", "1:", "-", "*", "•"
+    t = t.replace(/^\s*(?:[\d]+[\.\)\-:]\s*|[-*•]\s*)/, '').trim();
+    if (!t) return null;
+
+    // 2. Extract bracketed / parenthesized other info
     let bracketInfo = '';
-    // 1. Check for standard parentheses (...)
     let bMatch = t.match(/\(([^)]*)\)/);
     if (bMatch) {
       bracketInfo = cleanOtherInfo(bMatch[1]);
       t = t.replace(/\([^)]*\)/, ' ').replace(/\s+/g, ' ').trim();
     } else {
-      // 2. Check for Shift+9 typo e.g. " 9JC)"
       bMatch = t.match(/(?:\s+|^)9([^)]+)\)/);
       if (bMatch) {
         bracketInfo = cleanOtherInfo(bMatch[1]);
@@ -5164,21 +4410,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
-    const amtMatch = t.match(/^(\d+(?:\.\d+)?\s*[KL]?)\s+(.+)$/);
+    t = t.toUpperCase();
+
+    // 3. Extract Amount (e.g. 50K, 1.5L, 50000, 1,00,000)
+    const amtMatch = t.match(/^(\d+(?:[,\.]\d+)?\s*[KL]?)\s+(.+)$/i);
     if (!amtMatch) return null;
 
     const a = parseQuickAmt(amtMatch[1]);
-    if (!a) return null;
-    const rest = amtMatch[2].trim();
+    if (!a || a <= 0) return null;
+    let rest = amtMatch[2].trim();
 
-    // CASHIN / C/IN / C\IN  →  <amt> CASHIN [BY] <guest>
-    let m = rest.match(/^(?:CASHIN|C[\/\\]IN)(?:\s+BY)?\s+(.+)$/);
+    // 4. CASHIN / C/IN / C-IN / CIN / CASH IN
+    let m = rest.match(/^(?:CASHIN|C[\/\\]IN|C-IN|CIN|CASH\s+IN|CASH-IN)(?:\s+BY)?\s+(.+)$/i);
     if (m) {
       return { type: 'CASHIN', cd: 'CD-01', amount: a, guestname: m[1].trim(), card: '', otherinfo: bracketInfo };
     }
 
-    // CASHOUT / C/OUT / C\OUT  →  <amt> CASHOUT [BY] <guest>
-    m = rest.match(/^(?:CASHOUT|C[\/\\]OUT)(?:\s+BY)?\s+(.+)$/);
+    // 5. CASHOUT / C/OUT / C-OUT / COUT / CASH OUT
+    m = rest.match(/^(?:CASHOUT|C[\/\\]OUT|C-OUT|COUT|CASH\s+OUT|CASH-OUT)(?:\s+BY)?\s+(.+)$/i);
     if (m) {
       return { type: 'CASHOUT', cd: 'CD-01', amount: a, guestname: m[1].trim(), card: '', otherinfo: bracketInfo };
     }
@@ -5189,7 +4438,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       let card = '';
       let otherinfo = bracketInfo;
 
-      const cardMatch = sub.match(/^(.*?)\s+CARD(?:\s+(.*))?$/);
+      const cardMatch = sub.match(/^(.*?)\s+CARD(?:\s+(.*))?$/i);
       if (cardMatch) {
         const beforeCard = cardMatch[1].trim();
         const afterCard = cardMatch[2] ? cardMatch[2].trim() : '';
@@ -5197,7 +4446,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           otherinfo = cleanOtherInfo(afterCard);
         }
 
-        const connMatch = beforeCard.match(/^(.*?)\s+(?:FROM|C[\/\\]O|ON)\s+(.+)$/);
+        const connMatch = beforeCard.match(/^(.*?)\s+(?:FROM|C[\/\\]O|ON)\s+(.+)$/i);
         if (connMatch) {
           guestname = connMatch[1].trim();
           card = connMatch[2].trim();
@@ -5215,38 +4464,43 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       // Fallback if no 'CARD' keyword
-      const connNoCard = sub.match(/^(.*?)\s+(?:FROM|C[\/\\]O|ON)\s+(.+)$/);
+      const connNoCard = sub.match(/^(.*?)\s+(?:FROM|C[\/\\]O|ON)\s+(.+)$/i);
       if (connNoCard) {
         guestname = connNoCard[1].trim();
         card = connNoCard[2].trim();
         return { guestname, card, otherinfo };
       }
 
+      // If no card keyword, guestname is entire sub
+      if (sub.trim()) {
+        return { guestname: sub.trim(), card: '', otherinfo };
+      }
+
       return null;
     }
 
-    // ISSUE  →  <amt> ISSUE [TO] <guest> [FROM|C/O|C\O|ON] <card> CARD [info]
-    m = rest.match(/^ISSUE(?:\s+TO)?\s+(.+)$/);
+    // 6. ISSUE
+    m = rest.match(/^(?:ISSUE)(?:\s+TO)?\s+(.+)$/i);
     if (m) {
       const res = parseCardAndGuest(m[1].trim());
       if (res) return { type: 'ISSUE', cd: 'CD-01', amount: a, guestname: res.guestname, card: res.card, otherinfo: res.otherinfo };
     }
 
-    // DEPOSIT  →  <amt> DEPOSIT [BY] <guest> [FROM|C/O|C\O|ON] <card> CARD [info]
-    m = rest.match(/^DEPOSIT(?:\s+BY)?\s+(.+)$/);
+    // 7. DEPOSIT / DEP
+    m = rest.match(/^(?:DEPOSIT|DEP)(?:\s+BY)?\s+(.+)$/i);
     if (m) {
       const res = parseCardAndGuest(m[1].trim());
       if (res) return { type: 'DEPOSIT', cd: 'CD-01', amount: a, guestname: res.guestname, card: res.card, otherinfo: res.otherinfo };
     }
 
-    // KEYIN  →  <amt> KEYIN [BY] <guest>
-    m = rest.match(/^KEYIN(?:\s+BY)?\s+(.+)$/);
+    // 8. KEYIN / KEY IN / KEY-IN
+    m = rest.match(/^(?:KEYIN|KEY\s+IN|KEY-IN)(?:\s+BY)?\s+(.+)$/i);
     if (m) {
       return { type: 'KEYIN', cd: 'CD-01', amount: a, guestname: m[1].trim(), card: '', otherinfo: bracketInfo };
     }
 
-    // KEYOUT  →  <amt> KEYOUT [BY] <guest>
-    m = rest.match(/^KEYOUT(?:\s+BY)?\s+(.+)$/);
+    // 9. KEYOUT / KEY OUT / KEY-OUT
+    m = rest.match(/^(?:KEYOUT|KEY\s+OUT|KEY-OUT)(?:\s+BY)?\s+(.+)$/i);
     if (m) {
       return { type: 'KEYOUT', cd: 'CD-01', amount: a, guestname: m[1].trim(), card: '', otherinfo: bracketInfo };
     }
@@ -5264,15 +4518,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const o = opts || {};
     const qCDSelect = o.cdSelectId ? document.getElementById(o.cdSelectId) : null;
     const qCashier = o.cashierInputId ? document.getElementById(o.cashierInputId) : null;
-
-    // Ensure completely placeholder-free and clean without ugly scrollbars
-    if (qInput) {
-      qInput.removeAttribute('placeholder');
-      qInput.placeholder = '';
-      qInput.style.overflow = 'hidden';
-      qInput.style.overflowY = 'hidden';
-      qInput.style.scrollbarWidth = 'none';
-    }
 
     // Sync initial values from main form on mount
     if (qCDSelect && inputCD) {
@@ -5395,23 +4640,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      // MULTI-ENTRY PARSER: Allow typing/pasting as many entries at once as desired
-      const lines = raw.split(/[\r\n;]+/).map(l => l.trim()).filter(l => l.length > 0);
-      if (lines.length === 0) return;
-
-      // Check if user typed an offline question for the AI Assistant!
-      const rawTrimmed = raw.trim();
-      const isQuestion = rawTrimmed.startsWith('?') || 
-        /\b(who|when|how much|what|which|highest|top|overall|lifetime|last visit|barred)\b/i.test(rawTrimmed);
-      if (isQuestion && !parseQuickSentence(rawTrimmed)) {
-        if (typeof openAIAssistantModal === 'function') {
-          openAIAssistantModal(rawTrimmed);
-        }
+      // Check if input is a question for the Offline AI Assistant
+      const trimmedRaw = (raw || '').trim();
+      if (trimmedRaw.startsWith('?') || /^ai\b/i.test(trimmedRaw) || /^(who is|what is|how much|total in|total out|result of|summary of|details of)\b/i.test(trimmedRaw)) {
+        const aiQ = trimmedRaw.replace(/^(\?|ai\s*)/i, '').trim();
         qInput.value = '';
-        qInput.style.height = '';
         setFb('');
+        openAiAssistantModal(aiQ || 'OVERALL RESULT');
         return;
       }
+
+      // MULTI-ENTRY PARSER: Allow typing/pasting as many entries at once as desired
+      const lines = splitMultiEntries(raw);
+      if (lines.length === 0) return;
 
       const parsedEntries = [];
       const failedLines = [];
@@ -5514,17 +4755,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Live parse preview as user types & dynamic auto-grow
     if (qInput) qInput.addEventListener('input', () => {
-      // Auto-grow height based on content without ugly scrollbars
+      // Auto-grow height based on content
       qInput.style.height = 'auto';
-      const newHeight = Math.min(Math.max(qInput.scrollHeight, 52), 150);
+      const newHeight = Math.min(Math.max(qInput.scrollHeight, 46), 140);
       qInput.style.height = newHeight + 'px';
-      qInput.style.overflow = 'hidden';
-      qInput.style.overflowY = 'hidden';
 
       const raw = qInput.value.trim();
       if (!raw) { setFb(''); return; }
 
-      const lines = raw.split(/[\r\n;]+/).map(l => l.trim()).filter(l => l.length > 0);
+      if (raw.startsWith('?') || /^ai\b/i.test(raw) || /^(who is|what is|how much|total in|total out|result of|summary of|details of)\b/i.test(raw)) {
+        setFb('✨ Ask Offline AI Assistant (Press Enter or click SEND)', '#c084fc');
+        return;
+      }
+
+      const lines = splitMultiEntries(raw);
       if (lines.length > 1) {
         let valid = 0;
         lines.forEach(l => { if (parseQuickSentence(l)) valid++; });
@@ -5551,18 +4795,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Mount for home page message box (Telegram layout)
   mountQuickEntry('officer-quick-input', 'btn-officer-quick-save', 'officer-quick-feedback');
 
-  // Real-time Search and Filter on Main Page (Current Date Only)
+  // Real-time Search and Filter on Main Page (latest 20 active only)
   if (tableSearchInput) {
-    tableSearchInput.addEventListener('input', () => {
+ if (tableSearchInput) tableSearchInput.addEventListener('input', () => {
       const query = tableSearchInput.value.toLowerCase().trim();
-      const todayOnly = (allEntries || []).filter(isEntryForToday);
 
       if (!query) {
-        renderEntries(todayOnly, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+        renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
         return;
       }
 
-      const filtered = todayOnly.filter(entry => {
+      const filtered = allEntries.filter(entry => {
         const nameMatch = entry.guestname && entry.guestname.toLowerCase().includes(query);
         const cashierMatch = entry.cashier && entry.cashier.toLowerCase().includes(query);
         const typeMatch = entry.type && entry.type.toLowerCase().includes(query);
@@ -5579,171 +4822,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // ==========================================================================
-  // SYMBOL-ONLY SEARCH BUTTONS (TOGGLE & EXPAND)
-  // "FOR SEARCH BUTTON USE ONLY SYMBOL"
-  // ==========================================================================
-  function setupSearchSymbolToggle(btnId, wrapId, inputId) {
-    const btn = document.getElementById(btnId);
-    const wrap = document.getElementById(wrapId);
-    const input = document.getElementById(inputId);
-    if (!btn || !wrap || !input) return;
-
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOpen = wrap.classList.contains('open');
-      if (isOpen) {
-        if (input.value.trim() !== '') {
-          input.value = '';
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-        wrap.classList.remove('open');
-      } else {
-        wrap.classList.add('open');
-        setTimeout(() => input.focus(), 60);
-      }
-    });
-
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        input.value = '';
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        wrap.classList.remove('open');
-        btn.focus();
-      }
-    });
-
-    document.addEventListener('click', (e) => {
-      if (!wrap.contains(e.target) && input.value.trim() === '') {
-        wrap.classList.remove('open');
-      }
-    });
-  }
-
-  setupSearchSymbolToggle('btn-toggle-home-search', 'home-search-wrap', 'table-search');
-  setupSearchSymbolToggle('btn-major-search-action', 'major-search-wrap', 'major-search');
-  setupSearchSymbolToggle('btn-toggle-barred-search', 'barred-search-wrap', 'barred-search');
-  setupSearchSymbolToggle('btn-toggle-all-search', 'all-entries-search-wrap', 'all-entries-search');
-
   // Manual Refresh Button
   if (btnRefresh) {
     btnRefresh.addEventListener('click', () => {
       tableSearchInput.value = '';
       fetchEntries();
-    });
-  }
-
-  // ==========================================================================
-  // START NEW GAMING DAY (CHANGE DATE)
-  // ==========================================================================
-  if (btnStartNewDay) {
-    btnStartNewDay.addEventListener('click', () => {
-      const current = currentBusinessDateStr || getBusinessDate();
-      if (modalCurrentDateDisplay) {
-        modalCurrentDateDisplay.textContent = formatDateDMY(current) || 'Not Set';
-      }
-
-      // Pre-fill with next day
-      if (newDayDateInput) {
-        if (current && current.includes('-')) {
-          const parts = current.split('-').map(Number);
-          const nextDate = new Date(parts[0], parts[1] - 1, parts[2] + 1);
-          const ny = nextDate.getFullYear();
-          const nm = String(nextDate.getMonth() + 1).padStart(2, '0');
-          const nd = String(nextDate.getDate()).padStart(2, '0');
-          newDayDateInput.value = `${ny}-${nm}-${nd}`;
-        } else {
-          newDayDateInput.value = getLocalTimeISOString().split('T')[0];
-        }
-      }
-
-      if (newDayModal) {
-        newDayModal.style.display = 'flex';
-        if (window.lucide) lucide.createIcons();
-      }
-    });
-  }
-
-  // Cancel / NO button -> continue same gaming day
-  if (btnCancelNewDay) {
-    btnCancelNewDay.addEventListener('click', () => {
-      if (newDayModal) {
-        newDayModal.style.display = 'none';
-      }
-    });
-  }
-
-  // Confirm / YES button -> start new gaming day
-  if (btnConfirmNewDay) {
-    btnConfirmNewDay.addEventListener('click', async () => {
-      const newDate = newDayDateInput ? newDayDateInput.value : '';
-      if (!newDate) {
-        alert('Please select a valid new gaming date.');
-        return;
-      }
-
-      const origText = btnConfirmNewDay.innerHTML;
-      btnConfirmNewDay.disabled = true;
-      btnConfirmNewDay.innerHTML = '<span>Starting...</span>';
-
-      try {
-        const response = await fetch('/api/newday', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ newDate })
-        });
-        const result = await response.json();
-        if (!response.ok) {
-          throw new Error(result.error || 'Failed to start new gaming day.');
-        }
-
-        // Advance current business date
-        currentBusinessDateStr = result.newDate || newDate;
-        updateAllDateTimeDisplays();
-
-        // Update active day for All Entries navigation
-        const dayNum = Number(currentBusinessDateStr.split('-')[2]);
-        if (!isNaN(dayNum)) {
-          activeAllEntriesDay = dayNum;
-          if (gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
-        }
-        if (allEntriesDatePicker) {
-          allEntriesDatePicker.value = currentBusinessDateStr;
-        }
-
-        // Update datetime input
-        if (inputDateTime) {
-          inputDateTime.value = getLocalTimeISOString();
-        }
-
-        // Close modal
-        if (newDayModal) {
-          newDayModal.style.display = 'none';
-        }
-
-        // Re-fetch all entries from backend (previous ones will now be archived)
-        await fetchEntries();
-
-        // Sync day pagination UI
-        renderDayPagination();
-
-        alert(`New Gaming Day started: ${formatDateDMY(currentBusinessDateStr)}\nPrevious entries have been archived.`);
-      } catch (err) {
-        console.error('Error starting new gaming day:', err);
-        alert(`Failed to start new gaming day: ${err.message}`);
-      } finally {
-        btnConfirmNewDay.disabled = false;
-        btnConfirmNewDay.innerHTML = origText;
-        if (window.lucide) lucide.createIcons();
-      }
-    });
-  }
-
-  if (newDayModal) {
-    newDayModal.addEventListener('click', (e) => {
-      if (e.target === newDayModal) {
-        newDayModal.style.display = 'none';
-      }
     });
   }
 
@@ -5790,20 +4873,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }, 30000);
 
-  // Toggle the Admin Users button visibility based on active user (Admin only)
+  // Helper to check if current user is admin
+  function isUserAdmin() {
+    return !!(currentUser && (currentUser.role === 'admin' || currentUser.id === 'admin' || (currentUser.name && currentUser.name.toLowerCase() === 'admin')));
+  }
+
+  // Toggle the Admin Users button visibility based on active user - ONLY ADMIN CAN ADD MEMBER
   function toggleAdminPanel() {
     if (btnAdminUsers) {
-      if (isAdmin()) {
-        btnAdminUsers.style.setProperty('display', 'flex', 'important');
-      } else {
-        btnAdminUsers.style.setProperty('display', 'none', 'important');
-      }
+      btnAdminUsers.style.display = isUserAdmin() ? 'flex' : 'none';
     }
   }
 
   // Admin Account Management: Fetch all accounts
   async function fetchUsers() {
-    if (!isAdmin()) return;
     try {
       const response = await fetch('/api/users?requester=admin');
       if (!response.ok) {
@@ -5837,7 +4920,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           <div class="user-card-left">
             <div class="user-card-row">
               <span class="user-card-label">USER ID:</span>
-              <span class="user-card-value user-id-val">${escapeHTML(String(user.username || '').toUpperCase())}</span>
+              <span class="user-card-value user-id-val">${escapeHTML(user.username)}</span>
               <span class="user-role-pill" style="color: ${roleColor}; border-color: ${roleColor};">${roleUpper}</span>
             </div>
             <div class="user-card-row">
@@ -5975,6 +5058,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       const password = editMemberPass.value;
       const role = editMemberRole ? editMemberRole.value : 'officer';
 
+      if (!isUserAdmin()) {
+        if (window.showAppNotification) window.showAppNotification('ONLY ADMIN CAN ADD MEMBER', 'error');
+        return;
+      }
+
       if (!username || !password) return;
 
       try {
@@ -6010,14 +5098,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (addUserForm) {
     addUserForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!isAdmin()) {
-        alert('Unauthorized: Only Admin can add members.');
-        return;
-      }
       const username = newUsernameInput.value.trim().toLowerCase();
       const password = newPasswordInput.value;
       const roleElement = document.getElementById('new-user-role');
       const role = roleElement ? roleElement.value : 'officer';
+
+      if (!isUserAdmin()) {
+        if (window.showAppNotification) window.showAppNotification('ONLY ADMIN CAN ADD MEMBER', 'error');
+        return;
+      }
 
       if (!username || !password) return;
 
@@ -6221,10 +5310,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const amt = entry.amount ? Number(entry.amount).toLocaleString('en-IN') : '0';
         entriesHtml += `
           <tr>
-            <td>${entry.datetime ? formatDateTimeDMY(entry.datetime) : '-'}</td>
+            <td>${entry.datetime || '-'}</td>
             <td>${entry.type || '-'}</td>
             <td>${amt}</td>
-            <td>${entry.guestname ? `<a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(entry.guestname)}">${escapeHTML(String(entry.guestname).toUpperCase())}</a>` : '-'}</td>
+            <td>${entry.guestname || '-'}</td>
             <td>${entry.surv || '-'}</td>
           </tr>
         `;
@@ -6329,19 +5418,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     lucide.createIcons();
   }
 
-  // Warning Modal Close Button Listeners
+  // Warning Modal Close Button Listener
+  const btnCloseBarredWarning = document.getElementById('btn-close-barred-warning');
   const barredWarningModal = document.getElementById('barred-warning-modal');
-  if (barredWarningModal) {
-    const closeBarredElements = barredWarningModal.querySelectorAll('#btn-close-barred-warning, #btn-x-close-barred-warning, #btn-cancel-barred-warning, .modal-close-btn');
-    closeBarredElements.forEach(btn => {
-      btn.addEventListener('click', () => {
-        barredWarningModal.style.display = 'none';
-      });
-    });
-    barredWarningModal.addEventListener('click', (e) => {
-      if (e.target === barredWarningModal) {
-        barredWarningModal.style.display = 'none';
-      }
+  if (btnCloseBarredWarning && barredWarningModal) {
+ if (btnCloseBarredWarning) btnCloseBarredWarning.addEventListener('click', () => {
+      barredWarningModal.style.display = 'none';
     });
   }
 
@@ -6357,21 +5439,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'date-changed' && data.newDate) {
-          console.log('[SSE] Business date changed to:', data.newDate);
+
+        if (data.type === 'date-rollover') {
+          console.log('[SSE] Received date-rollover to:', data.newDate);
           currentBusinessDateStr = data.newDate;
-          updateAllDateTimeDisplays();
-          const dayNum = Number(currentBusinessDateStr.split('-')[2]);
-          if (!isNaN(dayNum)) {
-            activeAllEntriesDay = dayNum;
-            if (gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
-          }
-          if (allEntriesDatePicker) {
-            allEntriesDatePicker.value = currentBusinessDateStr;
-          }
-          fetchEntries().then(() => {
-            renderDayPagination();
-          });
+          currentBusinessDate = data.newDate;
+          updateGamingDateDisplay();
+          fetchEntries();
+          showAppNotification('New Gaming Day started: ' + formatDisplayDate(data.newDate), 'info');
+          return;
         }
 
         if (data.type === 'barred-match') {
@@ -6427,63 +5503,65 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   updateAllEntriesView();
   checkAuthSession();
+});
 
-  async function extractExcelImages(arrayBuffer) {
-    const imagesMap = {};
-    try {
-      if (typeof JSZip === 'undefined') return imagesMap;
-      const zip = await JSZip.loadAsync(arrayBuffer);
+async function extractExcelImages(arrayBuffer) {
+  const imagesMap = {};
+  try {
+    if (typeof JSZip === 'undefined') return imagesMap;
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    
+    // Find all drawing XML files
+    const drawingFiles = Object.keys(zip.files).filter(f => /^xl\/drawings\/drawing\d+\.xml$/.test(f));
+    
+    for (const dFilePath of drawingFiles) {
+      // Find corresponding .rels file
+      const dFileName = dFilePath.split('/').pop();
+      const relsFilePath = "xl/drawings/_rels/" + dFileName + ".rels";
       
-      // Find all drawing XML files
-      const drawingFiles = Object.keys(zip.files).filter(f => /^xl\/drawings\/drawing\d+\.xml$/.test(f));
+      const drawingsRelFile = zip.file(relsFilePath);
+      if (!drawingsRelFile) continue;
+      const relsXml = await drawingsRelFile.async("string");
       
-      for (const dFilePath of drawingFiles) {
-        // Find corresponding .rels file
-        const dFileName = dFilePath.split('/').pop();
-        const relsFilePath = "xl/drawings/_rels/" + dFileName + ".rels";
-        
-        const drawingsRelFile = zip.file(relsFilePath);
-        if (!drawingsRelFile) continue;
-        const relsXml = await drawingsRelFile.async("string");
-        
-        const rIdMap = {};
-        const relsMatch = relsXml.matchAll(/<Relationship Id="([^"]+)"[^>]+Target="([^"]+)"/g);
-        for (const match of relsMatch) {
-           let target = match[2];
-           if (target.startsWith('../')) target = target.substring(3);
-           rIdMap[match[1]] = target;
-        }
-        
-        const drawingsFile = zip.file(dFilePath);
-        const drawingsXml = await drawingsFile.async("string");
-        
-        const anchors = drawingsXml.split(/<xdr:twoCellAnchor|<xdr:oneCellAnchor/);
-        for (let i = 1; i < anchors.length; i++) {
-           const anchor = anchors[i];
-           const rowMatch = anchor.match(/<xdr:from>[\s\S]*?<xdr:row>(\d+)<\/xdr:row>/);
-           const blipMatch = anchor.match(/<a:blip[\s\S]*?r:embed="([^"]+)"/);
-           if (rowMatch && blipMatch) {
-              const rowIdx = parseInt(rowMatch[1], 10);
-              const rId = blipMatch[1];
-              const mediaPath = rIdMap[rId];
-              if (mediaPath) {
-                 const mediaFile = zip.file("xl/" + mediaPath);
-                 if (mediaFile) {
-                    const base64 = await mediaFile.async("base64");
-                    let ext = mediaPath.split('.').pop().toLowerCase();
-                    if (ext === 'jpg') ext = 'jpeg';
-                    imagesMap[rowIdx] = `data:image/${ext};base64,${base64}`;
-                 }
-              }
-           }
-        }
+      const rIdMap = {};
+      const relsMatch = relsXml.matchAll(/<Relationship Id="([^"]+)"[^>]+Target="([^"]+)"/g);
+      for (const match of relsMatch) {
+         let target = match[2];
+         if (target.startsWith('../')) target = target.substring(3);
+         rIdMap[match[1]] = target;
       }
-    } catch(err) {
-      console.error("Image extraction error:", err);
+      
+      const drawingsFile = zip.file(dFilePath);
+      const drawingsXml = await drawingsFile.async("string");
+      
+      const anchors = drawingsXml.split(/<xdr:twoCellAnchor|<xdr:oneCellAnchor/);
+      for (let i = 1; i < anchors.length; i++) {
+         const anchor = anchors[i];
+         const rowMatch = anchor.match(/<xdr:from>[\s\S]*?<xdr:row>(\d+)<\/xdr:row>/);
+         const blipMatch = anchor.match(/<a:blip[\s\S]*?r:embed="([^"]+)"/);
+         if (rowMatch && blipMatch) {
+            const rowIdx = parseInt(rowMatch[1], 10);
+            const rId = blipMatch[1];
+            const mediaPath = rIdMap[rId];
+            if (mediaPath) {
+               const mediaFile = zip.file("xl/" + mediaPath);
+               if (mediaFile) {
+                  const base64 = await mediaFile.async("base64");
+                  let ext = mediaPath.split('.').pop().toLowerCase();
+                  if (ext === 'jpg') ext = 'jpeg';
+                  imagesMap[rowIdx] = `data:image/${ext};base64,${base64}`;
+               }
+            }
+         }
+      }
     }
-    return imagesMap;
+  } catch(err) {
+    console.error("Image extraction error:", err);
   }
+  return imagesMap;
+}
 
+document.addEventListener('DOMContentLoaded', () => {
   const directBarredInput = document.getElementById('direct-photo-barred');
   const directStaffInput = document.getElementById('direct-photo-staff');
   let currentPhotoId = null;
@@ -6536,1159 +5614,820 @@ document.addEventListener('DOMContentLoaded', async () => {
       reader.readAsDataURL(file);
     });
   }
-
   // ==========================================================================
-  // MOBILE & DESKTOP AUTO-FIT ENGINE: AUTO-DETECT SCREEN SIZE & REAL-TIME AUTO-FIT
+  // OFFLINE SURVEILLANCE AI ASSISTANT QUERY ENGINE
   // ==========================================================================
-  function applyAutoFit() {
-    const vv = window.visualViewport;
-    const h = vv ? Math.round(vv.height) : window.innerHeight;
-    const w = vv ? Math.round(vv.width) : window.innerWidth;
-    const docEl = document.documentElement;
-    const body = document.body;
-
-    // Dynamically set CSS variables on :root so all containers fit 100% in viewport
-    docEl.style.setProperty('--app-height', `${h}px`);
-    docEl.style.setProperty('--app-width', `${w}px`);
-    docEl.style.setProperty('--vh', `${h * 0.01}px`);
-
-    // Screen classification classes for responsive styling
-    body.classList.toggle('screen-mobile', w <= 768);
-    body.classList.toggle('screen-small', w <= 500);
-    body.classList.toggle('screen-extra-small', w <= 380);
-    body.classList.toggle('screen-short', h <= 650);
-    body.classList.toggle('screen-landscape', w > h && h <= 550);
-
-    // Keep legacy compact classes
-    body.classList.toggle('compact-view', w <= 650);
-    body.classList.toggle('ultra-compact-view', w <= 420);
-
-    // Ensure content wrapper fills exactly 100% available space with 0 document overflow
-    const wrapper = document.querySelector('.content-wrapper');
-    if (wrapper) {
-      wrapper.style.setProperty('width', '100%', 'important');
-      wrapper.style.setProperty('max-width', '100%', 'important');
-      wrapper.style.setProperty('height', 'auto', 'important');
-      wrapper.style.setProperty('min-height', '0', 'important');
-      wrapper.style.setProperty('flex', '1 1 0', 'important');
-      wrapper.style.setProperty('overflow', 'hidden', 'important');
-    }
-
-    if (window.lucide) {
-      try {
-        lucide.createIcons();
-      } catch (e) {}
-    }
-  }
-
-  // Initial call on page load
-  applyAutoFit();
-
-  // Multi-event listeners: window resize, orientationchange, visualViewport changes, pageshow
-  let autoFitResizeTimer = null;
-  function triggerAutoFit() {
-    requestAnimationFrame(applyAutoFit);
-    if (autoFitResizeTimer) clearTimeout(autoFitResizeTimer);
-    autoFitResizeTimer = setTimeout(applyAutoFit, 50);
-  }
-
-  window.addEventListener('resize', triggerAutoFit, { passive: true });
-  window.addEventListener('orientationchange', () => {
-    setTimeout(applyAutoFit, 50);
-    setTimeout(applyAutoFit, 200);
-  });
-  if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
-    window.visualViewport.addEventListener('resize', triggerAutoFit, { passive: true });
-    window.visualViewport.addEventListener('scroll', triggerAutoFit, { passive: true });
-  }
-  // ==========================================================================
-  // OFFLINE SURVEILLANCE AI ASSISTANT (100% OFFLINE)
-  // Answers any question regarding surveillance entries, buying, visits, cage totals
-  // ==========================================================================
-  const btnInputAI = document.getElementById('btn-input-ai-assistant');
   const aiAssistantModal = document.getElementById('ai-assistant-modal');
-  const btnCloseAIModal = document.getElementById('btn-close-ai-modal');
+  const btnOpenAiAssistant = document.getElementById('btn-open-ai-assistant');
+  const btnCloseAiModal = document.getElementById('btn-close-ai-modal');
+  const aiDatePicker = document.getElementById('ai-date-picker');
+  const aiSelectedDateBadge = document.getElementById('ai-selected-date-badge');
   const aiChatMessages = document.getElementById('ai-chat-messages');
-  const aiChatForm = document.getElementById('ai-chat-form');
-  const aiChatInput = document.getElementById('ai-chat-input');
-  let lastMentionedGuest = '';
+  const aiQueryInput = document.getElementById('ai-query-input');
+  const btnAiSend = document.getElementById('btn-ai-send');
+  const btnAiClear = document.getElementById('btn-ai-clear');
 
-  function openAIAssistantModal(initialQuery) {
+  function openAiAssistantModal(initialQuery = '') {
     if (!aiAssistantModal) return;
-    aiAssistantModal.style.display = 'flex';
+    aiAssistantModal.style.setProperty('display', 'flex', 'important');
+    if (aiDatePicker && !aiDatePicker.value) {
+      aiDatePicker.value = currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+    }
+    const curDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+    if (aiSelectedDateBadge) {
+      aiSelectedDateBadge.textContent = formatDisplayDate(curDate);
+    }
     if (aiChatMessages && aiChatMessages.children.length === 0) {
-      renderAIWelcomeMessage();
+      renderAiWelcome();
     }
-    if (initialQuery) {
-      handleAIQuery(initialQuery);
-    } else {
-      setTimeout(() => {
-        if (aiChatInput) aiChatInput.focus();
-      }, 150);
-    }
+    if (window.lucide) lucide.createIcons();
+    setTimeout(() => {
+      if (aiQueryInput) {
+        if (initialQuery) {
+          aiQueryInput.value = initialQuery;
+          executeAiQuery(initialQuery);
+        } else {
+          aiQueryInput.focus();
+        }
+      }
+    }, 100);
   }
-  window.openAIAssistantModal = openAIAssistantModal;
 
-  function closeAIAssistantModal() {
-    // If guest summary modal is open in front, close it first
-    if (typeof closeMajorGuestModal === 'function') {
-      closeMajorGuestModal();
-    }
-    if (aiAssistantModal) aiAssistantModal.style.display = 'none';
-    if (aiChatInput) aiChatInput.value = '';
-    if (aiChatMessages) {
-      aiChatMessages.innerHTML = '';
-      renderAIWelcomeMessage();
+  function closeAiAssistantModal() {
+    if (aiAssistantModal) {
+      aiAssistantModal.style.setProperty('display', 'none', 'important');
     }
   }
 
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      const barredFormModal = document.getElementById('barred-guest-modal');
-      if (barredFormModal && (barredFormModal.style.display === 'flex' || barredFormModal.style.display === 'block')) {
-        barredFormModal.style.display = 'none';
-        e.stopImmediatePropagation();
-        return;
-      }
-
-      const warningModal = document.getElementById('barred-warning-modal');
-      if (warningModal && warningModal.style.display === 'flex') {
-        warningModal.style.display = 'none';
-        e.stopImmediatePropagation();
-        return;
-      }
-
-      const majorModal = document.getElementById('major-guest-details-modal');
-      if (majorModal && majorModal.style.display !== 'none' && majorModal.style.display !== '') {
-        if (typeof closeMajorGuestModal === 'function') closeMajorGuestModal();
-        e.stopImmediatePropagation();
-        return;
-      }
-
-      if (aiAssistantModal && aiAssistantModal.style.display === 'flex') {
-        closeAIAssistantModal();
-      }
-    }
-  });
-
-  const btnClearAIChat = document.getElementById('btn-clear-ai-chat');
-  if (btnClearAIChat) {
-    btnClearAIChat.addEventListener('click', () => {
-      if (aiChatInput) {
-        aiChatInput.value = '';
-        aiChatInput.focus();
-      }
-      if (aiChatMessages) {
-        aiChatMessages.innerHTML = '';
-        renderAIWelcomeMessage();
-      }
-    });
-  }
-
-  if (btnInputAI) {
-    btnInputAI.addEventListener('click', () => {
-      const qInput = document.getElementById('officer-quick-input');
-      const val = qInput ? qInput.value.trim() : '';
-      if (val) {
-        openAIAssistantModal(val);
-        qInput.value = '';
-        qInput.style.height = '';
-      } else {
-        openAIAssistantModal();
-      }
-    });
-  }
-
-  if (btnCloseAIModal) {
-    btnCloseAIModal.addEventListener('click', closeAIAssistantModal);
-  }
-
-  if (aiAssistantModal) {
-    aiAssistantModal.addEventListener('click', (e) => {
-      if (e.target === aiAssistantModal) closeAIAssistantModal();
-    });
-  }
-
-  // Quick Action Chips in Assistant
-  document.querySelectorAll('.ai-quick-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const q = chip.getAttribute('data-query');
-      if (q) handleAIQuery(q);
-    });
-  });
-
-  if (aiChatForm) {
-    aiChatForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const val = aiChatInput ? aiChatInput.value.trim() : '';
-      if (!val) return;
-      if (aiChatInput) aiChatInput.value = '';
-      handleAIQuery(val);
-    });
-  }
-
-  function renderAIWelcomeMessage() {
+  function renderAiWelcome() {
     if (!aiChatMessages) return;
+    const curDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+    const dispDate = formatDisplayDate(curDate);
     aiChatMessages.innerHTML = `
-      <div class="ai-msg-bubble-bot">
-        <div style="font-weight: 800; color: #38bdf8; font-size: 0.95rem;">
-          👋 Welcome to Surveillance Assistant
-        </div>
-        <div style="color: #cbd5e1; font-size: 0.84rem; line-height: 1.45;">
-          Type any <strong>guest name</strong> to view today's history and full date-wise record, or ask about top buyers, cage totals, and dates.
-        </div>
-        <div style="margin-top: 4px; font-size: 0.76rem; color: #94a3b8; font-weight: 800; letter-spacing: 0.5px;">
-          QUICK EXAMPLES (CLICK TO ASK):
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;">
-          <a href="javascript:void(0)" class="ai-sample-q" style="color: #60a5fa; text-decoration: none;">• Who is the highest buying today?</a>
-          <a href="javascript:void(0)" class="ai-sample-q" style="color: #60a5fa; text-decoration: none;">• Who had the highest cashout today?</a>
-          <a href="javascript:void(0)" class="ai-sample-q" style="color: #60a5fa; text-decoration: none;">• Today's total in and result</a>
-          <a href="javascript:void(0)" class="ai-sample-q" style="color: #60a5fa; text-decoration: none;">• 03-11-2026</a>
-          <a href="javascript:void(0)" class="ai-sample-q" style="color: #60a5fa; text-decoration: none;">• Who is on the barred list?</a>
+      <div class="ai-msg-row assistant">
+        <div class="ai-assistant-card" style="border-color: rgba(168, 85, 247, 0.45);">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title">🤖 SURVEILLANCE AI ASSISTANT (OFFLINE)</span>
+            <span style="font-size: 0.72rem; color: #a855f7; font-weight: 800; background: rgba(168, 85, 247, 0.15); padding: 2px 8px; border-radius: 4px;">100% LOCAL & OFFLINE</span>
+          </div>
+          <p style="color: #cbd5e1; font-size: 0.88rem; margin: 0; line-height: 1.5; font-weight: 700;">
+            HELLO! I AM YOUR OFFLINE AI ASSISTANT. ACTIVE GAMING DATE: <span style="color: #38bdf8; font-family: monospace;">${dispDate}</span>.
+          </p>
+          <div style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; line-height: 1.4;">
+            YOU CAN ASK ME ANY QUESTION ABOUT:
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0;">
+            <span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 0.74rem; color: #38bdf8; font-weight: 800;">👤 GUEST DETAILS</span>
+            <span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 0.74rem; color: #34d399; font-weight: 800;">💰 TOTAL IN</span>
+            <span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 0.74rem; color: #f87171; font-weight: 800;">💸 TOTAL OUT</span>
+            <span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 0.74rem; color: #fbbf24; font-weight: 800;">⚖️ RESULT</span>
+            <span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 0.74rem; color: #c084fc; font-weight: 800;">📋 ALL ENTRIES</span>
+            <span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 0.74rem; color: #60a5fa; font-weight: 800;">📅 GAMING DATE SELECT</span>
+          </div>
+          <span style="color: #64748b; font-size: 0.74rem; font-weight: 700;">CLICK ANY QUICK ACTION BUTTON ABOVE OR TYPE A QUESTION BELOW!</span>
         </div>
       </div>
     `;
-
-    aiChatMessages.querySelectorAll('.ai-sample-q').forEach(el => {
-      el.addEventListener('click', () => {
-        const text = el.textContent.replace('• ', '').trim();
-        handleAIQuery(text);
-      });
-    });
   }
 
-  function handleAIQuery(query) {
+  function appendAiMessage(role, htmlContent) {
     if (!aiChatMessages) return;
-    const cleanUserQ = query.trim();
-    if (!cleanUserQ) return;
-
-    // 1. User Message
-    const userEl = document.createElement('div');
-    userEl.className = 'ai-msg-bubble-user';
-    userEl.textContent = cleanUserQ;
-    aiChatMessages.appendChild(userEl);
-    aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
-
-    // 2. Compute Offline Answer
-    const botEl = document.createElement('div');
-    botEl.className = 'ai-msg-bubble-bot';
-    botEl.innerHTML = computeOfflineAnswer(cleanUserQ);
-    aiChatMessages.appendChild(botEl);
-    aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
-
-    if (window.lucide) {
-      try { lucide.createIcons(); } catch (e) {}
-    }
-  }
-
-  // Helper: Extract a target business date from query (DD-MM-YYYY, YYYY-MM-DD, yesterday, on 4th)
-  function extractDateFromQuery(rawStr, fallbackDateStr) {
-    if (!rawStr) return null;
-    const s = String(rawStr).trim().toLowerCase();
-
-    // 1. DD-MM-YYYY or DD/MM/YYYY or DD.MM.YYYY
-    const dmyMatch = s.match(/\b([0-2]?\d|3[01])[-/.]([0]?\d|1[0-2])[-/.](20\d{2}|\d{2})\b/);
-    if (dmyMatch) {
-      const day = String(dmyMatch[1]).padStart(2, '0');
-      const month = String(dmyMatch[2]).padStart(2, '0');
-      let year = dmyMatch[3];
-      if (year.length === 2) year = '20' + year;
-      return `${year}-${month}-${day}`;
-    }
-
-    // 2. YYYY-MM-DD or YYYY/MM/DD
-    const ymdMatch = s.match(/\b(20\d{2})[-/.]([0]?\d|1[0-2])[-/.]([0-2]?\d|3[01])\b/);
-    if (ymdMatch) {
-      return `${ymdMatch[1]}-${String(ymdMatch[2]).padStart(2, '0')}-${String(ymdMatch[3]).padStart(2, '0')}`;
-    }
-
-    // 3. "yesterday"
-    if (/\byesterday\b/i.test(s)) {
-      const base = fallbackDateStr ? new Date(fallbackDateStr + 'T12:00:00') : new Date();
-      base.setDate(base.getDate() - 1);
-      const y = base.getFullYear();
-      const m = String(base.getMonth() + 1).padStart(2, '0');
-      const d = String(base.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    }
-
-    // 4. "on 3rd", "on 03", "on date 3", "on day 3"
-    const dayMatch = s.match(/\b(?:on|date|day)\s+([0-2]?\d|3[01])(?:st|nd|rd|th)?\b/i) ||
-                     s.match(/\b([0-2]?\d|3[01])(?:st|nd|rd|th)\b/i);
-    if (dayMatch && fallbackDateStr) {
-      const dayNum = parseInt(dayMatch[1], 10);
-      if (dayNum >= 1 && dayNum <= 31) {
-        const parts = fallbackDateStr.split('-');
-        if (parts.length >= 2) {
-          return `${parts[0]}-${parts[1]}-${String(dayNum).padStart(2, '0')}`;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  function parseGuestFromDateQuery(cleanQ) {
-    return cleanQ
-      .replace(/\b([0-2]?\d|3[01])[-/.]([0]?\d|1[0-2])[-/.](20\d{2}|\d{2})\b/g, '')
-      .replace(/\b(20\d{2})[-/.]([0]?\d|1[0-2])[-/.]([0-2]?\d|3[01])\b/g, '')
-      .replace(/\byesterday\b/gi, '')
-      .replace(/\b(?:on|date|day)\s+([0-2]?\d|3[01])(?:st|nd|rd|th)?\b/gi, '')
-      .replace(/\b([0-2]?\d|3[01])(?:st|nd|rd|th)\b/gi, '')
-      .replace(/\b(who|is|are|highest|top|buying|buyer|buy|in|out|cashin|cashout|payout|entries|entry|show|give|tell|me|what|did|has|the|of|for|guest|perticullar|particular|result|total|totals|summary|cage|drop|record|records|check|on|at|date|day)\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  // Master Helper: Build Comprehensive Guest Report
-  // FIRST SHOW TODAY HISTORY, THEN LIFETIME RECORD, AND LAST DATE-WISE TOTAL IN, TOTAL OUT AND RESULT (STARTING FROM CURRENT DAY)
-  function buildGuestDetailReport(resolvedName, guestEntries, activeDate) {
-    if (!guestEntries || guestEntries.length === 0) {
-      return `
-        <div style="color: #f87171; font-weight: 700;">
-          No records found for <strong>"${escapeHTML(resolvedName)}"</strong> in the database.
-        </div>
-      `;
-    }
-
-    lastMentionedGuest = resolvedName;
-
-    let lifetimeIn = 0;
-    let lifetimeOut = 0;
-    const datesMap = {};
-
-    guestEntries.forEach(e => {
-      const amt = Number(e.amount) || 0;
-      const t = (e.type || '').toUpperCase().trim();
-      const d = e.businessDate || (e.datetime && typeof getBusinessDate === 'function' ? getBusinessDate(e.datetime) : (e.datetime ? e.datetime.split('T')[0] : ''));
-      
-      const isIn = isTotalInType(t);
-      const isOut = isTotalOutType(t);
-      if (isIn) lifetimeIn += amt;
-      else if (isOut) lifetimeOut += amt;
-
-      if (d) {
-        if (!datesMap[d]) {
-          datesMap[d] = { in: 0, out: 0, entries: [] };
-        }
-        if (isIn) datesMap[d].in += amt;
-        if (isOut) datesMap[d].out += amt;
-        datesMap[d].entries.push(e);
-      }
-    });
-
-    const lifetimeNet = lifetimeOut - lifetimeIn;
-    // Sorted descending: CURRENT DAY / MOST RECENT FIRST down to oldest day
-    const sortedDates = Object.keys(datesMap).sort((a, b) => b.localeCompare(a));
-    const firstVisitDate = sortedDates.length > 0 ? sortedDates[sortedDates.length - 1] : '';
-    const lastVisitDate = sortedDates.length > 0 ? sortedDates[0] : '';
-
-    // 1. FIRST: TODAY'S HISTORY (Current Gaming Day)
-    const todayData = datesMap[activeDate];
-    const hasToday = !!todayData && todayData.entries.length > 0;
-    const todayIn = hasToday ? todayData.in : 0;
-    const todayOut = hasToday ? todayData.out : 0;
-    const todayNet = todayOut - todayIn;
-
-    let todaySectionHtml = '';
-    if (hasToday) {
-      const todaySortedEntries = [...todayData.entries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
-      const todayEntriesList = todaySortedEntries.map(e => {
-        const dt = String(e.datetime || '').trim();
-        const tPart = dt.includes('T') ? dt.split('T')[1] : (dt.includes(' ') ? dt.split(' ')[1] : '');
-        const eTime = tPart ? tPart.slice(0, 5) : '';
-        const s = getEntrySentence(e, resolvedName);
-        return `
-          <div style="display: flex; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.8rem;">
-            ${eTime ? `<span style="color: #38bdf8; font-family: monospace; font-weight: 800; min-width: 44px;">${escapeHTML(eTime)}</span>` : ''}
-            <span style="color: #ffffff; font-weight: 700; text-transform: uppercase;">${escapeHTML(s)}</span>
-          </div>
-        `;
-      }).join('');
-
-      todaySectionHtml = `
-        <div style="background: rgba(37, 99, 235, 0.18); border: 1.5px solid rgba(56, 189, 248, 0.45); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span style="font-size: 0.74rem; background: #2563eb; color: #ffffff; padding: 3px 10px; border-radius: 12px; font-weight: 800; letter-spacing: 0.5px;">
-              📅 TODAY'S HISTORY (${formatDateDMY(activeDate)})
-            </span>
-            <span style="font-size: 0.74rem; color: #94a3b8; font-weight: 700;">
-              ${todaySortedEntries.length} ${todaySortedEntries.length === 1 ? 'Entry' : 'Entries'} Today
-            </span>
-          </div>
-          <div class="ai-stat-row">
-            <span class="ai-stat-label">TODAY BUY-IN (IN):</span>
-            <span class="ai-stat-val" style="color: #f87171; font-size: 1.05rem;">-₹${Number(todayIn).toLocaleString('en-IN')}</span>
-          </div>
-          <div class="ai-stat-row">
-            <span class="ai-stat-label">TODAY CASHOUT (OUT):</span>
-            <span class="ai-stat-val" style="color: #4ade80; font-size: 1.05rem;">+₹${Number(todayOut).toLocaleString('en-IN')}</span>
-          </div>
-          <div class="ai-stat-row">
-            <span class="ai-stat-label">TODAY NET RESULT:</span>
-            <span class="ai-stat-val" style="color: ${todayNet >= 0 ? '#4ade80' : '#f87171'}; font-size: 1.05rem;">
-              ${todayNet < 0 ? `-₹${Math.abs(todayNet).toLocaleString('en-IN')}` : `₹${Number(todayNet).toLocaleString('en-IN')}`}
-            </span>
-          </div>
-          <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.12);">
-            <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; margin-bottom: 4px;">TODAY'S TRANSACTIONS:</div>
-            <div style="background: rgba(0,0,0,0.3); border-radius: 6px; padding: 6px 10px; max-height: 150px; overflow-y: auto;">
-              ${todayEntriesList}
-            </div>
-          </div>
-        </div>
-      `;
+    const row = document.createElement('div');
+    row.className = `ai-msg-row ${role}`;
+    if (role === 'user') {
+      row.innerHTML = `<div class="ai-user-bubble">${htmlContent}</div>`;
     } else {
-      todaySectionHtml = `
-        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px;">
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 0.72rem; background: rgba(148, 163, 184, 0.2); color: #cbd5e1; padding: 2px 8px; border-radius: 10px; font-weight: 700;">
-                📅 TODAY (${formatDateDMY(activeDate)})
-              </span>
-              <span style="color: #94a3b8; font-size: 0.82rem;">No transactions recorded today.</span>
-            </div>
-            ${lastVisitDate ? `<span style="font-size: 0.74rem; color: #64748b;">Last visit: <strong style="color: #38bdf8;">${formatDateDMY(lastVisitDate)}</strong></span>` : ''}
-          </div>
-        </div>
-      `;
+      row.innerHTML = htmlContent;
     }
+    aiChatMessages.appendChild(row);
+    aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
 
-    // 2. AND LAST: DATE-WISE TOTAL IN, TOTAL OUT AND RESULT ON THAT DAY (STARTING FROM CURRENT DAY)
-    const dateRowsHtml = sortedDates.map(d => {
-      const row = datesMap[d];
-      const res = row.out - row.in;
-      const isTodayRow = (d === activeDate);
-      const rowBg = isTodayRow ? 'background: rgba(37, 99, 235, 0.12);' : '';
-      return `
-        <div style="display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.2fr; padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); align-items: center; font-size: 0.8rem; ${rowBg}">
-          <div style="display: flex; align-items: center; gap: 4px;">
-            <span style="color: #ffffff; font-weight: 700; font-family: monospace;">${escapeHTML(formatDateDMY(d))}</span>
-            ${isTodayRow ? `<span style="background: #2563eb; color: #ffffff; font-size: 0.62rem; padding: 1px 5px; border-radius: 4px; font-weight: 800;">TODAY</span>` : ''}
-          </div>
-          <div style="text-align: right; color: #f87171; font-weight: 700;">
-            -₹${Number(row.in).toLocaleString('en-IN')}
-          </div>
-          <div style="text-align: right; color: #4ade80; font-weight: 700;">
-            +₹${Number(row.out).toLocaleString('en-IN')}
-          </div>
-          <div style="text-align: right; color: ${res >= 0 ? '#4ade80' : '#f87171'}; font-weight: 800;">
-            ${res < 0 ? `-₹${Math.abs(res).toLocaleString('en-IN')}` : `₹${Number(res).toLocaleString('en-IN')}`}
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    return `
-      <div>
-        <!-- GUEST TITLE HEADER -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-          <div style="font-size: 1.3rem; font-weight: 900; color: #ffffff;">
-            <a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(resolvedName)}" style="color: #38bdf8; text-decoration: underline;">
-              ${escapeHTML(resolvedName)}
-            </a>
-          </div>
-          <span style="font-size: 0.72rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; padding: 2px 10px; border-radius: 12px; font-weight: 800;">
-            ${sortedDates.length} ${sortedDates.length === 1 ? 'Day' : 'Days'} • ${guestEntries.length} Txns
-          </span>
-        </div>
-
-        <!-- FIRST: SHOW TODAY HISTORY -->
-        ${todaySectionHtml}
-
-        <!-- LIFETIME OVERALL RECORD -->
-        <div class="ai-card-highlight" style="border-left: 4px solid #38bdf8; margin-bottom: 12px;">
-          <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; margin-bottom: 6px;">
-            LIFETIME OVERALL RECORD:
-          </div>
-          <div class="ai-stat-row">
-            <span class="ai-stat-label">LIFETIME BUY-IN (TOTAL IN):</span>
-            <span class="ai-stat-val" style="color: #f87171; font-size: 1.05rem;">-₹${Number(lifetimeIn).toLocaleString('en-IN')}</span>
-          </div>
-          <div class="ai-stat-row">
-            <span class="ai-stat-label">LIFETIME CASHOUT (TOTAL OUT):</span>
-            <span class="ai-stat-val" style="color: #4ade80; font-size: 1.05rem;">+₹${Number(lifetimeOut).toLocaleString('en-IN')}</span>
-          </div>
-          <div class="ai-stat-row">
-            <span class="ai-stat-label">LIFETIME RESULT:</span>
-            <span class="ai-stat-val" style="color: ${lifetimeNet >= 0 ? '#4ade80' : '#f87171'}; font-size: 1.05rem;">
-              ${lifetimeNet < 0 ? `-₹${Math.abs(lifetimeNet).toLocaleString('en-IN')}` : `₹${Number(lifetimeNet).toLocaleString('en-IN')}`}
-            </span>
-          </div>
-          <div class="ai-stat-row">
-            <span class="ai-stat-label">LAST VISIT:</span>
-            <span class="ai-stat-val" style="color: #38bdf8;">${escapeHTML(formatDateDMY(lastVisitDate))}</span>
-          </div>
-          <div class="ai-stat-row">
-            <span class="ai-stat-label">FIRST VISIT:</span>
-            <span class="ai-stat-val">${escapeHTML(formatDateDMY(firstVisitDate))}</span>
-          </div>
-        </div>
-
-        <!-- AND LAST: DATE-WISE TOTAL IN, TOTAL OUT AND RESULT ON THAT DAY -->
-        <div style="margin-top: 12px;">
-          <div style="font-size: 0.74rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">
-            📊 DATE-WISE HISTORY (TOTAL IN, TOTAL OUT & RESULT ON THAT DAY):
-          </div>
-          <div style="background: rgba(0, 0, 0, 0.35); border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); overflow: hidden;">
-            <div style="display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.2fr; padding: 7px 10px; background: rgba(255,255,255,0.07); font-size: 0.72rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">
-              <span>DATE</span>
-              <span style="text-align: right;">TOTAL IN</span>
-              <span style="text-align: right;">TOTAL OUT</span>
-              <span style="text-align: right;">RESULT</span>
-            </div>
-            <div style="max-height: 220px; overflow-y: auto;">
-              ${dateRowsHtml}
-            </div>
-          </div>
-          <div style="font-size: 0.72rem; color: #64748b; margin-top: 6px;">
-            💡 <em>Sorted starting from current day. Click guest name above to view Excel Summary Card.</em>
-          </div>
-        </div>
-      </div>
-    `;
+    // Attach listeners on any interactive buttons inside assistant response
+    row.querySelectorAll('.ai-open-guest-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const gName = btn.getAttribute('data-guest');
+        const activeDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+        if (gName) {
+          closeAiAssistantModal();
+          const openFn = typeof openGuestSummaryPopup === 'function' ? openGuestSummaryPopup : window.openGuestSummaryPopup;
+          const candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+            ? allEntries
+            : (window.allEntries || []);
+          if (openFn) openFn(gName, candidateList, activeDate);
+        }
+      });
+    });
+    row.querySelectorAll('.ai-ask-suggest-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const q = btn.getAttribute('data-query');
+        if (q) executeAiQuery(q);
+      });
+    });
   }
 
-  function computeOfflineAnswer(rawQuery) {
-    const q = String(rawQuery || '').toLowerCase().trim();
-    const cleanQ = q.replace(/[?!,.]/g, '');
-    const activeDate = (typeof currentBusinessDateStr !== 'undefined' ? currentBusinessDateStr : '') || 
-                       (typeof getBusinessDate === 'function' ? getBusinessDate() : '');
-    const allPool = (typeof allEntries !== 'undefined' && Array.isArray(allEntries)) ? allEntries : [];
+  async function executeAiQuery(rawQuery) {
+    if (!rawQuery || !rawQuery.trim()) return;
+    const query = rawQuery.trim();
+    if (aiQueryInput) aiQueryInput.value = '';
 
-    // Check if user requested a specific date
-    const specificDate = extractDateFromQuery(rawQuery, activeDate);
-    const targetDate = specificDate || activeDate;
-    const isToday = (!specificDate || targetDate === activeDate);
-    const dateBadgeText = isToday ? `TODAY (${formatDateDMY(targetDate)})` : formatDateDMY(targetDate);
+    appendAiMessage('user', escapeHTML(query));
 
-    // Entries for target date
-    const targetDateEntries = allPool.filter(e => {
-      if (!e) return false;
-      const ed = e.businessDate || (e.datetime && typeof getBusinessDate === 'function' ? getBusinessDate(e.datetime) : '');
-      return ed === targetDate;
+    let candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+      ? allEntries
+      : ((typeof window !== 'undefined' && Array.isArray(window.allEntries)) ? window.allEntries : []);
+
+    if (candidateList.length === 0 && typeof fetchEntries === 'function') {
+      try {
+        await fetchEntries();
+        candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+          ? allEntries
+          : ((typeof window !== 'undefined' && Array.isArray(window.allEntries)) ? window.allEntries : []);
+      } catch (e) {
+        console.warn('AI fetch fallback error:', e);
+      }
+    }
+
+    let targetDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+
+    // Check for explicit date mentioned in query
+    const dateMatch = query.match(/\b(\d{2})[-/](\d{2})[-/](\d{4})\b/);
+    if (dateMatch) {
+      targetDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
+      if (aiDatePicker) aiDatePicker.value = targetDate;
+    } else {
+      const isoDateMatch = query.match(/\b(\d{4})[-/](\d{2})[-/](\d{2})\b/);
+      if (isoDateMatch) {
+        targetDate = isoDateMatch[0].replace(/\//g, '-');
+        if (aiDatePicker) aiDatePicker.value = targetDate;
+      } else if (/\byesterday\b/i.test(query)) {
+        const d = new Date(targetDate);
+        d.setDate(d.getDate() - 1);
+        targetDate = d.toISOString().split('T')[0];
+        if (aiDatePicker) aiDatePicker.value = targetDate;
+      } else if (/\btoday\b/i.test(query)) {
+        targetDate = currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+        if (aiDatePicker) aiDatePicker.value = targetDate;
+      }
+    }
+
+    const dispDate = formatDisplayDate(targetDate);
+    if (aiSelectedDateBadge) {
+      aiSelectedDateBadge.textContent = dispDate;
+    }
+
+    // Filter candidate entries for target date
+    const dateEntries = candidateList.filter(e => {
+      const eDate = getEntryDate(e);
+      return eDate === targetDate;
     });
 
-    const guestCandidate = parseGuestFromDateQuery(cleanQ);
+    const answerHtml = processOfflineAiQuestion(query, targetDate, dispDate, dateEntries, candidateList);
+    appendAiMessage('assistant', answerHtml);
+    if (window.lucide) lucide.createIcons();
+  }
 
-    // 1. INTENT: SPECIFIC GUEST ON A SPECIFIC DATE (e.g. "Buying on 03-11-2026", "Guest on 4th")
-    if (specificDate && guestCandidate) {
-      const matchEntries = targetDateEntries.filter(e => {
-        if (!e) return false;
-        const g = (e.guestname || '').trim().toUpperCase();
-        return areGuestNamesSimilar(g, guestCandidate.toUpperCase()) || g.includes(guestCandidate.toUpperCase());
+  function processOfflineAiQuestion(query, targetDate, dispDate, dateEntries, fullEntriesList) {
+    const qLower = query.toLowerCase().trim();
+    const candidateList = (Array.isArray(fullEntriesList) && fullEntriesList.length > 0)
+      ? fullEntriesList
+      : ((typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+          ? allEntries
+          : (window.allEntries || []));
+    const barredList = (typeof globalBarredList !== 'undefined' && Array.isArray(globalBarredList) && globalBarredList.length > 0)
+      ? globalBarredList
+      : (window.globalBarredList || []);
+    const clusterFn = (typeof getGuestCluster === 'function')
+      ? getGuestCluster
+      : (window.getGuestCluster || function(t, c) { return { canonicalName: (t||'').toUpperCase(), entries: [] }; });
+
+    // 0. Detect if query is targeted at a specific guest (No hardcoded names)
+    let detectedGuest = null;
+    const allUniqueGuests = Array.from(new Set(candidateList.map(e => (e.guestname || '').trim()).filter(Boolean)));
+    // Sort longer names first so fuller names match first
+    allUniqueGuests.sort((a, b) => b.length - a.length);
+
+    // Pure general overall commands should not match guest names
+    const isGeneralQuery = /^(overall\s*total\s*in|total\s*in\s*overall|total\s*in\s*today|today.*total\s*in|how\s*much.*in$|total\s*drop|total\s*cashin|^total\s*in$|overall\s*total\s*out|total\s*out\s*overall|total\s*out\s*today|today.*total\s*out|how\s*much.*out$|total\s*cashout|total\s*paid|^total\s*out$|overall\s*result|gaming\s*result|today\s*result|net\s*result|overall\s*performance|^result$|all\s*entries|how\s*many\s*entries|entries\s*count|all\s*records|^entries$|top\s*guests?|top\s*patrons?|major\s*patrons?|major\s*guests?|biggest\s*players?)$/i.test(qLower);
+
+    if (!isGeneralQuery) {
+      for (const g of allUniqueGuests) {
+        if (g.length >= 2 && qLower.includes(g.toLowerCase())) {
+          detectedGuest = g;
+          break;
+        }
+      }
+
+      if (!detectedGuest) {
+        const cleanWords = qLower
+          .replace(/total\s*in|total\s*out|result|entries|entry|detail|details|info|guest|patron|how\s*much|what\s*is|tell\s*me\s*about|summary\s*of|show|for|of|on|at|\?/g, '')
+          .trim();
+        if (cleanWords.length >= 2) {
+          for (const g of allUniqueGuests) {
+            if (g.toLowerCase().includes(cleanWords) || cleanWords.includes(g.toLowerCase())) {
+              detectedGuest = g;
+              break;
+            }
+          }
+          if (!detectedGuest && !/^(total|result|entries|in|out|drop|paid|today|yesterday)$/i.test(cleanWords)) {
+            detectedGuest = cleanWords.toUpperCase();
+          }
+        }
+      }
+    }
+
+    // 1. Overall Total In (Cashin / Drop)
+    if (!detectedGuest && /overall\s*total\s*in|total\s*in\s*overall|total\s*in\s*today|today.*total\s*in|how\s*much.*in$|total\s*drop|total\s*cashin|^total\s*in$/i.test(qLower)) {
+      let totalIn = 0;
+      let countIn = 0;
+      const guestSums = {};
+
+      dateEntries.forEach(e => {
+        const amt = Number(e.amount) || 0;
+        if (isTotalInType(e.type)) {
+          totalIn += amt;
+          countIn++;
+          const g = (e.guestname || 'UNKNOWN').trim().toUpperCase();
+          guestSums[g] = (guestSums[g] || 0) + amt;
+        }
       });
 
-      if (matchEntries.length > 0) {
-        const { bestName: resolvedName } = findBestFullGuestName(guestCandidate.toUpperCase(), matchEntries);
-        lastMentionedGuest = resolvedName;
+      const topGuests = Object.entries(guestSums)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
 
-        let totalIn = 0;
-        let totalOut = 0;
-        matchEntries.forEach(e => {
-          const amt = Number(e.amount) || 0;
-          const t = (e.type || '').toUpperCase().trim();
-          if (isTotalInType(t)) totalIn += amt;
-          else if (isTotalOutType(t)) totalOut += amt;
-        });
-        const dateResult = totalOut - totalIn;
-
-        const sortedEntries = [...matchEntries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
-        const entriesListHtml = sortedEntries.map(e => {
-          const dt = String(e.datetime || '').trim();
-          const tPart = dt.includes('T') ? dt.split('T')[1] : (dt.includes(' ') ? dt.split(' ')[1] : '');
-          const eTime = tPart ? tPart.slice(0, 5) : '';
-          const s = getEntrySentence(e, resolvedName);
-          return `
-            <div style="display: flex; gap: 10px; align-items: center; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.8rem;">
-              ${eTime ? `<span style="color: #38bdf8; font-family: monospace; font-weight: 800;">${escapeHTML(eTime)}</span>` : ''}
-              <span style="color: #ffffff; font-weight: 700; text-transform: uppercase;">${escapeHTML(s)}</span>
+      return `
+        <div class="ai-assistant-card">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title">💰 OVERALL TOTAL IN (CASHIN / DROP)</span>
+            <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">📅 ${dispDate}</span>
+          </div>
+          <div style="text-align: center; padding: 12px; background: rgba(0, 0, 0, 0.4); border-radius: 8px; border: 1.5px solid rgba(56, 189, 248, 0.4);">
+            <div style="font-size: 0.8rem; color: #94a3b8; font-weight: 800;">TOTAL CASH INFLOW</div>
+            <div style="font-size: 1.8rem; font-weight: 900; color: #38bdf8; font-family: 'JetBrains Mono', monospace; margin: 4px 0;">₹${formatIndianNumber(totalIn)}</div>
+            <div style="font-size: 0.78rem; color: #cbd5e1; font-weight: 700;">${countIn} CASHIN TRANSACTIONS ACROSS ${Object.keys(guestSums).length} GUESTS</div>
+          </div>
+          ${topGuests.length > 0 ? `
+            <div style="font-size: 0.78rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">TOP CASHIN GUESTS ON THIS DATE:</div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              ${topGuests.map(([name, sum], idx) => `
+                <div class="ai-entry-row" style="cursor: pointer;" onclick="window.aiQueryGuest('${escapeHTML(name)}')">
+                  <span style="font-weight: 800; color: #ffffff;">#${idx + 1} ${escapeHTML(name)}</span>
+                  <span style="font-weight: 900; color: #38bdf8;">₹${formatIndianNumber(sum)}</span>
+                </div>
+              `).join('')}
             </div>
-          `;
-        }).join('');
+          ` : '<div style="color: #94a3b8; font-size: 0.82rem; text-align: center;">NO CASHIN ENTRIES RECORDED FOR THIS DATE.</div>'}
+        </div>
+      `;
+    }
 
-        return `
-          <div>
-            <div style="font-size: 0.75rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; padding: 2px 8px; border-radius: 12px; font-weight: 800; text-transform: uppercase; display: inline-block; margin-bottom: 8px;">
-              GUEST REPORT: ${escapeHTML(formatDateDMY(targetDate))}
-            </div>
-            
-            <div class="ai-card-highlight" style="border-left: 4px solid #38bdf8;">
-              <div style="font-size: 1.15rem; font-weight: 900; color: #ffffff; margin-bottom: 6px;">
-                <a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(resolvedName)}" style="color: #60a5fa; text-decoration: underline;">
-                  ${escapeHTML(resolvedName)}
-                </a>
-              </div>
-              
-              <div class="ai-stat-row">
-                <span class="ai-stat-label">TOTAL BUY-IN ON ${escapeHTML(formatDateDMY(targetDate))}:</span>
-                <span class="ai-stat-val" style="color: #f87171; font-size: 1.1rem;">-₹${Number(totalIn).toLocaleString('en-IN')}</span>
-              </div>
-              <div class="ai-stat-row">
-                <span class="ai-stat-label">TOTAL CASHOUT ON ${escapeHTML(formatDateDMY(targetDate))}:</span>
-                <span class="ai-stat-val" style="color: #4ade80;">+₹${Number(totalOut).toLocaleString('en-IN')}</span>
-              </div>
-              <div class="ai-stat-row">
-                <span class="ai-stat-label">RESULT ON ${escapeHTML(formatDateDMY(targetDate))}:</span>
-                <span class="ai-stat-val" style="color: ${dateResult >= 0 ? '#4ade80' : '#f87171'}; font-size: 1.05rem;">
-                  ${dateResult < 0 ? `-₹${Math.abs(dateResult).toLocaleString('en-IN')}` : `₹${Number(dateResult).toLocaleString('en-IN')}`}
-                </span>
-              </div>
-              <div class="ai-stat-row">
-                <span class="ai-stat-label">TRANSACTIONS ON THIS DATE:</span>
-                <span class="ai-stat-val">${matchEntries.length}</span>
-              </div>
-            </div>
+    // 2. Overall Total Out (Cashout / Paid)
+    if (!detectedGuest && /overall\s*total\s*out|total\s*out\s*overall|total\s*out\s*today|today.*total\s*out|how\s*much.*out$|total\s*cashout|total\s*paid|^total\s*out$/i.test(qLower)) {
+      let totalOut = 0;
+      let countOut = 0;
+      const guestSums = {};
 
-            <div style="margin-top: 10px;">
-              <div style="font-size: 0.74rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">
-                TRANSACTIONS ON ${escapeHTML(formatDateDMY(targetDate))} FOR ${escapeHTML(resolvedName)}:
-              </div>
-              <div style="background: rgba(0, 0, 0, 0.35); border-radius: 8px; padding: 6px 10px; max-height: 180px; overflow-y: auto;">
-                ${entriesListHtml}
-              </div>
+      dateEntries.forEach(e => {
+        const amt = Number(e.amount) || 0;
+        if (isTotalOutType(e.type)) {
+          totalOut += amt;
+          countOut++;
+          const g = (e.guestname || 'UNKNOWN').trim().toUpperCase();
+          guestSums[g] = (guestSums[g] || 0) + amt;
+        }
+      });
+
+      const topGuests = Object.entries(guestSums)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+
+      return `
+        <div class="ai-assistant-card">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title">💸 OVERALL TOTAL OUT (CASHOUT / PAID)</span>
+            <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">📅 ${dispDate}</span>
+          </div>
+          <div style="text-align: center; padding: 12px; background: rgba(0, 0, 0, 0.4); border-radius: 8px; border: 1.5px solid rgba(239, 68, 68, 0.4);">
+            <div style="font-size: 0.8rem; color: #94a3b8; font-weight: 800;">TOTAL CASHOUT OUTFLOW</div>
+            <div style="font-size: 1.8rem; font-weight: 900; color: #f87171; font-family: 'JetBrains Mono', monospace; margin: 4px 0;">₹${formatIndianNumber(totalOut)}</div>
+            <div style="font-size: 0.78rem; color: #cbd5e1; font-weight: 700;">${countOut} CASHOUT TRANSACTIONS ACROSS ${Object.keys(guestSums).length} GUESTS</div>
+          </div>
+          ${topGuests.length > 0 ? `
+            <div style="font-size: 0.78rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">TOP CASHOUT GUESTS ON THIS DATE:</div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              ${topGuests.map(([name, sum], idx) => `
+                <div class="ai-entry-row" style="cursor: pointer;" onclick="window.aiQueryGuest('${escapeHTML(name)}')">
+                  <span style="font-weight: 800; color: #ffffff;">#${idx + 1} ${escapeHTML(name)}</span>
+                  <span style="font-weight: 900; color: #f87171;">₹${formatIndianNumber(sum)}</span>
+                </div>
+              `).join('')}
+            </div>
+          ` : '<div style="color: #94a3b8; font-size: 0.82rem; text-align: center;">NO CASHOUT ENTRIES RECORDED FOR THIS DATE.</div>'}
+        </div>
+      `;
+    }
+
+    // 3. Overall Result & Performance
+    if (!detectedGuest && /overall\s*result|gaming\s*result|today\s*result|net\s*result|overall\s*performance|^result$|how\s*did\s*we\s*do|win\s*or\s*loss|pnl|profit/i.test(qLower)) {
+      let totalIn = 0;
+      let totalOut = 0;
+      dateEntries.forEach(e => {
+        const amt = Number(e.amount) || 0;
+        if (isTotalInType(e.type)) totalIn += amt;
+        else if (isTotalOutType(e.type)) totalOut += amt;
+      });
+
+      const netResult = totalOut - totalIn;
+      const isNegative = netResult < 0;
+      // USER RULE: IF NEGATIVE THAN RED, NO COLOUR FOR OTHER (#FFFFFF)
+      const resColor = isNegative ? '#FF0000' : '#FFFFFF';
+      const resFormatted = formatIndianNumber(Math.abs(netResult));
+
+      return `
+        <div class="ai-assistant-card">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title">⚖️ OVERALL GAMING RESULT & PERFORMANCE</span>
+            <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">📅 ${dispDate}</span>
+          </div>
+          <div class="ai-stat-grid">
+            <div class="ai-stat-box">
+              <span class="ai-stat-label">TOTAL IN</span>
+              <span class="ai-stat-val" style="color: #38bdf8;">₹${formatIndianNumber(totalIn)}</span>
+            </div>
+            <div class="ai-stat-box">
+              <span class="ai-stat-label">TOTAL OUT</span>
+              <span class="ai-stat-val" style="color: #f87171;">₹${formatIndianNumber(totalOut)}</span>
+            </div>
+            <div class="ai-stat-box" style="border-color: ${isNegative ? '#FF0000' : 'rgba(255,255,255,0.1)'};">
+              <span class="ai-stat-label">RESULT</span>
+              <span class="ai-stat-val" style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</span>
             </div>
           </div>
-        `;
-      } else {
-        const allGuestEntries = allPool.filter(e => {
-          if (!e) return false;
-          const g = (e.guestname || '').trim().toUpperCase();
-          return areGuestNamesSimilar(g, guestCandidate.toUpperCase()) || g.includes(guestCandidate.toUpperCase());
+          <div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px; font-size: 0.82rem; font-weight: 700; color: #cbd5e1; display: flex; justify-content: space-between;">
+            <span>TOTAL ENTRIES: <strong>${dateEntries.length}</strong></span>
+            <span>NET STATUS: <strong style="color: ${resColor};">${isNegative ? 'CASINO WIN / GUESTS NET DROP' : 'CASINO LOSS / GUESTS NET WIN'}</strong></span>
+          </div>
+        </div>
+      `;
+    }
+
+    // 4. All Entries Summary
+    if (!detectedGuest && /all\s*entries|how\s*many\s*entries|entries\s*count|all\s*records|^entries$/i.test(qLower)) {
+      let totalIn = 0;
+      let totalOut = 0;
+      dateEntries.forEach(e => {
+        const amt = Number(e.amount) || 0;
+        if (isTotalInType(e.type)) totalIn += amt;
+        else if (isTotalOutType(e.type)) totalOut += amt;
+      });
+      const netResult = totalOut - totalIn;
+      const isNegative = netResult < 0;
+      const resColor = isNegative ? '#FF0000' : '#FFFFFF';
+
+      const recent = [...dateEntries].sort((a, b) => new Date(b.datetime) - new Date(a.datetime)).slice(0, 10);
+
+      return `
+        <div class="ai-assistant-card">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title">📋 ALL ENTRIES OVERVIEW</span>
+            <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">📅 ${dispDate}</span>
+          </div>
+          <div class="ai-stat-grid">
+            <div class="ai-stat-box">
+              <span class="ai-stat-label">ENTRIES COUNT</span>
+              <span class="ai-stat-val" style="color: #c084fc;">${dateEntries.length}</span>
+            </div>
+            <div class="ai-stat-box">
+              <span class="ai-stat-label">TOTAL IN</span>
+              <span class="ai-stat-val" style="color: #38bdf8;">₹${formatIndianNumber(totalIn)}</span>
+            </div>
+            <div class="ai-stat-box" style="border-color: ${isNegative ? '#FF0000' : 'rgba(255,255,255,0.1)'};">
+              <span class="ai-stat-label">RESULT</span>
+              <span class="ai-stat-val" style="color: ${resColor}; font-weight: 900;">₹${formatIndianNumber(Math.abs(netResult))}</span>
+            </div>
+          </div>
+          <div style="font-size: 0.78rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">LATEST ENTRIES FOR THIS DATE:</div>
+          <div style="display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto;">
+            ${recent.map(e => {
+              const dt = parseEntryDateTime(e.datetime);
+              const dStr = formatDisplayDate(dt.date || getEntryDate(e) || dispDate);
+              const tStr = dt.time || '00:00';
+              const amtK = formatKCurrency(Number(e.amount) || 0).toUpperCase();
+              const typeStr = (e.type || '').toUpperCase();
+              const guestStr = (e.guestname || 'UNKNOWN').toUpperCase().trim();
+              const isCredit = isTotalInType(typeStr);
+              const typeBorder = isCredit ? '#38bdf8' : '#f87171';
+              const sentence = `${tStr} ${amtK} ${typeStr} ${guestStr}`;
+              return `
+                <div class="ai-entry-row" style="font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.82rem; padding: 7px 12px; border-left: 3.5px solid ${typeBorder}; display: flex; align-items: center; justify-content: space-between;">
+                  <span style="color: #38bdf8; font-weight: 800; min-width: 95px; margin-right: 8px;">${dStr}</span>
+                  <span style="color: #ffffff; font-weight: 700; flex: 1; letter-spacing: 0.3px;">${escapeHTML(sentence)}</span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    // 5. Top Guests / Major Patrons
+    if (!detectedGuest && /top\s*guest|top\s*patron|major\s*patron|major\s*guest|biggest|highest/i.test(qLower)) {
+      const guestGroups = {};
+      dateEntries.forEach(e => {
+        const raw = (e.guestname || '').trim();
+        if (!raw) return;
+        const canonical = clusterFn(raw, dateEntries).canonicalName || raw.toUpperCase();
+        if (!guestGroups[canonical]) guestGroups[canonical] = { in: 0, out: 0, entries: 0 };
+        const amt = Number(e.amount) || 0;
+        if (isTotalInType(e.type)) guestGroups[canonical].in += amt;
+        else if (isTotalOutType(e.type)) guestGroups[canonical].out += amt;
+        guestGroups[canonical].entries++;
+      });
+
+      const ranked = Object.entries(guestGroups)
+        .map(([name, d]) => ({ name, ...d, result: d.out - d.in }))
+        .sort((a, b) => b.in - a.in)
+        .slice(0, 8);
+
+      return `
+        <div class="ai-assistant-card">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title">⭐ TOP MAJOR PATRONS / GUESTS</span>
+            <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">📅 ${dispDate}</span>
+          </div>
+          ${ranked.length > 0 ? `
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              ${ranked.map((g, idx) => {
+                const resColor = g.result < 0 ? '#FF0000' : '#FFFFFF';
+                return `
+                  <div class="ai-entry-row" style="cursor: pointer;" onclick="window.aiQueryGuest('${escapeHTML(g.name)}')">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span style="color: #fbbf24; font-weight: 900;">#${idx + 1}</span>
+                      <span style="font-weight: 800; color: #ffffff;">${escapeHTML(g.name)}</span>
+                      <span style="font-size: 0.7rem; color: #94a3b8;">(${g.entries} entries)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <span style="color: #38bdf8; font-weight: 900;">IN: ₹${formatIndianNumber(g.in)}</span>
+                      <span style="color: ${resColor}; font-weight: 900;">RES: ₹${formatIndianNumber(Math.abs(g.result))}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : '<div style="color: #94a3b8; font-size: 0.82rem; text-align: center;">NO PATRON ACTIVITY RECORDED FOR THIS DATE.</div>'}
+        </div>
+      `;
+    }
+
+    // 6. Barred Guests Check
+    if (/barred|banned|blacklist/i.test(qLower)) {
+      const words = qLower.replace(/is|guest|patron|barred|banned|blacklisted|check|\?/g, '').trim();
+      if (words.length > 1) {
+        const found = barredList.filter(b => {
+          const bName = String(b.guestname || b.Name || b['Guest Name'] || b.name || '').toLowerCase();
+          return bName.includes(words) || words.includes(bName);
         });
 
-        if (allGuestEntries.length > 0) {
-          const { bestName: resolvedName } = findBestFullGuestName(guestCandidate.toUpperCase(), allGuestEntries);
-          allGuestEntries.sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
-          const latestVisit = allGuestEntries[0].businessDate ? formatDateDMY(allGuestEntries[0].businessDate) : 'N/A';
+        if (found.length > 0) {
+          const bg = found[0];
           return `
-            <div>
-              <div style="font-size: 0.75rem; background: rgba(239, 68, 68, 0.2); color: #f87171; padding: 2px 8px; border-radius: 12px; font-weight: 800; text-transform: uppercase; display: inline-block; margin-bottom: 8px;">
-                NO ENTRIES ON ${escapeHTML(formatDateDMY(targetDate))}
+            <div class="ai-assistant-card" style="border-color: #ef4444;">
+              <div class="ai-card-badge-header">
+                <span class="ai-card-title" style="color: #ef4444;">🚨 ALERT: BARRED GUEST FOUND</span>
+                <span style="font-size: 0.72rem; background: #ef4444; color: #fff; font-weight: 900; padding: 2px 8px; border-radius: 4px;">BARRED</span>
               </div>
-              <div class="ai-card-highlight" style="border-left: 4px solid #f87171;">
-                <div style="font-size: 1.15rem; font-weight: 900; color: #ffffff; margin-bottom: 6px;">
-                  <a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(resolvedName)}" style="color: #60a5fa; text-decoration: underline;">
-                    ${escapeHTML(resolvedName)}
-                  </a>
-                </div>
-                <div style="font-size: 0.88rem; color: #cbd5e1; margin-bottom: 8px;">
-                  No transactions recorded for <strong>${escapeHTML(resolvedName)}</strong> on <strong>${escapeHTML(formatDateDMY(targetDate))}</strong>.
-                </div>
-                <div class="ai-stat-row">
-                  <span class="ai-stat-label">MOST RECENT VISIT:</span>
-                  <span class="ai-stat-val" style="color: #38bdf8;">${escapeHTML(latestVisit)}</span>
-                </div>
-                <div class="ai-stat-row">
-                  <span class="ai-stat-label">TOTAL SESSIONS IN HISTORY:</span>
-                  <span class="ai-stat-val">${new Set(allGuestEntries.map(e => e.businessDate).filter(Boolean)).size} Days</span>
-                </div>
+              <div style="background: rgba(239, 68, 68, 0.15); border: 1.2px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 12px;">
+                <div style="font-size: 1.1rem; font-weight: 900; color: #ffffff; margin-bottom: 6px;">${escapeHTML((bg.guestname || bg.Name || words).toUpperCase())}</div>
+                <div style="font-size: 0.84rem; color: #fca5a5; font-weight: 700; margin-bottom: 4px;">REASON: <span style="color: #ef4444; font-weight: 900;">${escapeHTML(String(bg.reason || bg.Reason || 'BARRED').toUpperCase())}</span></div>
+                <div style="font-size: 0.82rem; color: #cbd5e1; font-weight: 600;">DATE: ${escapeHTML(String(bg.date || bg.Date || '-'))}</div>
+                <div style="font-size: 0.82rem; color: #cbd5e1; font-weight: 600;">INSTRUCTION: ${escapeHTML(String(bg.inst || bg.Inst || 'MANAGEMENT').toUpperCase())}</div>
+                <div style="font-size: 0.82rem; color: #cbd5e1; font-weight: 600;">PROPERTY: ${escapeHTML(String(bg.property || bg.Property || 'CADILLAC').toUpperCase())}</div>
               </div>
             </div>
           `;
         } else {
           return `
-            <div style="color: #f87171; font-weight: 700;">
-              No records found for <strong>"${escapeHTML(guestCandidate.toUpperCase())}"</strong> on ${escapeHTML(formatDateDMY(targetDate))} or any other date.
+            <div class="ai-assistant-card">
+              <div class="ai-card-badge-header">
+                <span class="ai-card-title" style="color: #34d399;">✅ GUEST IS NOT BARRED</span>
+              </div>
+              <p style="color: #cbd5e1; font-size: 0.88rem; margin: 0; font-weight: 700;">
+                NO BARRED RECORDS FOUND FOR <span style="color: #38bdf8;">"${escapeHTML(words.toUpperCase())}"</span> IN THE SURVEILLANCE BARRED DIRECTORY.
+              </p>
             </div>
           `;
         }
       }
-    }
-
-    // 2. INTENT: PURE DATE SUMMARY (e.g. user asks "03-11-2026", "date 03-11-2026", "summary 03-11-2026", "total on 03-11-2026")
-    const isTopBuyerIntent = /highest.*\b(buy|buying|cashin|in|amou?nt?)\b/i.test(cleanQ) ||
-                             /top.*\b(buyer|buying|cashin)\b/i.test(cleanQ) ||
-                             /\bwho.*highest\b/i.test(cleanQ) ||
-                             /\bwho.*max\b/i.test(cleanQ);
-    const isTopCashoutIntent = /highest.*\b(cashout|out|payout|win|winner)\b/i.test(cleanQ) ||
-                               /top.*\b(cashout|payout|winner)\b/i.test(cleanQ);
-
-    if (specificDate && !guestCandidate && !isTopBuyerIntent && !isTopCashoutIntent) {
-      if (targetDateEntries.length === 0) {
-        return `
-          <div style="font-weight: 700; color: #f87171;">
-            No transactions found for date <strong>${escapeHTML(formatDateDMY(targetDate))}</strong>.
-          </div>
-        `;
-      }
-      let totalIn = 0;
-      let totalOut = 0;
-      targetDateEntries.forEach(e => {
-        const amt = Number(e.amount) || 0;
-        const t = (e.type || '').toUpperCase().trim();
-        if (isTotalInType(t)) totalIn += amt;
-        else if (isTotalOutType(t)) totalOut += amt;
-      });
-      const result = totalOut - totalIn;
-
-      const clusters = clusterGuestEntries(targetDateEntries);
-      const buyers = clusters.map(g => {
-        let inAmt = 0;
-        g.entries.forEach(e => {
-          if (isTotalInType((e.type || '').toUpperCase().trim())) inAmt += Number(e.amount) || 0;
-        });
-        return { name: g.name, totalIn: inAmt };
-      }).filter(g => g.totalIn > 0).sort((a,b) => b.totalIn - a.totalIn);
-
-      const topBuyerHtml = buyers.length > 0 ? `
-        <div class="ai-stat-row">
-          <span class="ai-stat-label">TOP BUYER ON THIS DATE:</span>
-          <span class="ai-stat-val" style="color: #38bdf8;">
-            <a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(buyers[0].name)}" style="color: #38bdf8;">
-              ${escapeHTML(buyers[0].name)}
-            </a> (₹${Number(buyers[0].totalIn).toLocaleString('en-IN')})
-          </span>
-        </div>
-      ` : '';
 
       return `
-        <div>
-          <div style="font-size: 0.75rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; padding: 2px 8px; border-radius: 12px; font-weight: 800; text-transform: uppercase; display: inline-block; margin-bottom: 8px;">
-            CAGE SUMMARY: ${escapeHTML(formatDateDMY(targetDate))}
+        <div class="ai-assistant-card">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title" style="color: #ef4444;">🚫 BARRED GUESTS DIRECTORY</span>
+            <span style="font-size: 0.72rem; color: #ef4444; font-weight: 900; background: rgba(239, 68, 68, 0.15); padding: 2px 8px; border-radius: 4px;">${barredList.length} TOTAL BARRED</span>
           </div>
-          <div class="ai-card-highlight">
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">TOTAL IN (DROP):</span>
-              <span class="ai-stat-val" style="color: #f87171; font-size: 1.1rem;">-₹${Number(totalIn).toLocaleString('en-IN')}</span>
-            </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">TOTAL OUT (PAYOUT):</span>
-              <span class="ai-stat-val" style="color: #4ade80; font-size: 1.1rem;">+₹${Number(totalOut).toLocaleString('en-IN')}</span>
-            </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">NET RESULT:</span>
-              <span class="ai-stat-val" style="color: ${(totalOut - totalIn) >= 0 ? '#4ade80' : '#f87171'}; font-size: 1.15rem;">
-                ${(totalOut - totalIn) < 0 ? `-₹${Math.abs(totalOut - totalIn).toLocaleString('en-IN')}` : `₹${Number(totalOut - totalIn).toLocaleString('en-IN')}`}
-              </span>
-            </div>
-            ${topBuyerHtml}
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">TOTAL TRANSACTIONS:</span>
-              <span class="ai-stat-val">${targetDateEntries.length}</span>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    // 3. INTENT: HIGHEST BUYING (TODAY OR ON SPECIFIC DATE)
-    if (
-      /highest.*\b(buy|buying|cashin|in|amou?nt?)\b/i.test(cleanQ) ||
-      /top.*\b(buyer|buying|cashin)\b/i.test(cleanQ) ||
-      /\bwho.*highest\b/i.test(cleanQ) ||
-      /\bwho.*max\b/i.test(cleanQ)
-    ) {
-      if (targetDateEntries.length === 0) {
-        return `
-          <div style="font-weight: 700; color: #f87171;">
-            No entries found for ${escapeHTML(dateBadgeText)}.
-          </div>
-        `;
-      }
-
-      const guestClusters = clusterGuestEntries(targetDateEntries);
-      const rankedGuests = guestClusters.map(g => {
-        let totalIn = 0;
-        let totalOut = 0;
-        g.entries.forEach(e => {
-          const amt = Number(e.amount) || 0;
-          const t = (e.type || '').toUpperCase().trim();
-          if (isTotalInType(t)) totalIn += amt;
-          else if (isTotalOutType(t)) totalOut += amt;
-        });
-        return {
-          name: g.name,
-          totalIn,
-          totalOut,
-          result: totalOut - totalIn,
-          entries: g.entries
-        };
-      }).filter(g => g.totalIn > 0);
-
-      if (rankedGuests.length === 0) {
-        return `
-          <div style="font-weight: 700; color: #f87171;">
-            No Buy-In (Cash In / Key In / Issue) entries recorded on ${escapeHTML(dateBadgeText)}.
-          </div>
-        `;
-      }
-
-      rankedGuests.sort((a, b) => b.totalIn - a.totalIn);
-      const top = rankedGuests[0];
-      lastMentionedGuest = top.name;
-
-      const sortedEntries = [...top.entries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
-
-      let entriesListHtml = sortedEntries.map(e => {
-        const dt = String(e.datetime || '').trim();
-        const tPart = dt.includes('T') ? dt.split('T')[1] : (dt.includes(' ') ? dt.split(' ')[1] : '');
-        const eTime = tPart ? tPart.slice(0, 5) : '';
-        const s = getEntrySentence(e, top.name);
-        return `
-          <div style="display: flex; gap: 10px; align-items: center; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.8rem;">
-            ${eTime ? `<span style="color: #38bdf8; font-family: monospace; font-weight: 800;">${escapeHTML(eTime)}</span>` : ''}
-            <span style="color: #ffffff; font-weight: 700; text-transform: uppercase;">${escapeHTML(s)}</span>
-          </div>
-        `;
-      }).join('');
-
-      let runnersUpHtml = '';
-      if (rankedGuests.length > 1) {
-        runnersUpHtml = `
-          <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.15);">
-            <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; margin-bottom: 6px;">OTHER TOP BUYERS ON ${escapeHTML(formatDateDMY(targetDate))}:</div>
-            ${rankedGuests.slice(1, 4).map((g, idx) => `
-              <div style="display: flex; justify-content: space-between; font-size: 0.78rem; padding: 2px 0;">
-                <span>${idx + 2}. <a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(g.name)}" style="color: #38bdf8; font-weight: 700;">${escapeHTML(g.name)}</a></span>
-                <span style="color: #4ade80; font-weight: 800;">₹${Number(g.totalIn).toLocaleString('en-IN')}</span>
+          <div style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;">
+            ${barredList.slice(0, 10).map(b => `
+              <div class="ai-entry-row">
+                <span style="font-weight: 800; color: #ffffff;">${escapeHTML(String(b.guestname || b.Name || b.name || '-').toUpperCase())}</span>
+                <span style="color: #ef4444; font-weight: 800; font-size: 0.75rem;">${escapeHTML(String(b.reason || b.Reason || 'BARRED').toUpperCase())}</span>
               </div>
             `).join('')}
           </div>
-        `;
-      }
-
-      return `
-        <div>
-          <div style="font-size: 0.75rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; padding: 2px 8px; border-radius: 12px; font-weight: 800; text-transform: uppercase; display: inline-block; margin-bottom: 8px;">
-            HIGHEST BUYER: ${escapeHTML(dateBadgeText)}
-          </div>
-          
-          <div class="ai-card-highlight" style="border-left: 4px solid #38bdf8;">
-            <div style="font-size: 1.15rem; font-weight: 900; color: #ffffff; margin-bottom: 6px;">
-              <a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(top.name)}" style="color: #60a5fa; text-decoration: underline;">
-                ${escapeHTML(top.name)}
-              </a>
-            </div>
-            
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">TOTAL BUY-IN ON THIS DATE:</span>
-              <span class="ai-stat-val" style="color: #f87171; font-size: 1.1rem;">-₹${Number(top.totalIn).toLocaleString('en-IN')}</span>
-            </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">TOTAL CASHOUT ON THIS DATE:</span>
-              <span class="ai-stat-val" style="color: #4ade80;">+₹${Number(top.totalOut).toLocaleString('en-IN')}</span>
-            </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">RESULT ON THIS DATE:</span>
-              <span class="ai-stat-val" style="color: ${(top.totalOut - top.totalIn) >= 0 ? '#4ade80' : '#f87171'}; font-size: 1.05rem;">
-                ${(top.totalOut - top.totalIn) < 0 ? `-₹${Math.abs(top.totalOut - top.totalIn).toLocaleString('en-IN')}` : `₹${Number(top.totalOut - top.totalIn).toLocaleString('en-IN')}`}
-              </span>
-            </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">TOTAL TRANSACTIONS:</span>
-              <span class="ai-stat-val">${top.entries.length}</span>
-            </div>
-          </div>
-
-          <div style="margin-top: 10px;">
-            <div style="font-size: 0.74rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">
-              TRANSACTIONS ON ${escapeHTML(formatDateDMY(targetDate))} FOR ${escapeHTML(top.name)}:
-            </div>
-            <div style="background: rgba(0, 0, 0, 0.35); border-radius: 8px; padding: 6px 10px; max-height: 180px; overflow-y: auto;">
-              ${entriesListHtml}
-            </div>
-          </div>
-
-          ${runnersUpHtml}
         </div>
       `;
     }
 
-    // 4. INTENT: HIGHEST CASHOUT (TODAY OR ON SPECIFIC DATE)
-    if (
-      /highest.*\b(cashout|out|payout|win|winner)\b/i.test(cleanQ) ||
-      /top.*\b(cashout|payout|winner)\b/i.test(cleanQ)
-    ) {
-      if (targetDateEntries.length === 0) {
-        return `<div style="font-weight:700;color:#f87171;">No entries found for ${escapeHTML(dateBadgeText)}.</div>`;
-      }
-      const guestClusters = clusterGuestEntries(targetDateEntries);
-      const rankedGuests = guestClusters.map(g => {
-        let totalOut = 0;
-        let totalIn = 0;
-        g.entries.forEach(e => {
-          const amt = Number(e.amount) || 0;
-          const t = (e.type || '').toUpperCase().trim();
-          if (isTotalOutType(t)) totalOut += amt;
-          else if (isTotalInType(t)) totalIn += amt;
-        });
-        return { name: g.name, totalIn, totalOut, result: totalOut - totalIn, entries: g.entries };
-      }).filter(g => g.totalOut > 0);
+    // 7. Specific Guest Detail, Total In, Total Out, Result & Entries
+    if (detectedGuest) {
+      const allCluster = clusterFn(detectedGuest, candidateList);
+      const canonicalName = allCluster.canonicalName || detectedGuest.toUpperCase();
+      const allGuestEntries = allCluster.entries || [];
 
-      if (rankedGuests.length === 0) {
-        return `<div style="font-weight:700;color:#f87171;">No Cashout entries recorded on ${escapeHTML(dateBadgeText)}.</div>`;
-      }
-
-      rankedGuests.sort((a, b) => b.totalOut - a.totalOut);
-      const top = rankedGuests[0];
-      lastMentionedGuest = top.name;
-
-      const sortedEntries = [...top.entries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
-      let entriesListHtml = sortedEntries.map(e => {
-        const dt = String(e.datetime || '').trim();
-        const tPart = dt.includes('T') ? dt.split('T')[1] : (dt.includes(' ') ? dt.split(' ')[1] : '');
-        const eTime = tPart ? tPart.slice(0, 5) : '';
-        const s = getEntrySentence(e, top.name);
+      if (allGuestEntries.length === 0) {
         return `
-          <div style="display: flex; gap: 10px; align-items: center; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.8rem;">
-            ${eTime ? `<span style="color: #38bdf8; font-family: monospace; font-weight: 800;">${escapeHTML(eTime)}</span>` : ''}
-            <span style="color: #ffffff; font-weight: 700; text-transform: uppercase;">${escapeHTML(s)}</span>
-          </div>
-        `;
-      }).join('');
-
-      return `
-        <div>
-          <div style="font-size: 0.75rem; background: rgba(239, 68, 68, 0.2); color: #f87171; padding: 2px 8px; border-radius: 12px; font-weight: 800; text-transform: uppercase; display: inline-block; margin-bottom: 8px;">
-            HIGHEST CASHOUT: ${escapeHTML(dateBadgeText)}
-          </div>
-          <div class="ai-card-highlight" style="border-left: 4px solid #f87171;">
-            <div style="font-size: 1.15rem; font-weight: 900; color: #ffffff; margin-bottom: 6px;">
-              <a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(top.name)}" style="color: #60a5fa; text-decoration: underline;">
-                ${escapeHTML(top.name)}
-              </a>
+          <div class="ai-assistant-card">
+            <div class="ai-card-badge-header">
+              <span class="ai-card-title">👤 GUEST: ${escapeHTML(canonicalName)}</span>
+              <span style="font-size: 0.72rem; color: #ef4444; font-weight: 800; background: rgba(239, 68, 68, 0.15); padding: 2px 8px; border-radius: 4px;">NO RECORDS</span>
             </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">TOTAL CASHOUT ON THIS DATE:</span>
-              <span class="ai-stat-val" style="color: #4ade80; font-size: 1.1rem;">+₹${Number(top.totalOut).toLocaleString('en-IN')}</span>
-            </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">TOTAL BUY-IN ON THIS DATE:</span>
-              <span class="ai-stat-val" style="color: #f87171;">-₹${Number(top.totalIn).toLocaleString('en-IN')}</span>
-            </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">RESULT ON THIS DATE:</span>
-              <span class="ai-stat-val" style="color: ${(top.totalOut - top.totalIn) >= 0 ? '#4ade80' : '#f87171'}; font-size: 1.05rem;">
-                ${(top.totalOut - top.totalIn) < 0 ? `-₹${Math.abs(top.totalOut - top.totalIn).toLocaleString('en-IN')}` : `₹${Number(top.totalOut - top.totalIn).toLocaleString('en-IN')}`}
-              </span>
-            </div>
-          </div>
-          <div style="margin-top: 10px;">
-            <div style="font-size: 0.74rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">TRANSACTIONS ON ${escapeHTML(formatDateDMY(targetDate))} FOR ${escapeHTML(top.name)}:</div>
-            <div style="background: rgba(0, 0, 0, 0.35); border-radius: 8px; padding: 6px 10px; max-height: 180px; overflow-y: auto;">
-              ${entriesListHtml}
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    // 5. INTENT: WHEN DID GUEST LAST VISIT?
-    if (
-      /when.*(last.*visit|visit|came)/i.test(cleanQ) ||
-      /last.*visit/i.test(cleanQ) ||
-      /last.*seen/i.test(cleanQ)
-    ) {
-      let targetName = cleanQ
-        .replace(/\b(when|did|he|she|last|visited|visit|came|come|of|the|guest|perticullar|particular|check|tell|me|show|what|was|date|time|day|is)\b/gi, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      if (!targetName && lastMentionedGuest) targetName = lastMentionedGuest;
-
-      if (!targetName) {
-        return `
-          <div>
-            <div style="font-weight: 700; color: #38bdf8; margin-bottom: 4px;">Which guest would you like to check?</div>
-            <div style="font-size: 0.8rem; color: #94a3b8;">Try asking: <em>"When did [Guest Name] last visit?"</em>.</div>
+            <p style="color: #cbd5e1; font-size: 0.88rem; margin: 0; font-weight: 700;">
+              NO TRANSACTION RECORDS FOUND FOR GUEST "${escapeHTML(canonicalName)}" IN THE SURVEILLANCE DATABASE.
+            </p>
           </div>
         `;
       }
 
-      const matchEntries = allPool.filter(e => {
-        if (!e) return false;
-        const g = (e.guestname || '').trim().toUpperCase();
-        return areGuestNamesSimilar(g, targetName.toUpperCase()) || g.includes(targetName.toUpperCase());
-      });
-
-      if (matchEntries.length === 0) {
-        return `
-          <div style="color: #f87171; font-weight: 700;">
-            No visit records found for <strong>"${escapeHTML(targetName.toUpperCase())}"</strong> across all surveillance history.
-          </div>
-        `;
-      }
-
-      const { bestName: resolvedName } = findBestFullGuestName(targetName.toUpperCase(), matchEntries);
-      lastMentionedGuest = resolvedName;
-
-      matchEntries.sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
-      const latest = matchEntries[0];
-      const latestDt = latest.datetime ? formatDateTimeDMY(latest.datetime) : 'N/A';
-      const latestBus = latest.businessDate ? formatDateDMY(latest.businessDate) : 'N/A';
-      const recentSentence = getEntrySentence(latest, resolvedName);
-      const uniqueDays = new Set(matchEntries.map(e => e.businessDate || (e.datetime ? getBusinessDate(e.datetime) : '')).filter(Boolean));
-
-      return `
-        <div>
-          <div style="font-size: 0.74rem; background: rgba(168, 85, 247, 0.2); color: #c084fc; padding: 2px 8px; border-radius: 12px; font-weight: 800; text-transform: uppercase; display: inline-block; margin-bottom: 8px;">
-            GUEST LAST VISIT RECORD
-          </div>
-          <div class="ai-card-highlight" style="border-left: 4px solid #c084fc;">
-            <div style="font-size: 1.15rem; font-weight: 900; color: #ffffff; margin-bottom: 6px;">
-              <a href="javascript:void(0)" class="guest-hyperlink" data-guest="${escapeHTML(resolvedName)}" style="color: #a78bfa; text-decoration: underline;">
-                ${escapeHTML(resolvedName)}
-              </a>
-            </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">LAST VISITED:</span>
-              <span class="ai-stat-val" style="color: #38bdf8;">${escapeHTML(latestDt)}</span>
-            </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">GAMING DAY:</span>
-              <span class="ai-stat-val">${escapeHTML(latestBus)}</span>
-            </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">TOTAL SESSIONS VISITED:</span>
-              <span class="ai-stat-val">${uniqueDays.size} Days</span>
-            </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">TOTAL TRANSACTIONS:</span>
-              <span class="ai-stat-val">${matchEntries.length} Transactions</span>
-            </div>
-          </div>
-          <div style="margin-top: 8px; font-size: 0.8rem; background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 8px;">
-            <div style="color: #94a3b8; font-weight: 700; font-size: 0.72rem; text-transform: uppercase;">MOST RECENT TRANSACTION:</div>
-            <div style="color: #ffffff; font-weight: 800; margin-top: 3px;">${escapeHTML(recentSentence.toUpperCase())}</div>
-          </div>
-        </div>
-      `;
-    }
-
-    // 6. INTENT: GUEST NAME TYPED OR ASKING ABOUT GUEST (USER JUST NEED TO TYPE GUEST NAME)
-    // "IF USER TYPE GUEST NAME FIRST SHOW TODAY HISTORY AND LAST DATE WISE TOTAL IN TOTAL OUT AND RESULT ON THAT DAY"
-    const guestSearchClean = (guestCandidate || cleanQ)
-      .replace(/\b(guest|profile|check|search|find|show|details|info|about|for|who is|who|overall|total|lifetime|buying|buy|in|out|cashin|cashout|result|history|record|transactions|entries|tell|me|what|did|has|perticullar|particular|give)\b/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    const candidateToSearch = (guestSearchClean || guestCandidate || cleanQ).toUpperCase();
-
-    if (candidateToSearch && candidateToSearch.length >= 2) {
-      const matchEntries = allPool.filter(e => {
-        if (!e) return false;
-        const g = (e.guestname || '').trim().toUpperCase();
-        return areGuestNamesSimilar(g, candidateToSearch) || g.includes(candidateToSearch) || candidateToSearch.includes(g);
-      });
-
-      if (matchEntries.length > 0) {
-        const { bestName: resolvedName } = findBestFullGuestName(candidateToSearch, matchEntries);
-        // Find all historical entries for this resolved name
-        const allGuestEntries = allPool.filter(e => {
-          const g = (e.guestname || '').trim().toUpperCase();
-          return areGuestNamesSimilar(g, resolvedName.toUpperCase()) || g === resolvedName.toUpperCase();
-        });
-        return buildGuestDetailReport(resolvedName, allGuestEntries, activeDate);
-      }
-    }
-
-    // 7. INTENT: TODAY TOTALS / CAGE SUMMARY (If no specific date)
-    if (/today.*(total|summary|collection|drop|result)|total.*(in|out|result).*today|drop/i.test(cleanQ)) {
+      // 1. Overall Totals (Across all dates)
       let totalIn = 0;
       let totalOut = 0;
-      targetDateEntries.forEach(e => {
+      allGuestEntries.forEach(e => {
         const amt = Number(e.amount) || 0;
-        const t = (e.type || '').toUpperCase().trim();
-        if (isTotalInType(t)) totalIn += amt;
-        else if (isTotalOutType(t)) totalOut += amt;
+        if (isTotalInType(e.type)) totalIn += amt;
+        else if (isTotalOutType(e.type)) totalOut += amt;
       });
-      const result = totalOut - totalIn;
+
+      const netResult = totalOut - totalIn;
+      const isNegative = netResult < 0;
+      // USER RULE: IF NEGATIVE THAN RED, NO COLOUR FOR OTHER (#FFFFFF)
+      const resColor = isNegative ? '#FF0000' : '#FFFFFF';
+      const resFormatted = formatIndianNumber(Math.abs(netResult));
+
+      // 2. Barred Status Check
+      const isBarred = barredList.some(b => {
+        const bName = String(b.guestname || b.Name || b.name || '').toLowerCase();
+        return bName && canonicalName.toLowerCase().includes(bName);
+      });
+
+      const statusBadge = isBarred
+        ? '<span style="background: #ef4444; color: #fff; font-size: 0.72rem; font-weight: 900; padding: 2px 8px; border-radius: 4px;">🚨 BARRED</span>'
+        : (totalIn >= 1000000
+            ? '<span style="background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.4); font-size: 0.72rem; font-weight: 900; padding: 2px 8px; border-radius: 4px;">⭐ MAJOR PATRON</span>'
+            : '<span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 4px;">PATRON</span>');
+
+      // 3. First Entry Date & Last Entry Date
+      const sortedChronological = [...allGuestEntries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+      const firstEntry = sortedChronological[0];
+      const lastEntry = sortedChronological[sortedChronological.length - 1];
+
+      function formatFullDateAndTime(dtStr) {
+        if (!dtStr) return '—';
+        const parsed = parseEntryDateTime(dtStr);
+        const d = formatDisplayDate(parsed.date);
+        const t = parsed.time || '00:00';
+        return `${d} ${t}`;
+      }
+
+      const firstEntryStr = formatFullDateAndTime(firstEntry.datetime);
+      const lastEntryStr = formatFullDateAndTime(lastEntry.datetime);
+
+      // 4. Date-Wise Total In, Total Out, Result Breakdown
+      const dateGroups = {};
+      allGuestEntries.forEach(e => {
+        const d = getEntryDate(e) || parseEntryDateTime(e.datetime).date;
+        if (!d) return;
+        if (!dateGroups[d]) dateGroups[d] = { in: 0, out: 0, entries: [] };
+        const amt = Number(e.amount) || 0;
+        if (isTotalInType(e.type)) dateGroups[d].in += amt;
+        else if (isTotalOutType(e.type)) dateGroups[d].out += amt;
+        dateGroups[d].entries.push(e);
+      });
+
+      const sortedDates = Object.keys(dateGroups).sort((a, b) => b.localeCompare(a));
+
+      // 5. Entries in Sentence Format with Date (Sorted newest first, e.g. "07-11-2026 20:00 50K CASHIN MANTHAN")
+      const sortedNewestFirst = [...allGuestEntries].sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
 
       return `
-        <div>
-          <div style="font-size: 0.75rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; padding: 2px 8px; border-radius: 12px; font-weight: 800; text-transform: uppercase; display: inline-block; margin-bottom: 8px;">
-            CAGE SUMMARY: ${escapeHTML(dateBadgeText)}
+        <div class="ai-assistant-card">
+          <!-- Card Header with Guest Name & Badges -->
+          <div class="ai-card-badge-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="ai-card-title">${escapeHTML(canonicalName)}</span>
+              ${statusBadge}
+            </div>
+            <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">
+              ${allGuestEntries.length} ${allGuestEntries.length === 1 ? 'TRANSACTION' : 'TRANSACTIONS'}
+            </span>
           </div>
-          <div class="ai-card-highlight">
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">TOTAL IN (DROP):</span>
-              <span class="ai-stat-val" style="color: #f87171; font-size: 1.1rem;">-₹${Number(totalIn).toLocaleString('en-IN')}</span>
+
+          <!-- Top Overview: TOTAL IN | TOTAL OUT | RESULT (No colour for other, Red if negative) -->
+          <div class="ai-stat-grid">
+            <div class="ai-stat-box">
+              <span class="ai-stat-label">TOTAL IN</span>
+              <span class="ai-stat-val" style="color: #38bdf8;">₹${formatIndianNumber(totalIn)}</span>
             </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">TOTAL OUT (PAYOUT):</span>
-              <span class="ai-stat-val" style="color: #4ade80; font-size: 1.1rem;">+₹${Number(totalOut).toLocaleString('en-IN')}</span>
+            <div class="ai-stat-box">
+              <span class="ai-stat-label">TOTAL OUT</span>
+              <span class="ai-stat-val" style="color: #f87171;">₹${formatIndianNumber(totalOut)}</span>
             </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">NET RESULT:</span>
-              <span class="ai-stat-val" style="color: ${(totalOut - totalIn) >= 0 ? '#4ade80' : '#f87171'}; font-size: 1.15rem;">
-                ${(totalOut - totalIn) < 0 ? `-₹${Math.abs(totalOut - totalIn).toLocaleString('en-IN')}` : `₹${Number(totalOut - totalIn).toLocaleString('en-IN')}`}
+            <div class="ai-stat-box" style="border-color: ${isNegative ? '#FF0000' : 'rgba(255,255,255,0.1)'};">
+              <span class="ai-stat-label">RESULT</span>
+              <span class="ai-stat-val" style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</span>
+            </div>
+          </div>
+
+          <!-- FIRST ENTRY DATE & LAST ENTRY DATE -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 14px;">
+            <div>
+              <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">FIRST ENTRY DATE</div>
+              <div style="font-size: 0.88rem; color: #ffffff; font-weight: 900; font-family: 'JetBrains Mono', Consolas, monospace; margin-top: 3px;">
+                ${firstEntryStr}
+              </div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">LAST ENTRY</div>
+              <div style="font-size: 0.88rem; color: #ffffff; font-weight: 900; font-family: 'JetBrains Mono', Consolas, monospace; margin-top: 3px;">
+                ${lastEntryStr}
+              </div>
+            </div>
+          </div>
+
+          <!-- DATE WISE TOTAL IN/OUT -->
+          <div style="margin-top: 6px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; margin-bottom: 4px; padding: 0 8px; letter-spacing: 0.5px;">
+              <span style="min-width: 95px;">DATE</span>
+              <span style="min-width: 80px; text-align: center;">TOTAL IN</span>
+              <span style="min-width: 80px; text-align: center;">TOTAL OUT</span>
+              <span style="min-width: 80px; text-align: right;">RESULT</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px; max-height: 140px; overflow-y: auto;">
+              ${sortedDates.map(d => {
+                const dayData = dateGroups[d];
+                const dayNet = dayData.out - dayData.in;
+                const dayIsNeg = dayNet < 0;
+                // USER RULE: IF NEGATIVE THAN RED, NO COLOUR FOR OTHER (#FFFFFF)
+                const dayResColor = dayIsNeg ? '#FF0000' : '#FFFFFF';
+                return `
+                  <div class="ai-entry-row" style="padding: 7px 12px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.8rem; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #38bdf8; font-weight: 800; min-width: 95px;">${formatDisplayDate(d)}</span>
+                    <span style="color: #cbd5e1; font-weight: 700; min-width: 80px; text-align: center;">₹${formatIndianNumber(dayData.in)}</span>
+                    <span style="color: #cbd5e1; font-weight: 700; min-width: 80px; text-align: center;">₹${formatIndianNumber(dayData.out)}</span>
+                    <span style="color: ${dayResColor}; font-weight: 900; min-width: 80px; text-align: right;">₹${formatIndianNumber(Math.abs(dayNet))}</span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- IN SENTENCE ENTRIES WITH DATE -->
+          <div style="margin-top: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 0.76rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
+                📝 IN SENTENCE ENTRIES WITH DATE (${allGuestEntries.length}):
               </span>
+              <button type="button" class="btn btn-sm btn-primary ai-open-guest-btn" data-guest="${escapeHTML(canonicalName)}" style="padding: 2px 10px; font-size: 0.72rem; font-weight: 800; border-radius: 6px; letter-spacing: 0.5px;">
+                SUMMARY CARD
+              </button>
             </div>
-            <div class="ai-stat-row">
-              <span class="ai-stat-label">TOTAL TRANSACTIONS:</span>
-              <span class="ai-stat-val">${targetDateEntries.length}</span>
+            <div style="display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto;">
+              ${sortedNewestFirst.map(e => {
+                const dt = parseEntryDateTime(e.datetime);
+                const dStr = formatDisplayDate(dt.date || getEntryDate(e) || currentBusinessDateStr || currentBusinessDate);
+                const tStr = dt.time || '00:00';
+                const amtK = formatKCurrency(Number(e.amount) || 0).toUpperCase();
+                const typeStr = (e.type || '').toUpperCase();
+                const guestStr = (e.guestname || canonicalName).toUpperCase().trim();
+                const isCredit = isTotalInType(typeStr);
+                const typeBorder = isCredit ? '#38bdf8' : '#f87171';
+                // Clean sentence format matching user example: "20:00 50K CASHIN MANTHAN"
+                const sentence = `${tStr} ${amtK} ${typeStr} ${guestStr}`;
+                return `
+                  <div class="ai-entry-row" style="font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.82rem; padding: 7px 12px; border-left: 3.5px solid ${typeBorder}; display: flex; align-items: center; justify-content: space-between;">
+                    <span style="color: #38bdf8; font-weight: 800; min-width: 95px; margin-right: 10px;">${dStr}</span>
+                    <span style="color: #ffffff; font-weight: 700; flex: 1; letter-spacing: 0.3px;">${escapeHTML(sentence)}</span>
+                  </div>
+                `;
+              }).join('')}
             </div>
           </div>
         </div>
       `;
     }
 
-    // 8. INTENT: BARRED CHECK
-    if (/barred/i.test(cleanQ)) {
-      const targetName = cleanQ.replace(/is|barred|who|list|the|guest|check/gi, '').trim();
-      const barredList = (typeof globalBarredList !== 'undefined' && Array.isArray(globalBarredList) && globalBarredList.length > 0)
-        ? globalBarredList
-        : ((typeof barredGuests !== 'undefined' && Array.isArray(barredGuests)) ? barredGuests : []);
-      if (!targetName || targetName === 'all' || targetName === 'guests') {
-        const count = barredList.length;
-        return `
-          <div style="text-transform: uppercase;">
-            <div style="font-weight: 800; color: #ef4444; margin-bottom: 4px; text-transform: uppercase;">BARRED GUESTS DATABASE</div>
-            <div style="font-size: 0.85rem; color: #e2e8f0; text-transform: uppercase;">TOTAL CURRENTLY BARRED GUESTS: <strong>${count}</strong>.</div>
-            <div style="font-size: 0.78rem; color: #94a3b8; margin-top: 4px; text-transform: uppercase;">TO CHECK A SPECIFIC GUEST, ASK: <em>"IS [NAME] BARRED?"</em></div>
-          </div>
-        `;
-      }
-
-      const match = barredList.find(b => {
-        const bn = (b.guestname || b.name || '').toLowerCase();
-        return bn.includes(targetName) || targetName.includes(bn);
-      });
-
-      if (match) {
-        return `
-          <div style="border-left: 4px solid #ef4444; padding-left: 10px; text-transform: uppercase;">
-            <div style="color: #ef4444; font-weight: 900; font-size: 1.05rem; text-transform: uppercase;">⚠️ YES, THIS GUEST IS BARRED!</div>
-            <div style="font-weight: 800; font-size: 1.15rem; color: #ffffff; margin: 5px 0; text-transform: uppercase;">${escapeHTML(String(match.guestname || match.name).toUpperCase())}</div>
-            <div style="font-size: 0.85rem; color: #cbd5e1; text-transform: uppercase;">REASON: <strong style="color: #f87171; text-transform: uppercase;">${escapeHTML(String(match.reason || 'NOT SPECIFIED').toUpperCase())}</strong></div>
-            <div style="font-size: 0.85rem; color: #cbd5e1; text-transform: uppercase;">INSTRUCTION: <strong style="text-transform: uppercase;">${escapeHTML(String(match.inst || match.instruction || 'DO NOT ALLOW ENTRY').toUpperCase())}</strong></div>
-          </div>
-        `;
-      } else {
-        return `
-          <div style="color: #4ade80; font-weight: 800; text-transform: uppercase;">
-            ✅ NO BARRED RECORD FOUND FOR "${escapeHTML(targetName.toUpperCase())}". THIS GUEST IS CLEARED.
-          </div>
-        `;
-      }
-    }
-
-    // Fallback help
+    // 8. Default / Fallback Assistance (Zero guest names used as examples)
     return `
-      <div>
-        <div style="font-weight: 700; color: #ffffff; margin-bottom: 6px;">
-          I didn't find an exact match. Here are examples of what you can ask:
+      <div class="ai-assistant-card">
+        <div class="ai-card-badge-header">
+          <span class="ai-card-title">🤖 SURVEILLANCE AI ASSISTANT</span>
+          <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">📅 ${dispDate}</span>
         </div>
-        <ul style="margin: 0; padding-left: 18px; color: #94a3b8; font-size: 0.82rem; line-height: 1.6;">
-          <li><strong style="color: #38bdf8;">Type any guest name</strong> <span style="color:#64748b;">(shows today's history & full date-wise record)</span></li>
-          <li><strong style="color: #38bdf8;">"Who is the highest buying today?"</strong></li>
-          <li><strong style="color: #38bdf8;">"Who had the highest cashout today?"</strong></li>
-          <li><strong style="color: #38bdf8;">"Today's total in and result"</strong></li>
-          <li><strong style="color: #38bdf8;">"03-11-2026"</strong> <span style="color:#64748b;">(cage summary for specific date)</span></li>
-          <li><strong style="color: #38bdf8;">"Who is on the barred list?"</strong></li>
-        </ul>
+        <p style="color: #cbd5e1; font-size: 0.88rem; margin: 0; font-weight: 700;">
+          I COULD NOT FIND SPECIFIC RECORDS MATCHING "${escapeHTML(query.toUpperCase())}".
+        </p>
+        <div style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">
+          TRY ONE OF THESE QUICK ACTIONS OR TYPE A GUEST NAME:
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0;">
+          <button type="button" class="ai-chip-btn ai-ask-suggest-btn" data-query="OVERALL TOTAL IN">⚡ OVERALL TOTAL IN</button>
+          <button type="button" class="ai-chip-btn ai-ask-suggest-btn" data-query="OVERALL TOTAL OUT">⚡ OVERALL TOTAL OUT</button>
+          <button type="button" class="ai-chip-btn ai-ask-suggest-btn" data-query="OVERALL RESULT">⚡ OVERALL RESULT</button>
+          <button type="button" class="ai-chip-btn ai-ask-suggest-btn" data-query="ALL ENTRIES SUMMARY">📋 ALL ENTRIES</button>
+          <button type="button" class="ai-chip-btn ai-ask-suggest-btn" data-query="TOP MAJOR PATRONS">⭐ TOP GUESTS</button>
+          <button type="button" class="ai-chip-btn ai-ask-suggest-btn" data-query="BARRED GUESTS CHECK">🚫 BARRED GUESTS</button>
+        </div>
       </div>
     `;
   }
 
-    window.addEventListener('pageshow', applyAutoFit);
-});
+  // Global helpers for inline click handlers in AI cards
+  window.aiQueryGuest = function(guestName) {
+    if (aiQueryInput) aiQueryInput.value = guestName;
+    executeAiQuery(guestName);
+  };
 
+  window.aiSwitchDate = function(dStr, guestName) {
+    if (aiDatePicker) aiDatePicker.value = dStr;
+    if (aiSelectedDateBadge) aiSelectedDateBadge.textContent = formatDisplayDate(dStr);
+    executeAiQuery(guestName || 'OVERALL RESULT');
+  };
+
+  // Event Listeners for Offline AI Assistant
+  document.querySelectorAll('.btn-open-ai-assistant').forEach(btn => {
+    btn.addEventListener('click', () => openAiAssistantModal());
+  });
+  if (btnOpenAiAssistant) {
+    btnOpenAiAssistant.addEventListener('click', () => openAiAssistantModal());
+  }
+  if (btnCloseAiModal) {
+    btnCloseAiModal.addEventListener('click', closeAiAssistantModal);
+  }
+  if (aiAssistantModal) {
+    aiAssistantModal.addEventListener('click', (e) => {
+      if (e.target === aiAssistantModal) closeAiAssistantModal();
+    });
+  }
+  if (btnAiSend && aiQueryInput) {
+    btnAiSend.addEventListener('click', () => executeAiQuery(aiQueryInput.value));
+    aiQueryInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        executeAiQuery(aiQueryInput.value);
+      }
+    });
+  }
+  if (btnAiClear && aiChatMessages) {
+    btnAiClear.addEventListener('click', () => {
+      aiChatMessages.innerHTML = '';
+      renderAiWelcome();
+      if (window.lucide) lucide.createIcons();
+    });
+  }
+  if (aiDatePicker) {
+    const pickerWrap = aiDatePicker.parentElement;
+    if (pickerWrap) {
+      pickerWrap.addEventListener('click', () => {
+        if (typeof aiDatePicker.showPicker === 'function') {
+          try { aiDatePicker.showPicker(); } catch (err) {}
+        }
+      });
+    }
+    aiDatePicker.addEventListener('change', () => {
+      const val = aiDatePicker.value;
+      if (aiSelectedDateBadge) {
+        aiSelectedDateBadge.textContent = formatDisplayDate(val);
+      }
+      if (val) {
+        appendAiMessage('assistant', `
+          <div class="ai-assistant-card" style="padding: 8px 12px;">
+            <span style="color: #38bdf8; font-weight: 800; font-size: 0.85rem;">
+              📅 ACTIVE GAMING DATE SWITCHED TO: <strong>${formatDisplayDate(val)}</strong>
+            </span>
+          </div>
+        `);
+      }
+    });
+
+  }
+
+  // Quick Action Chips in AI Header
+  document.querySelectorAll('.ai-chip-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const q = btn.getAttribute('data-query');
+      if (q) executeAiQuery(q);
+    });
+  });
+});
 
 function saveActivePanel(panelId) {
   localStorage.setItem('activeSurveillancePanel', panelId);
 }
-
-
-
