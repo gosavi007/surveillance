@@ -11,10 +11,12 @@
   --bg-primary: #030712;
   --bg-secondary: #0b0f19;
   
-  --glass-bg: rgba(15, 23, 42, 0.45);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(10, 16, 32, 0.42);
+  --glass-border: rgba(255, 255, 255, 0.12);
   --glass-border-focus: rgba(99, 102, 241, 0.4);
-  --glass-hover: rgba(255, 255, 255, 0.03);
+  --glass-hover: rgba(255, 255, 255, 0.05);
+  --card-bg: rgba(10, 16, 32, 0.42);
+  --bg-color: rgba(10, 16, 32, 0.68);
   
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
@@ -50,7 +52,7 @@
 }
 
 body {
-  background: linear-gradient(rgba(10, 15, 30, 0.72), rgba(10, 15, 30, 0.80)), url('assets/surveillance_bg.png') center/cover no-repeat fixed !important;
+  background: linear-gradient(rgba(6, 11, 25, 0.35), rgba(6, 11, 25, 0.48)), url('assets/surveillance_bg.png') center/cover no-repeat fixed !important;
   color: var(--text-primary);
   font-family: var(--font-body);
   min-height: 100vh;
@@ -152,45 +154,40 @@ input::placeholder, textarea::placeholder {
 }
 
 /* ==========================================================================
-   LOGIN SCREEN STYLING
+   LOGIN SCREEN STYLING (BOXLESS, FRAMELESS, FULLY TRANSPARENT)
    ========================================================================== */
 #login-view {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
   padding: 24px;
-  background: linear-gradient(rgba(10, 15, 30, 0.72), rgba(10, 15, 30, 0.80)), url('assets/surveillance_bg.png') center/cover no-repeat fixed !important;
+  background: transparent !important;
 }
 
 #main-view {
   background: transparent !important;
 }
 
+/* NO BOX - Completely frameless and transparent container */
 .login-card {
-  background: var(--glass-bg);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid var(--glass-border);
-  border-radius: 24px;
-  box-shadow: var(--shadow-lg);
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
   width: 100%;
-  max-width: 460px;
-  padding: 48px 40px;
+  max-width: 380px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 26px;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .login-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 4px;
-  background: var(--primary-gradient);
+  display: none !important;
 }
 
 .login-header {
@@ -198,36 +195,145 @@ input::placeholder, textarea::placeholder {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 0;
+  margin-bottom: 6px;
 }
 
 .logo-icon-wrapper {
-  background: var(--primary-gradient);
-  border-radius: 16px;
-  padding: 12px;
-  box-shadow: var(--shadow-glow);
+  display: none !important;
+}
+
+/* SURVEILLANCE Title - Bold, Crystal-Clear & Readable */
+.login-header h1 {
+  font-family: var(--font-heading);
+  font-size: 2.3rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  color: #ffffff !important;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95), 0 4px 25px rgba(0, 0, 0, 0.9), 0 0 35px rgba(56, 189, 248, 0.7) !important;
+  margin: 0;
+  text-transform: uppercase !important;
+}
+
+/* Form Styles */
+#login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+#login-form .input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+#login-form .input-group label {
+  display: none !important;
+}
+
+/* Transparent Inputs with High Contrast Readability */
+.login-card .input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.login-card .input-wrapper input {
+  width: 100%;
+  background: transparent !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.6) !important;
+  border-radius: 12px !important;
+  padding: 15px 16px 15px 48px !important;
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+  letter-spacing: 0.08em !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95), 0 2px 10px rgba(0, 0, 0, 0.9) !important;
+  box-shadow: none !important;
+  outline: none !important;
+  transition: all 0.25s ease !important;
+}
+
+.login-card .input-wrapper input::placeholder {
+  color: rgba(255, 255, 255, 0.9) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.1em !important;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95), 0 2px 8px rgba(0, 0, 0, 0.9) !important;
+  text-transform: uppercase !important;
+}
+
+.login-card .input-wrapper input:focus {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.5) !important;
+}
+
+/* Override browser autofill solid white/yellow boxes */
+.login-card input:-webkit-autofill,
+.login-card input:-webkit-autofill:hover, 
+.login-card input:-webkit-autofill:focus, 
+.login-card input:-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-box-shadow: 0 0 0px 1000px transparent inset !important;
+  box-shadow: 0 0 0px 1000px transparent inset !important;
+  background-color: transparent !important;
+  transition: background-color 5000s ease-in-out 0s !important;
+}
+
+.login-card .input-wrapper .field-icon {
+  position: absolute;
+  left: 16px;
+  width: 20px;
+  height: 20px;
+  color: #38bdf8 !important;
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.9)) !important;
+  pointer-events: none;
+  transition: all 0.2s ease;
+}
+
+.login-card .input-wrapper input:focus + .field-icon {
+  color: #67e8f9 !important;
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.8)) !important;
+}
+
+/* Login Button - Fully Transparent with Glowing Cyan Glass Outline */
+.login-card .btn-primary {
+  width: 100%;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1.5px solid #38bdf8 !important;
+  border-radius: 12px !important;
+  padding: 15px 24px !important;
+  font-family: var(--font-heading) !important;
+  font-size: 1.05rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.14em !important;
+  color: #ffffff !important;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95), 0 0 12px rgba(56, 189, 248, 0.85) !important;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.3), inset 0 0 12px rgba(56, 189, 248, 0.12) !important;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 8px;
+  gap: 12px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s ease !important;
 }
 
-.logo-icon {
-  width: 28px;
-  height: 28px;
-  color: white;
+.login-card .btn-primary:hover {
+  background: rgba(56, 189, 248, 0.18) !important;
+  border-color: #67e8f9 !important;
+  box-shadow: 0 0 25px rgba(56, 189, 248, 0.55), inset 0 0 18px rgba(56, 189, 248, 0.2) !important;
+  transform: translateY(-2px);
 }
 
-.login-header h1 {
-  font-family: var(--font-heading);
-  font-size: 1.8rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.login-header p {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
+.login-footer {
+  display: none !important;
 }
 
 /* Form Styles */
@@ -424,19 +530,44 @@ input::placeholder, textarea::placeholder {
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--glass-border);
-  padding: 8px 20px;
+  padding: 8px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-direction: row;
+  flex-wrap: nowrap !important;
+  white-space: nowrap !important;
   position: sticky;
   top: 0;
   z-index: 100;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.brand-status-dot {
+  width: 12px;
+  height: 12px;
+  background-color: var(--success);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--success-glow);
+  flex-shrink: 0;
+  display: inline-block;
 }
 
 .brand-icon {
@@ -451,17 +582,12 @@ input::placeholder, textarea::placeholder {
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .sync-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(16, 185, 129, 0.08);
-  border: 1px solid rgba(16, 185, 129, 0.15);
-  padding: 4px 10px;
-  border-radius: 30px;
-  margin-left: 16px;
+  display: none !important;
 }
 
 .status-dot {
@@ -487,36 +613,58 @@ input::placeholder, textarea::placeholder {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-top: 0;
 }
 
 .user-profile {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   background: rgba(255, 255, 255, 0.04);
   padding: 2px 8px;
   border-radius: 6px;
   height: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.user-profile.is-admin {
+  background: rgba(99, 102, 241, 0.14);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.user-profile.is-admin .profile-icon {
+  color: #c4b5fd;
 }
 
 .profile-icon {
   width: 14px;
   height: 14px;
   color: var(--primary);
+  flex-shrink: 0;
 }
 
 .profile-name {
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .nav-actions {
   display: flex;
   align-items: center;
+  flex-direction: row;
+  flex-wrap: nowrap;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .btn-nav {
@@ -665,12 +813,12 @@ input::placeholder, textarea::placeholder {
 /* Dashboard Cards (General) */
 .form-panel-card,
 .table-panel-card {
-  background: var(--glass-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--glass-border);
+  background: rgba(10, 16, 32, 0.42) !important;
+  backdrop-filter: blur(14px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(160%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 12px;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5) !important;
   padding: 10px 14px 8px 14px;
 }
 
@@ -713,7 +861,6 @@ input::placeholder, textarea::placeholder {
 .form-group {
   display: flex;
   flex-direction: column;
-}
   gap: 6px;
 }
 
@@ -908,14 +1055,17 @@ input::placeholder, textarea::placeholder {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: #0d1526;
-  color: #94a3b8;
-  font-weight: 700;
+  background: rgba(15, 23, 42, 0.70) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  color: #e2e8f0 !important;
+  font-weight: 800 !important;
   text-transform: uppercase;
   font-size: 0.72rem;
   letter-spacing: 0.05em;
   padding: 5px 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.14) !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95) !important;
 }
 
 .logs-table td {
@@ -1662,16 +1812,20 @@ input::placeholder, textarea::placeholder {
 
 .sentence-item {
   font-size: 14px;
-  font-weight: bold;
+  font-weight: 800 !important;
   line-height: 1.4;
-  color: var(--text-primary);
-  background: rgba(0,0,0,0.2);
+  color: #ffffff !important;
+  background: rgba(10, 16, 32, 0.48) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
   padding: 10px 16px;
-  border-radius: 6px;
-  border-left: 4px solid var(--primary);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-left: 4px solid var(--primary) !important;
   text-align: center;
   margin: 0 auto;
   width: 75%;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95) !important;
 }
 
 .sentence-item.cashin, .sentence-item.c-in { border-left-color: #10b981; }
@@ -1778,12 +1932,14 @@ input::placeholder, textarea::placeholder {
 }
 
 .modal-container {
-  background: var(--bg-color);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(10, 16, 32, 0.68) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.16) !important;
   border-radius: 12px;
   width: 100%;
   max-width: 500px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8) !important;
   animation: modalPopIn 0.3s ease-out;
 }
 
@@ -2045,12 +2201,15 @@ html, body {
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
-  background: var(--card-bg, #111827) !important;
+  background: rgba(10, 16, 32, 0.42) !important;
+  backdrop-filter: blur(14px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(160%) !important;
   border: 1.5px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 14px !important;
   padding: 14px 20px 8px 20px !important;
   box-sizing: border-box !important;
   position: relative !important;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5) !important;
 }
 
 /* Header bar */
@@ -2399,12 +2558,15 @@ html, body {
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
-  background: var(--card-bg, #111827) !important;
+  background: rgba(10, 16, 32, 0.42) !important;
+  backdrop-filter: blur(14px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(160%) !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 14px !important;
   padding: 12px 18px 8px 18px !important;
   box-sizing: border-box !important;
   position: relative !important;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5) !important;
 }
 
 /* Header bar */
@@ -2642,7 +2804,9 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: auto;
-  background: #090e1a;
+  background: rgba(10, 16, 32, 0.35) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
 }
 .excel-view-header {
   display: flex;
@@ -2664,7 +2828,8 @@ html, body {
   font-weight: 800;
   font-size: 0.88rem;
   color: #4ade80;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-body, 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif) !important;
+  font-weight: 800 !important;
   letter-spacing: 0.5px;
 }
 .excel-view-header-right {
@@ -2694,7 +2859,8 @@ html, body {
 .excel-table {
   width: 100%;
   border-collapse: collapse;
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-family: var(--font-body, 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif) !important;
+  font-weight: 800 !important;
   font-size: 0.84rem;
   white-space: nowrap;
 }
@@ -2702,8 +2868,10 @@ html, body {
   position: sticky;
   top: 0;
   z-index: 12;
-  background: #111827;
-  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.85) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  color: #f1f5f9 !important;
   font-weight: 800;
   font-size: 0.74rem;
   text-align: center;
@@ -2711,6 +2879,7 @@ html, body {
   border: 1px solid rgba(255, 255, 255, 0.14);
   letter-spacing: 0.5px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: none !important;
 }
 .excel-table thead th small {
   display: block;
@@ -2829,8 +2998,12 @@ html, body {
   position: sticky !important;
   top: 0 !important;
   z-index: 8 !important;
-  background: #0b1120 !important;
+  background: rgba(15, 23, 42, 0.70) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  color: #e2e8f0 !important;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6) !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95) !important;
 }
 
 /* Custom Scrollbar with Up & Down Arrows for All Entries Box */
@@ -2884,135 +3057,191 @@ html, body {
   box-sizing: border-box;
 }
 
+/* ==========================================================================
+   DAY PAGINATION BAR (1 TO 31 WITHOUT SCROLLER)
+   "<12345678910111213141516171819202122232425262728293031> GOTO[]"
+   ========================================================================== */
+.all-entries-bottom-bar {
+  width: 100% !important;
+  padding: 4px 6px !important;
+  box-sizing: border-box !important;
+  background: rgba(15, 23, 42, 0.75) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  flex-shrink: 0 !important;
+}
+
 .all-entries-nav-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 2px 0;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 6px !important;
+  width: 100% !important;
+  overflow: visible !important;
+  overflow-x: visible !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+  scrollbar-width: none !important;
+}
+.all-entries-nav-row::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 .day-pagination {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
+  display: flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+  justify-content: flex-start !important;
 }
 
 .day-numbers-list {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  max-width: calc(100vw - 220px);
-  padding: 2px 0;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 2px !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: visible !important;
+  overflow-x: visible !important;
+  padding: 0 !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 .day-numbers-list::-webkit-scrollbar {
-  height: 4px;
-}
-.day-numbers-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 2px;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 .day-nav-arrow-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  color: #e2e8f0;
-  padding: 3px 8px;
-  border-radius: 5px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.74rem;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-  flex-shrink: 0;
-  height: 26px;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  color: #ffffff !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  font-size: 0.74rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.5px !important;
+  transition: all 0.15s ease !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  height: 26px !important;
+  user-select: none !important;
 }
 .day-nav-arrow-btn:hover {
-  background: rgba(59, 130, 246, 0.3);
-  border-color: #3b82f6;
-  color: #fff;
+  background: rgba(59, 130, 246, 0.35) !important;
+  border-color: #3b82f6 !important;
+  color: #fff !important;
 }
 
 .day-nav-btn {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #cbd5e1;
-  padding: 2px 5px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-size: 0.76rem;
-  font-weight: 700;
-  min-width: 22px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  user-select: none;
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  color: #cbd5e1 !important;
+  padding: 0 !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  max-width: 28px !important;
+  height: 26px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  user-select: none !important;
+  font-family: 'JetBrains Mono', Consolas, monospace !important;
+  box-sizing: border-box !important;
+  line-height: 1 !important;
 }
 .day-nav-btn:hover {
-  background: rgba(255, 255, 255, 0.22);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.22) !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
 }
 .day-nav-btn.active {
   background: #2563eb !important;
-  border-color: #3b82f6 !important;
+  border-color: #60a5fa !important;
   color: #ffffff !important;
   font-weight: 900 !important;
   box-shadow: 0 0 10px rgba(37, 99, 235, 0.6) !important;
 }
 
 .all-entries-goto-box {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-  padding-left: 8px;
-  margin-left: 2px;
-  border-left: 1.5px solid rgba(255, 255, 255, 0.18);
+  display: flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  flex-shrink: 0 !important;
+  padding-left: 8px !important;
+  margin-left: 2px !important;
+  border-left: 1.5px solid rgba(255, 255, 255, 0.18) !important;
 }
 .all-entries-goto-box .goto-label {
-  font-weight: 800;
-  font-size: 0.74rem;
-  letter-spacing: 0.8px;
-  color: #cbd5e1;
+  font-weight: 800 !important;
+  font-size: 0.74rem !important;
+  letter-spacing: 0.8px !important;
+  color: #cbd5e1 !important;
 }
 .all-entries-goto-box input {
-  width: 36px;
-  height: 26px;
-  padding: 2px;
-  text-align: center;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1.5px solid rgba(255, 255, 255, 0.3);
-  color: #ffffff;
-  border-radius: 5px;
-  font-size: 0.82rem;
-  font-weight: 800;
-  outline: none;
-  font-family: 'JetBrains Mono', monospace;
-  box-sizing: border-box;
+  width: 36px !important;
+  height: 26px !important;
+  padding: 2px !important;
+  text-align: center !important;
+  background: rgba(0, 0, 0, 0.5) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.3) !important;
+  color: #ffffff !important;
+  border-radius: 5px !important;
+  font-size: 0.82rem !important;
+  font-weight: 800 !important;
+  outline: none !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  box-sizing: border-box !important;
 }
 .all-entries-goto-box input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.5) !important;
 }
 .all-entries-author-tag, .all-entries-author-tag span {
   display: none !important;
+}
+
+@media (max-width: 640px) {
+  .day-nav-arrow-btn {
+    padding: 2px 4px !important;
+    gap: 2px !important;
+  }
+  .day-nav-arrow-btn span {
+    display: none !important;
+  }
+  .day-nav-btn {
+    font-size: 0.62rem !important;
+    height: 22px !important;
+  }
+  .all-entries-goto-box {
+    padding-left: 4px !important;
+    gap: 3px !important;
+  }
+  .all-entries-goto-box .goto-label {
+    font-size: 0.65rem !important;
+  }
+  .all-entries-goto-box input {
+    width: 28px !important;
+    height: 22px !important;
+    font-size: 0.75rem !important;
+  }
 }
 
 /* ==========================================================================
@@ -3029,12 +3258,15 @@ html, body {
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
-  background: var(--card-bg, #111827) !important;
-  border: 1.5px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(10, 16, 32, 0.42) !important;
+  backdrop-filter: blur(14px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(160%) !important;
+  border: 1.5px solid rgba(239, 68, 68, 0.3) !important;
   border-radius: 14px !important;
   padding: 12px 18px 8px 18px !important;
   box-sizing: border-box !important;
   position: relative !important;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5) !important;
 }
 
 /* Header bar */
@@ -3581,9 +3813,10 @@ html, body {
 
 /* Individual Barred Card */
 .barred-guest-card-box {
-  background: linear-gradient(rgba(17, 24, 39, 0.88), rgba(17, 24, 39, 0.94)),
-              url('assets/surveillance_bg_red.png') center/cover no-repeat !important;
-  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  background: rgba(22, 12, 24, 0.45) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1.5px solid rgba(239, 68, 68, 0.35) !important;
   border-radius: 10px;
   overflow: hidden;
   display: flex;
@@ -3792,7 +4025,12 @@ html, body {
 /* Tablet & Smaller Desktop Screens (max-width: 1024px) */
 @media (max-width: 1024px) {
   .app-header {
-    padding: 8px 16px !important;
+    padding: 8px 12px !important;
+    flex-wrap: nowrap !important;
+  }
+  .header-right {
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
   }
   .content-wrapper {
     padding: 8px 14px 4px 14px !important;
@@ -3802,42 +4040,118 @@ html, body {
   }
 }
 
+@media (max-width: 900px) {
+  .user-profile {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    padding: 0 !important;
+    border-radius: 6px !important;
+  }
+  .user-profile .profile-name {
+    display: none !important;
+  }
+}
+
 /* Mobile Screens (max-width: 768px) */
 @media (max-width: 768px) {
-  /* Header Mobile Optimization */
+  /* Header Mobile Optimization - ALWAYS IN ONE SINGLE LINE */
   .app-header {
-    padding: 10px 12px !important;
-    gap: 8px;
-    flex-wrap: wrap;
+    padding: 7px 10px !important;
+    gap: 8px !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    overflow-x: auto !important;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+  .app-header::-webkit-scrollbar {
+    display: none !important;
   }
   
   .header-left {
-    gap: 8px;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-shrink: 0 !important;
+  }
+  
+  .brand {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .brand-status-dot {
+    width: 9px !important;
+    height: 9px !important;
   }
   
   .brand-text {
-    font-size: 1.05rem !important;
-    letter-spacing: 0.5px;
+    font-size: 0.95rem !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
   }
   
   .header-right {
-    gap: 6px;
-    width: 100%;
-    justify-content: space-between;
-    margin-top: 2px;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 5px !important;
+    width: auto !important;
+    margin-top: 0 !important;
+    flex-shrink: 0 !important;
   }
   
+  /* User / Admin Profile: compact symbol on mobile to ensure all fit in one line */
   .user-profile {
-    padding: 4px 8px !important;
-    font-size: 0.75rem !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    padding: 0 !important;
+    border-radius: 6px !important;
+    flex-shrink: 0 !important;
+    background: rgba(99, 102, 241, 0.16) !important;
+    border: 1px solid rgba(99, 102, 241, 0.45) !important;
+    cursor: pointer !important;
+  }
+  
+  .user-profile .profile-name {
+    display: none !important; /* Hide text, display clean symbol for admin on mobile view */
+  }
+
+  .user-profile .profile-icon {
+    width: 15px !important;
+    height: 15px !important;
+    margin: 0 !important;
+    color: #c4b5fd !important;
   }
   
   .nav-actions {
-    gap: 6px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 4px !important;
+    flex-shrink: 0 !important;
   }
   
+  .nav-divider {
+    height: 16px !important;
+    margin: 0 1px !important;
+  }
+
   .btn-nav {
     width: 28px !important;
     height: 28px !important;
@@ -3847,6 +4161,12 @@ html, body {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
+    flex-shrink: 0 !important;
+  }
+  
+  .btn-nav svg {
+    width: 14px !important;
+    height: 14px !important;
   }
   
   .btn-supervisor-style {
@@ -3855,6 +4175,7 @@ html, body {
     min-width: 28px !important;
     padding: 0 !important;
     border-radius: 6px !important;
+    flex-shrink: 0 !important;
   }
 
   /* Content Wrapper on Mobile */
@@ -3976,25 +4297,64 @@ html, body {
   }
 
   .day-pagination {
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 4px;
+    overflow: visible !important;
+    overflow-x: visible !important;
+    padding-bottom: 0 !important;
     justify-content: flex-start !important;
   }
 }
 
 /* Extra Small Phones (max-width: 480px) */
 @media (max-width: 480px) {
-  .brand-text {
-    font-size: 0.95rem !important;
-  }
-  
-  .user-profile {
-    display: none; /* Hide agent username text to save vital header space on small phones */
+  .app-header {
+    padding: 5px 8px !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+    flex-direction: row !important;
   }
 
+  .header-left {
+    gap: 5px !important;
+  }
+
+  .brand-text {
+    font-size: 0.85rem !important;
+    letter-spacing: 0.2px !important;
+  }
+
+  .brand-status-dot {
+    width: 8px !important;
+    height: 8px !important;
+  }
+  
   .header-right {
-    justify-content: flex-end;
+    gap: 4px !important;
+    width: auto !important;
+    margin-top: 0 !important;
+  }
+
+  /* Admin symbol remains clearly visible on small phones in one line */
+  .user-profile {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 26px !important;
+    padding: 0 !important;
+  }
+
+  .user-profile .profile-name {
+    display: none !important;
+  }
+
+  .user-profile .profile-icon {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  .nav-actions {
+    gap: 3px !important;
   }
   
   .btn-nav {
@@ -4005,6 +4365,22 @@ html, body {
     border-radius: 5px !important;
   }
 
+  .btn-supervisor-style {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 26px !important;
+  }
+
+  .btn-nav svg, .btn-supervisor-style svg {
+    width: 13px !important;
+    height: 13px !important;
+  }
+
+  .nav-divider {
+    height: 14px !important;
+    margin: 0 1px !important;
+  }
+
   .telegram-input-box button span {
     display: none; /* Show icon only on super small phones to maximize input room */
   }
@@ -4013,6 +4389,45 @@ html, body {
     height: 30px !important;
     padding: 0 10px !important;
     border-radius: 7px !important;
+  }
+}
+
+/* Ultra Compact Mobile Phones (max-width: 360px) */
+@media (max-width: 360px) {
+  .app-header {
+    padding: 4px 6px !important;
+    gap: 4px !important;
+  }
+
+  .brand-text {
+    font-size: 0.78rem !important;
+  }
+
+  .brand-status-dot {
+    width: 7px !important;
+    height: 7px !important;
+  }
+
+  .header-right {
+    gap: 3px !important;
+  }
+
+  .user-profile,
+  .btn-nav,
+  .btn-supervisor-style {
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+  }
+
+  .user-profile .profile-icon,
+  .btn-nav svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  .nav-actions {
+    gap: 2px !important;
   }
 }
 
@@ -4070,7 +4485,17 @@ html, body {
   border-radius: 12px !important;
 }
 
-/* Guest Summary Excel Card Box (Pixel-exact replica of Excel template, NEVER cropped) */
+/* Guest Summary Excel Card Box (NORMAL FONT + BOLD + ZERO BLUR / SHADOW) */
+.guest-summary-card-box,
+.guest-summary-card-box * {
+  font-family: Arial, 'Segoe UI', Calibri, -apple-system, BlinkMacSystemFont, Roboto, sans-serif !important;
+  text-shadow: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+}
+
 .guest-summary-card-box {
   width: 100% !important;
   display: flex !important;
@@ -4080,7 +4505,7 @@ html, body {
   border-radius: 4px !important;
   overflow: visible !important;
   background: #C6D9AF !important;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
   margin-bottom: 12px !important;
   flex-shrink: 0 !important;
 }
@@ -4088,15 +4513,16 @@ html, body {
 .guest-summary-header-cyan {
   background: #00A2E8 !important;
   color: #000000 !important;
-  font-weight: 900 !important;
+  font-weight: 800 !important;
   font-size: 1.05rem !important;
   text-align: center !important;
   padding: 8px 12px !important;
-  letter-spacing: 0.8px !important;
+  letter-spacing: 0.5px !important;
   border-bottom: 1.5px solid #000000 !important;
-  font-family: 'JetBrains Mono', Consolas, 'Courier New', monospace !important;
+  font-family: Arial, 'Segoe UI', Calibri, -apple-system, BlinkMacSystemFont, Roboto, sans-serif !important;
   text-transform: uppercase !important;
   flex-shrink: 0 !important;
+  text-shadow: none !important;
 }
 
 .guest-summary-body-green {
@@ -4105,11 +4531,12 @@ html, body {
   padding: 0 !important;
   display: flex !important;
   flex-direction: column !important;
-  font-weight: 800 !important;
+  font-weight: 700 !important;
   font-size: 0.95rem !important;
-  font-family: 'JetBrains Mono', Consolas, 'Courier New', monospace !important;
+  font-family: Arial, 'Segoe UI', Calibri, -apple-system, BlinkMacSystemFont, Roboto, sans-serif !important;
   overflow: visible !important;
   flex-shrink: 0 !important;
+  text-shadow: none !important;
 }
 
 .guest-summary-body-green .summary-row {
@@ -4123,6 +4550,8 @@ html, body {
   box-sizing: border-box !important;
   flex-shrink: 0 !important;
   min-height: 32px !important;
+  font-family: Arial, 'Segoe UI', Calibri, -apple-system, BlinkMacSystemFont, Roboto, sans-serif !important;
+  text-shadow: none !important;
 }
 
 .guest-summary-body-green .summary-row:last-child {
@@ -4134,20 +4563,38 @@ html, body {
   visibility: visible !important;
   border-bottom: 1.5px solid #000000 !important;
   padding: 7px 12px !important;
-  font-weight: 900 !important;
+  font-weight: 800 !important;
   font-size: 1.05rem !important;
+  text-shadow: none !important;
 }
 
 .guest-summary-body-green .summary-lbl {
-  font-weight: 800 !important;
+  font-weight: 700 !important;
   color: #000000 !important;
   white-space: nowrap !important;
+  font-family: Arial, 'Segoe UI', Calibri, -apple-system, BlinkMacSystemFont, Roboto, sans-serif !important;
+  text-shadow: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
 }
 
 .guest-summary-body-green .summary-val {
-  font-weight: 900 !important;
+  font-weight: 800 !important;
   color: #000000 !important;
   white-space: nowrap !important;
+  font-family: Arial, 'Segoe UI', Calibri, -apple-system, BlinkMacSystemFont, Roboto, sans-serif !important;
+  text-shadow: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+}
+
+.guest-summary-body-green .summary-val-result,
+#guest-summary-modal-result {
+  font-weight: 800 !important;
+  font-family: Arial, 'Segoe UI', Calibri, -apple-system, BlinkMacSystemFont, Roboto, sans-serif !important;
+  text-shadow: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
 }
 
 .guest-summary-footer-yellow {
@@ -4190,7 +4637,9 @@ html, body {
   border-radius: 14px !important;
   overflow: hidden !important;
   border: 1.5px solid rgba(59, 130, 246, 0.4) !important;
-  background: #0f172a !important;
+  background: rgba(10, 16, 32, 0.68) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9) !important;
 }
 
@@ -4356,9 +4805,11 @@ html, body {
   max-width: 860px !important;
   height: min(740px, 90vh) !important;
   max-height: 90vh !important;
-  background: #0b1120 !important;
+  background: rgba(10, 16, 32, 0.68) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
   border: 1.5px solid rgba(168, 85, 247, 0.45) !important;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9), 0 0 35px rgba(168, 85, 247, 0.2) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9), 0 0 35px rgba(168, 85, 247, 0.25) !important;
   border-radius: 14px !important;
   display: flex !important;
   flex-direction: column !important;
@@ -4816,3 +5267,492 @@ button:focus-visible,
   border-color: #38bdf8 !important;
   box-shadow: 0 0 14px rgba(56, 189, 248, 0.9), 0 0 26px rgba(14, 165, 233, 0.55) !important;
 }
+
+
+/* ==========================================================================
+   MASTER GLASS TRANSPARENCY & CRYSTAL-CLEAR TEXT READABILITY SYSTEM
+   "ALL PAGE TRANPRANT  ONLY  USER CAN READ ANY PAGE"
+   ========================================================================== */
+
+/* Universal Glassmorphic Panels Across All Pages */
+#history-table-panel,
+#admin-panel-card,
+#major-panel-card,
+#barred-guests-panel-card,
+#all-entries-panel-card,
+#supervisor-home-panel,
+.form-panel-card,
+.table-panel-card {
+  background: rgba(10, 16, 32, 0.42) !important;
+  backdrop-filter: blur(14px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(160%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Modals & Popups Across All Pages */
+.modal-overlay {
+  background: rgba(3, 7, 18, 0.50) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+}
+
+.modal-content,
+.modal-container,
+#supervisor-log-modal .modal-content,
+#barred-guest-modal .modal-content,
+#guest-summary-modal .modal-content,
+#major-guest-details-modal .modal-content,
+#edit-modal .modal-container,
+#edit-member-modal .modal-content,
+#new-day-modal .modal-content,
+#barred-warning-modal .modal-content,
+#app-confirm-modal .modal-content {
+  background: rgba(10, 16, 32, 0.68) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.16) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8) !important;
+}
+
+/* Modal Headers & Footers */
+.modal-header {
+  background: rgba(0, 0, 0, 0.35) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10) !important;
+}
+.modal-footer {
+  background: rgba(0, 0, 0, 0.25) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Top App Header & Toolbars */
+.app-header {
+  background: rgba(10, 16, 32, 0.45) !important;
+  backdrop-filter: blur(14px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(160%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10) !important;
+}
+
+.unified-app-toolbar,
+.all-entries-header-bar,
+.all-entries-nav-row {
+  background: rgba(8, 14, 28, 0.40) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px !important;
+}
+
+/* Tables Across Home and All Entries */
+.logs-table {
+  background: transparent !important;
+}
+
+.logs-table th,
+.all-entries-scroll-area .logs-table thead th {
+  background: rgba(15, 23, 42, 0.70) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  color: #e2e8f0 !important;
+  font-weight: 800 !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95) !important;
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.14) !important;
+}
+
+.logs-table td {
+  background: transparent !important;
+  color: #ffffff !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+}
+
+.logs-table tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+}
+
+.logs-table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Excel Views Across Home and All Entries - 100% CLEAR, RAZOR-SHARP, ZERO BLUR */
+.excel-grid-container {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.excel-table-wrapper {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.excel-table,
+.excel-table th,
+.excel-table td,
+.excel-table *,
+.cell-blue,
+.cell-guest-info,
+.cell-guest-result-minus,
+.cell-guest-result-plus,
+.cell-guest-separator,
+.excel-row-num,
+.clickable-guest-name {
+  text-shadow: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  text-rendering: geometricPrecision !important;
+}
+
+.excel-table thead th {
+  background: #00A2E8 !important;
+  color: #000000 !important;
+  font-weight: 800 !important;
+  text-shadow: none !important;
+  border: 1px solid #000000 !important;
+}
+
+.excel-row-num {
+  background: #0d1527 !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  text-shadow: none !important;
+  border: 1px solid #000000 !important;
+}
+
+.excel-table tbody td {
+  color: #000000 !important;
+  text-shadow: none !important;
+  border: 1px solid #000000 !important;
+}
+
+/* Sentence View Cards Across Home and All Entries */
+.sentence-item {
+  background: rgba(10, 16, 32, 0.48) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95) !important;
+}
+
+/* Major Patrons Cards */
+.mp-grid-card,
+.mp-above-card,
+.major-guest-group-card {
+  background: rgba(15, 23, 42, 0.42) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Barred Guests Cards */
+.barred-guest-card-box {
+  background: rgba(22, 12, 24, 0.45) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1.5px solid rgba(239, 68, 68, 0.35) !important;
+}
+.barred-card-header {
+  background: rgba(0, 0, 0, 0.50) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* Admin Panel Boxes */
+.admin-form-box,
+.admin-active-users-box {
+  background: rgba(15, 23, 42, 0.38) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.14) !important;
+}
+.admin-user-card {
+  background: rgba(0, 0, 0, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Quick Entry Box / Supervisor Box */
+.officer-quick-entry-panel,
+.log-form-panel,
+#supervisor-all-entries,
+#supervisor-send-box {
+  background: rgba(10, 16, 32, 0.42) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+/* GLOBAL TEXT READABILITY ENGINE ("ONLY USER CAN READ ANY PAGE") */
+th, td, 
+.panel-header h2, .panel-title, .toolbar-title,
+.record-badge, .home-date-time-badge, .badge, 
+.guest-name-cell, .table-amount,
+.mp-card-name, .mp-card-lbl, .mp-card-val,
+.barred-badge-title, .barred-card-body,
+.admin-input-wrap label, .admin-user-card,
+.ai-header-title, .ai-assistant-card,
+.modal-header h2, .modal-header h3, .modal-body,
+.sentence-item,
+.btn-nav, .unified-tool-btn, .day-btn, .day-nav-btn {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 1px rgba(0, 0, 0, 0.9);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* High Contrast Amounts and Badges (EXCLUDING Guest Summary & Excel cells which must be 100% sharp with ZERO shadow) */
+.amount-cashin, .badge-credit, .mp-in {
+  color: #34d399 !important;
+  font-weight: 800 !important;
+  text-shadow: 0 0 8px rgba(52, 211, 153, 0.4), 0 1px 2px rgba(0, 0, 0, 0.95) !important;
+}
+
+.amount-cashout, .badge-danger, .mp-out {
+  color: #fbbf24 !important;
+  font-weight: 800 !important;
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.4), 0 1px 2px rgba(0, 0, 0, 0.95) !important;
+}
+
+.amount-result-neg, .barred-badge-title {
+  color: #ef4444 !important;
+  font-weight: 800 !important;
+  text-shadow: 0 0 8px rgba(239, 68, 68, 0.4), 0 1px 2px rgba(0, 0, 0, 0.95) !important;
+}
+
+.amount-result-pos {
+  color: #34d399 !important;
+  font-weight: 800 !important;
+  text-shadow: 0 0 8px rgba(52, 211, 153, 0.4), 0 1px 2px rgba(0, 0, 0, 0.95) !important;
+}
+
+/* Form Inputs On Glass */
+input[type="text"], input[type="password"], input[type="number"], input[type="search"], textarea, select {
+  background: rgba(0, 0, 0, 0.35) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.22) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9) !important;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.35) !important;
+}
+
+
+/* ==========================================================================
+   EXCEL VIEW: 100% CRYSTAL CLEAR, RAZOR-SHARP TEXT (ZERO BLUR)
+   NORMAL FONT + BOLD + FIT TO PAGE ONLY IF PAGE IS MAXIMISE
+   ========================================================================== */
+
+/* Clean, crisp normal Excel font with bold weight and ZERO blur or text-shadow */
+.excel-grid-container,
+.excel-table-wrapper,
+.excel-table,
+.excel-table th,
+.excel-table td,
+.excel-table .col-cyan,
+.excel-table .cell-blue,
+.excel-table .cell-guest-info,
+.excel-table .cell-guest-result-minus,
+.excel-table .cell-guest-result-plus,
+.excel-table .cell-guest-separator,
+.excel-table .excel-row-num,
+.excel-table .clickable-guest-name,
+.excel-pill {
+  font-family: Arial, 'Segoe UI', Calibri, -apple-system, BlinkMacSystemFont, Roboto, sans-serif !important;
+  font-weight: 700 !important;
+  text-shadow: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  letter-spacing: 0 !important;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  text-rendering: geometricPrecision !important;
+}
+
+/* Header Cells (Cyan Banner) */
+.excel-table th.col-cyan {
+  background: #00A2E8 !important;
+  color: #000000 !important;
+  font-weight: 800 !important;
+  font-size: 0.82rem !important;
+  text-align: center !important;
+  vertical-align: middle !important;
+  border: 1px solid #000000 !important;
+  padding: 8px 6px !important;
+  text-shadow: none !important;
+}
+
+/* Data Cells (Light Blue) */
+.excel-table td.cell-blue {
+  background: #D9E1F2 !important;
+  color: #000000 !important;
+  font-weight: 700 !important;
+  font-size: 0.82rem !important;
+  text-align: center !important;
+  vertical-align: middle !important;
+  border: 1px solid #000000 !important;
+  padding: 6px 6px !important;
+  text-shadow: none !important;
+}
+
+/* Guest Name in Table */
+.excel-table .clickable-guest-name {
+  color: #0000EE !important;
+  font-weight: 800 !important;
+  text-decoration: underline !important;
+  cursor: pointer !important;
+  text-shadow: none !important;
+}
+
+/* Guest Summary Cells (Light Green) */
+.excel-table td.cell-guest-info {
+  background: #D9EAD3 !important;
+  color: #000000 !important;
+  font-weight: 700 !important;
+  font-size: 0.82rem !important;
+  text-align: center !important;
+  vertical-align: middle !important;
+  border: 1px solid #000000 !important;
+  padding: 6px 8px !important;
+  text-shadow: none !important;
+}
+
+/* Negative Result (Red Text on Light Green) */
+.excel-table td.cell-guest-result-minus {
+  background: #D9EAD3 !important;
+  color: #CC0000 !important;
+  font-weight: 800 !important;
+  font-size: 0.85rem !important;
+  text-align: center !important;
+  vertical-align: middle !important;
+  border: 1px solid #000000 !important;
+  padding: 6px 8px !important;
+  text-shadow: none !important;
+}
+
+/* Positive Result (Green Text on Light Green) */
+.excel-table td.cell-guest-result-plus {
+  background: #D9EAD3 !important;
+  color: #008000 !important;
+  font-weight: 800 !important;
+  font-size: 0.85rem !important;
+  text-align: center !important;
+  vertical-align: middle !important;
+  border: 1px solid #000000 !important;
+  padding: 6px 8px !important;
+  text-shadow: none !important;
+}
+
+/* Separator Row (Yellow) */
+.excel-table td.cell-guest-separator {
+  background: #FFFF00 !important;
+  border: 1px solid #000000 !important;
+  height: 14px !important;
+  padding: 2px !important;
+}
+
+/* Row Numbers Column (#) */
+.excel-table .excel-row-num {
+  background: #0d1527 !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  font-size: 0.82rem !important;
+  text-align: center !important;
+  vertical-align: middle !important;
+  border: 1px solid #000000 !important;
+  text-shadow: none !important;
+}
+
+/* UNMAXIMIZED / RESTORED DOWN / NARROW SCREENS:
+   Allow horizontal scroll so columns stay spacious & comfortable. */
+.excel-table-wrapper {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  width: 100% !important;
+}
+
+.excel-table {
+  width: 100%;
+  min-width: 1050px !important;
+  table-layout: auto !important;
+  white-space: nowrap !important;
+}
+
+.excel-table th,
+.excel-table td {
+  padding: 6px 8px !important;
+  white-space: nowrap !important;
+}
+
+/* FIT TO PAGE ONLY IF PAGE IS MAXIMISE:
+   When browser window is maximized (or fullscreen), eliminate horizontal scroll and fit 100% to page. */
+html.page-maximized .excel-table-wrapper,
+body.page-maximized .excel-table-wrapper,
+.page-maximized #home-excel-view,
+.page-maximized #all-entries-excel-view,
+.page-maximized .excel-grid-container {
+  overflow-x: hidden !important;
+  width: 100% !important;
+  padding: 0 !important;
+}
+
+html.page-maximized .excel-table,
+body.page-maximized .excel-table {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  table-layout: fixed !important;
+}
+
+html.page-maximized .excel-table th,
+html.page-maximized .excel-table td,
+body.page-maximized .excel-table th,
+body.page-maximized .excel-table td {
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
+  padding: 6px 3px !important;
+  font-size: clamp(0.70rem, 0.82vw, 0.84rem) !important;
+  line-height: 1.25 !important;
+}
+
+/* Column proportional widths when maximized (Sum = 100%) */
+.page-maximized .excel-table th.col-idx,
+.page-maximized .excel-table td:nth-child(1) { width: 3% !important; min-width: 26px !important; }
+
+.page-maximized .excel-table th.col-date,
+.page-maximized .excel-table td:nth-child(2) { width: 8% !important; }
+
+.page-maximized .excel-table th.col-time,
+.page-maximized .excel-table td:nth-child(3) { width: 5.5% !important; }
+
+.page-maximized .excel-table th.col-type,
+.page-maximized .excel-table td:nth-child(4) { width: 7% !important; }
+
+.page-maximized .excel-table th.col-amount,
+.page-maximized .excel-table td:nth-child(5) { width: 8.5% !important; }
+
+.page-maximized .excel-table th.col-guest,
+.page-maximized .excel-table td:nth-child(6) { width: 11% !important; }
+
+.page-maximized .excel-table th.col-card,
+.page-maximized .excel-table td:nth-child(7) { width: 5.5% !important; }
+
+.page-maximized .excel-table th.col-other,
+.page-maximized .excel-table td:nth-child(8) { width: 7.5% !important; }
+
+.page-maximized .excel-table th.col-surv,
+.page-maximized .excel-table td:nth-child(9) { width: 6.5% !important; }
+
+.page-maximized .excel-table th.col-sentence,
+.page-maximized .excel-table td:nth-child(10) { width: 18.5% !important; }
+
+.page-maximized .excel-table th.col-summary,
+.page-maximized .excel-table td:nth-child(11) { width: 19% !important; }

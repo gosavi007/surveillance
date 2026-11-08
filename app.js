@@ -862,10 +862,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const id = Number(btn.getAttribute('data-id'));
         if (!(await showAppConfirm('Are you sure you want to delete this entry?'))) return;
         try {
-          const resp = await fetch(`/api/entries?id=${id}`, { method: 'DELETE' });
-          if (!resp.ok) throw new Error('Delete failed.');
+          // Instant in-memory removal
+          allEntries = allEntries.filter(e => Number(e.id) !== id);
+          if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
+          if (typeof renderEntries === 'function') renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
           showAppNotification('Entry deleted successfully.', 'success');
-          await fetchEntries();
+
+          // Fast direct delete call
+          fetch(`/api/entries?id=${id}`, { method: 'DELETE' }).catch(e => console.error(e));
         } catch (err) {
           showAppNotification(`Error deleting entry: ${err.message}`, 'error');
         }
@@ -903,7 +907,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   ];
 
   function applyUserWallpaper(username) {
-    document.body.style.background = "linear-gradient(rgba(10, 15, 30, 0.72), rgba(10, 15, 30, 0.80)), url('assets/surveillance_bg.png') center/cover fixed no-repeat";
+    document.body.style.background = "linear-gradient(rgba(6, 11, 25, 0.35), rgba(6, 11, 25, 0.48)), url('assets/surveillance_bg.png') center/cover fixed no-repeat";
   }
 
   // Verify and load active session
@@ -1094,6 +1098,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       calculateStatistics(currentDayEntries);
       populateDataLists(allEntries);
       if(allEntriesPanelCard && allEntriesPanelCard.style.display !== 'none') {
+        const curDate = currentBusinessDateStr || getBusinessDate();
+        activeAllEntriesDay = Number(curDate.split('-')[2]);
+        if (gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
+        if (allEntriesDatePicker) allEntriesDatePicker.value = curDate;
+        renderDayPagination();
         updateAllEntriesView();
       }
       if(supervisorHomePanel && supervisorHomePanel.style.display !== 'none') {
@@ -1385,13 +1394,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       updateGamingDateDisplay();
 
-      // Always select the current business day
+      // Always auto-goto current gaming date after refresh or close & open
       const todayDate = currentBusinessDateStr || getBusinessDate();
       activeAllEntriesDay = Number(todayDate.split('-')[2]);
       
       if (gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
-      if (allEntriesDatePicker && !allEntriesDatePicker.value) {
+      if (allEntriesDatePicker) {
         allEntriesDatePicker.value = todayDate;
+      }
+      if (allEntriesSearch) {
+        allEntriesSearch.value = '';
       }
       renderDayPagination();
       updateAllEntriesView();
@@ -1477,6 +1489,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (btnBarredGlobal) btnBarredGlobal.addEventListener('click', showBarredPanel);
   if(btnAdminUsers) btnAdminUsers.addEventListener('click', showAdminPanel);
+  const userProfileBadge = document.getElementById('user-profile-badge') || document.querySelector('.user-profile');
+  if(userProfileBadge) {
+    userProfileBadge.addEventListener('click', () => {
+      if (isUserAdmin()) {
+        showAdminPanel();
+      }
+    });
+  }
   if(btnMajor) btnMajor.addEventListener('click', showMajorPanel);
   if(btnAllEntries) btnAllEntries.addEventListener('click', showAllEntriesPanel);
   if(btnAllEntriesHome) btnAllEntriesHome.addEventListener('click', showHomePanel);
@@ -2565,32 +2585,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     const totalInStr = formatIndianNumber(totalIn);
     const totalOutStr = formatIndianNumber(totalOut);
     const resFormatted = formatIndianNumber(Math.abs(netResult));
-    // Color: Fluorescent Green (#00B050) if positive/zero, Bright Red (#FF0000) if minus (NO +/- sign)
-    const resColor = isNegative ? '#FF0000' : '#00B050';
+    // Normal bold text colors: Solid Deep Green (#008000) for positive/zero, Solid Deep Red (#CC0000) for minus (NO +/- sign)
+    const resColor = isNegative ? '#CC0000' : '#008000';
 
-    // Render Excel Style Guest Summary Card (matching user's Excel template exactly)
+    // Render Excel Style Guest Summary Card (Normal text + Bold, ZERO blur or text-shadow)
     const cardContainer = document.getElementById('guest-summary-card-container') || document.querySelector('.guest-summary-card-box');
     if (cardContainer) {
       cardContainer.innerHTML = `
-        <div class="guest-summary-header-cyan" style="display: block !important; visibility: visible !important;">
+        <div class="guest-summary-header-cyan" style="display: block !important; visibility: visible !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">
           GUEST SUMMARY
         </div>
-        <div class="guest-summary-body-green" style="display: flex !important; visibility: visible !important;">
-          <div class="summary-row" style="display: flex !important;">
-            <span class="summary-lbl">NAME :-</span>
-            <span id="guest-summary-modal-name" class="summary-val">${escapeHTML(canonicalName || guestName || '—')}</span>
+        <div class="guest-summary-body-green" style="display: flex !important; visibility: visible !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important; filter: none !important;">
+          <div class="summary-row" style="display: flex !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+            <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 700 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">NAME :-</span>
+            <span id="guest-summary-modal-name" class="summary-val" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">${escapeHTML(canonicalName || guestName || '—')}</span>
           </div>
-          <div class="summary-row" style="display: flex !important;">
-            <span class="summary-lbl">TOTAL IN :-</span>
-            <span id="guest-summary-modal-in" class="summary-val">${totalInStr}</span>
+          <div class="summary-row" style="display: flex !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+            <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 700 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">TOTAL IN :-</span>
+            <span id="guest-summary-modal-in" class="summary-val" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">${totalInStr}</span>
           </div>
-          <div class="summary-row" style="display: flex !important;">
-            <span class="summary-lbl">TOTAL OUT :-</span>
-            <span id="guest-summary-modal-out" class="summary-val">${totalOutStr}</span>
+          <div class="summary-row" style="display: flex !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+            <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 700 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">TOTAL OUT :-</span>
+            <span id="guest-summary-modal-out" class="summary-val" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">${totalOutStr}</span>
           </div>
-          <div class="summary-row summary-row-result" style="display: flex !important; visibility: visible !important; min-height: 32px !important; border-bottom: 1.5px solid #000000 !important;">
-            <span class="summary-lbl" style="font-weight: 900 !important;">RESULT :-</span>
-            <span id="guest-summary-modal-result" class="summary-val summary-val-result" style="color: ${resColor} !important; font-weight: 900 !important; font-size: 1.05rem !important;">${escapeHTML(resFormatted)}</span>
+          <div class="summary-row summary-row-result" style="display: flex !important; visibility: visible !important; min-height: 32px !important; border-bottom: 1.5px solid #000000 !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+            <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">RESULT :-</span>
+            <span id="guest-summary-modal-result" class="summary-val summary-val-result" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; color: ${resColor} !important; font-weight: 800 !important; font-size: 1.05rem !important; text-shadow: none !important; filter: none !important;">${escapeHTML(resFormatted)}</span>
           </div>
         </div>
         <div class="guest-summary-footer-yellow" style="display: block !important; visibility: visible !important; height: 20px !important; min-height: 20px !important; background: #FFFF00 !important; border-top: 1.5px solid #000000 !important;"></div>
@@ -3456,7 +3476,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Monthly_${targetMonth}_DateWise_1-31.xlsx`;
+        const monthNames = [
+          'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+          'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
+        ];
+        const mIdx = parseInt(month, 10) - 1;
+        const mName = monthNames[mIdx] || `MONTH_${month}`;
+        a.download = `${mName}_${year}.xlsx`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -3470,7 +3496,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (window.showAppNotification) {
-      window.showAppNotification(`SUCCESSFULLY EXPORTED BOTH WAYS: ${dmy}.XLSX & MONTHLY (1..31 SHEETS) IN MONTH FOLDER!`, 'success');
+      const monthNames = [
+        'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+        'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
+      ];
+      const mIdx = parseInt(month, 10) - 1;
+      const mName = monthNames[mIdx] || `MONTH_${month}`;
+      window.showAppNotification(`SUCCESSFULLY EXPORTED: ${dmy}.XLSX (DATE_WISE) & ${mName}_${year}.XLSX (MONTHLY_WORKBOOK)!`, 'success');
     }
   }
 
@@ -3950,16 +3982,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       excelRowsHtml += `
         <tr>
-          <td class="excel-row-num" style="text-align:center; vertical-align:middle;">${r + 1}</td>
-          <td class="cell-blue" style="text-align:center; vertical-align:middle;">${entry ? dt : ''}</td>
-          <td class="cell-blue" style="text-align:center; vertical-align:middle;">${entry ? tm : ''}</td>
-          <td class="cell-blue" style="text-align:center; vertical-align:middle; font-weight:700;">${entry ? escapeHTML(type) : ''}</td>
-          <td class="cell-blue" style="text-align:center; vertical-align:middle; font-family:monospace; font-weight:700;">${entry ? amt : ''}</td>
-          <td class="cell-blue" style="text-align:center; vertical-align:middle; font-weight:700;"><span class="clickable-guest-name" data-guest="${escapeHTML(guest)}" style="color: #0000FF !important; cursor:pointer; text-decoration:underline;">${escapeHTML(guest)}</span></td>
-          <td class="cell-blue" style="text-align:center; vertical-align:middle; font-family:monospace;">${entry ? escapeHTML(card) : ''}</td>
-          <td class="cell-blue" style="text-align:center; vertical-align:middle;">${entry ? escapeHTML(otherinfo) : ''}</td>
-          <td class="cell-blue" style="text-align:center; vertical-align:middle; font-weight:700;">${entry ? escapeHTML(surv) : ''}</td>
-          <td class="cell-blue" style="text-align:center; vertical-align:middle;">${entry ? escapeHTML(sentence) : ''}</td>
+          <td class="excel-row-num col-idx" style="text-align:center; vertical-align:middle; font-weight:800;">${r + 1}</td>
+          <td class="cell-blue col-date" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? dt : ''}</td>
+          <td class="cell-blue col-time" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? tm : ''}</td>
+          <td class="cell-blue col-type" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(type) : ''}</td>
+          <td class="cell-blue col-amount" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? amt : ''}</td>
+          <td class="cell-blue col-guest" style="text-align:center; vertical-align:middle; font-weight:800;"><span class="clickable-guest-name" data-guest="${escapeHTML(guest)}" style="color: #0000FF !important; cursor:pointer; text-decoration:underline; font-weight:800;">${escapeHTML(guest)}</span></td>
+          <td class="cell-blue col-card" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(card) : ''}</td>
+          <td class="cell-blue col-other" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(otherinfo) : ''}</td>
+          <td class="cell-blue col-surv" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(surv) : ''}</td>
+          <td class="cell-blue col-sentence" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(sentence) : ''}</td>
           ${colJHtml}
         </tr>
       `;
@@ -3970,17 +4002,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         <table class="excel-table">
           <thead>
             <tr>
-              <th class="excel-row-num">#</th>
-              <th class="col-cyan">DATE</th>
-              <th class="col-cyan">TIME</th>
-              <th class="col-cyan">TYPE</th>
-              <th class="col-cyan">AMOUNT</th>
-              <th class="col-cyan">GUEST NAME</th>
-              <th class="col-cyan">CARD</th>
-              <th class="col-cyan">OTHER INFO</th>
-              <th class="col-cyan">SURV ID</th>
-              <th class="col-cyan">SENTENCE ENTRIES</th>
-              <th class="col-cyan">GUEST SUMMARY</th>
+              <th class="excel-row-num col-idx">#</th>
+              <th class="col-cyan col-date">DATE</th>
+              <th class="col-cyan col-time">TIME</th>
+              <th class="col-cyan col-type">TYPE</th>
+              <th class="col-cyan col-amount">AMOUNT</th>
+              <th class="col-cyan col-guest">GUEST NAME</th>
+              <th class="col-cyan col-card">CARD</th>
+              <th class="col-cyan col-other">OTHER INFO</th>
+              <th class="col-cyan col-surv">SURV ID</th>
+              <th class="col-cyan col-sentence">SENTENCE ENTRIES</th>
+              <th class="col-cyan col-summary">GUEST SUMMARY</th>
             </tr>
           </thead>
           <tbody>
@@ -4169,11 +4201,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const id = Number(btn.getAttribute('data-id'));
         if (!(await showAppConfirm('Are you sure you want to delete this entry?'))) return;
         try {
-          const resp = await fetch(`/api/entries?id=${id}`, { method: 'DELETE' });
-          const data = await resp.json();
-          if (!resp.ok) throw new Error(data.error || 'Delete failed.');
+          // Instant in-memory removal
+          allEntries = allEntries.filter(e => Number(e.id) !== id);
+          if (typeof renderEntries === 'function') renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+          if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
           showAppNotification('Entry deleted successfully.', 'success');
-          await fetchEntries();
+
+          // Fast direct delete call
+          fetch(`/api/entries?id=${id}`, { method: 'DELETE' }).catch(e => console.error(e));
         } catch (err) {
           showAppNotification(`Error deleting entry: ${err.message}`, 'error');
         }
@@ -4880,8 +4915,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Toggle the Admin Users button visibility based on active user - ONLY ADMIN CAN ADD MEMBER
   function toggleAdminPanel() {
+    const admin = isUserAdmin();
     if (btnAdminUsers) {
-      btnAdminUsers.style.display = isUserAdmin() ? 'flex' : 'none';
+      btnAdminUsers.style.display = admin ? 'flex' : 'none';
+    }
+    const userProfileEl = document.getElementById('user-profile-badge') || document.querySelector('.user-profile');
+    if (userProfileEl) {
+      const name = (currentUser && currentUser.name) ? currentUser.name.toUpperCase() : 'ADMIN';
+      userProfileEl.title = admin ? `${name} (ADMIN)` : name;
+      if (admin) {
+        userProfileEl.classList.add('is-admin');
+      } else {
+        userProfileEl.classList.remove('is-admin');
+      }
     }
   }
 
@@ -5204,31 +5250,50 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if (btnDeleteSelected) {
- if (btnDeleteSelected) btnDeleteSelected.addEventListener('click', async () => {
+    btnDeleteSelected.addEventListener('click', async () => {
       const selectedBoxes = document.querySelectorAll('.entry-checkbox:checked');
       if (selectedBoxes.length === 0) return;
-      // Deletion confirmation removed by request
-      
+
       const idsToDelete = Array.from(selectedBoxes).map(cb => Number(cb.getAttribute('data-id')));
-      
+      const isAllSelected = (selectAllEntries && selectAllEntries.checked) && (idsToDelete.length >= (allEntries.length * 0.95));
+
       try {
         btnDeleteSelected.disabled = true;
         btnDeleteSelected.innerHTML = `<i data-lucide="loader" class="spin"></i> Deleting...`;
-        lucide.createIcons();
-        
-        await Promise.all(idsToDelete.map(id => fetch(`/api/entries?id=${id}`, { method: 'DELETE' })));
-        
-        await fetchEntries(); // Re-render table
-        
-        // Reset select all
+        if (window.lucide) lucide.createIcons();
+
+        // 1. Instant in-memory deletion for zero-latency UI response
+        const deleteSet = new Set(idsToDelete);
+        allEntries = isAllSelected ? [] : allEntries.filter(e => !deleteSet.has(Number(e.id)));
+
+        // Instant UI re-render
+        if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
+        if (typeof renderEntries === 'function') renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
         if (selectAllEntries) selectAllEntries.checked = false;
         updateBulkActionButtonsVisibility();
+
+        // 2. High-speed single bulk HTTP request to server
+        const payload = isAllSelected ? { all: true } : { ids: idsToDelete };
+        const resp = await fetch('/api/entries/batch-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!resp.ok) {
+          const errData = await resp.json().catch(() => ({}));
+          throw new Error(errData.error || 'Bulk delete failed.');
+        }
+
+        showAppNotification(`${idsToDelete.length} ENTRIES DELETED QUICKLY`, 'success');
       } catch (err) {
-        alert('Error during bulk delete: ' + err.message);
+        console.error('Bulk delete error:', err);
+        showAppNotification('Error deleting entries: ' + err.message, 'error');
+        await fetchEntries(); // Re-fetch as safety fallback
       } finally {
         btnDeleteSelected.disabled = false;
-        btnDeleteSelected.innerHTML = `<i data-lucide="trash-2"></i> Delete Selected`;
-        lucide.createIcons();
+        btnDeleteSelected.innerHTML = `<i data-lucide="trash-2"></i>`;
+        if (window.lucide) lucide.createIcons();
       }
     });
   }
@@ -5637,26 +5702,38 @@ document.addEventListener('DOMContentLoaded', () => {
     if (aiSelectedDateBadge) {
       aiSelectedDateBadge.textContent = formatDisplayDate(curDate);
     }
-    if (aiChatMessages && aiChatMessages.children.length === 0) {
-      renderAiWelcome();
+    
+    if (initialQuery) {
+      if (aiQueryInput) aiQueryInput.value = initialQuery;
+      executeAiQuery(initialQuery);
+    } else {
+      resetAiAssistant();
+      setTimeout(() => {
+        if (aiQueryInput) aiQueryInput.focus();
+      }, 100);
     }
     if (window.lucide) lucide.createIcons();
-    setTimeout(() => {
-      if (aiQueryInput) {
-        if (initialQuery) {
-          aiQueryInput.value = initialQuery;
-          executeAiQuery(initialQuery);
-        } else {
-          aiQueryInput.focus();
-        }
-      }
-    }, 100);
+  }
+
+  function resetAiAssistant() {
+    if (aiQueryInput) aiQueryInput.value = '';
+    const chipsBar = aiAssistantModal ? aiAssistantModal.querySelector('.ai-chips-bar') : null;
+    if (chipsBar) {
+      chipsBar.style.removeProperty('display');
+    }
+    if (aiChatMessages) {
+      aiChatMessages.innerHTML = '';
+      renderAiWelcome();
+      aiChatMessages.scrollTop = 0;
+    }
+    if (window.lucide) lucide.createIcons();
   }
 
   function closeAiAssistantModal() {
     if (aiAssistantModal) {
       aiAssistantModal.style.setProperty('display', 'none', 'important');
     }
+    resetAiAssistant();
   }
 
   function renderAiWelcome() {
@@ -5730,7 +5807,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const query = rawQuery.trim();
     if (aiQueryInput) aiQueryInput.value = '';
 
-    appendAiMessage('user', escapeHTML(query));
+    // HIDE UNNECESSARY THINGS WHEN SHOWING RESULT:
+    // 1. Hide the quick action chips bar to maximize result area
+    const chipsBar = aiAssistantModal ? aiAssistantModal.querySelector('.ai-chips-bar') : null;
+    if (chipsBar) {
+      chipsBar.style.setProperty('display', 'none', 'important');
+    }
+
+    // 2. Clear out the welcome card and previous queries so ONLY the search result is displayed
+    if (aiChatMessages) {
+      aiChatMessages.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:center; padding: 40px 20px; gap: 12px; color: #a855f7;">
+          <div class="spinner" style="width: 24px; height: 24px; border-width: 2.5px; border-color: #c084fc; border-top-color: transparent;"></div>
+          <span style="font-size: 0.9rem; font-weight: 800; letter-spacing: 0.8px; color: #cbd5e1;">SEARCHING SURVEILLANCE RECORDS...</span>
+        </div>
+      `;
+    }
 
     let candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
       ? allEntries
@@ -5782,7 +5874,40 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const answerHtml = processOfflineAiQuestion(query, targetDate, dispDate, dateEntries, candidateList);
-    appendAiMessage('assistant', answerHtml);
+
+    // ONLY DISPLAY THE RESULT CARD DIRECTLY (No extra headers, no reset bar)
+    if (aiChatMessages) {
+      aiChatMessages.innerHTML = '';
+      const resultCard = document.createElement('div');
+      resultCard.className = 'ai-msg-row assistant ai-result-only-view';
+      resultCard.style.width = '100%';
+      resultCard.innerHTML = answerHtml;
+      aiChatMessages.appendChild(resultCard);
+      aiChatMessages.scrollTop = 0;
+
+      // Re-attach listeners for interactive buttons inside the result card
+      resultCard.querySelectorAll('.ai-open-guest-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const gName = btn.getAttribute('data-guest');
+          const activeDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+          if (gName) {
+            closeAiAssistantModal();
+            const openFn = typeof openGuestSummaryPopup === 'function' ? openGuestSummaryPopup : window.openGuestSummaryPopup;
+            const candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+              ? allEntries
+              : (window.allEntries || []);
+            if (openFn) openFn(gName, candidateList, activeDate);
+          }
+        });
+      });
+      resultCard.querySelectorAll('.ai-ask-suggest-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const q = btn.getAttribute('data-query');
+          if (q) executeAiQuery(q);
+        });
+      });
+    }
+
     if (window.lucide) lucide.createIcons();
   }
 
@@ -6385,13 +6510,16 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-  if (btnAiClear && aiChatMessages) {
+  if (btnAiClear) {
     btnAiClear.addEventListener('click', () => {
-      aiChatMessages.innerHTML = '';
-      renderAiWelcome();
-      if (window.lucide) lucide.createIcons();
+      resetAiAssistant();
     });
   }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && aiAssistantModal && (aiAssistantModal.style.display === 'flex' || aiAssistantModal.offsetParent !== null)) {
+      closeAiAssistantModal();
+    }
+  });
   if (aiDatePicker) {
     const pickerWrap = aiDatePicker.parentElement;
     if (pickerWrap) {
@@ -6431,3 +6559,37 @@ document.addEventListener('DOMContentLoaded', () => {
 function saveActivePanel(panelId) {
   localStorage.setItem('activeSurveillancePanel', panelId);
 }
+
+
+// ==========================================================================
+// WINDOW MAXIMIZE DETECTION ENGINE ("FIT TO PAGE ONLY IF PAGE IS MAXIMISE")
+// ==========================================================================
+function updateWindowMaximizedState() {
+  try {
+    const availW = window.screen.availWidth || window.screen.width || 0;
+    const availH = window.screen.availHeight || window.screen.height || 0;
+    
+    // Check if browser window matches full available desktop screen dimensions
+    const isAvailW = availW > 0 && (window.innerWidth >= availW - 35 || (window.outerWidth && window.outerWidth >= availW - 10));
+    const isAvailH = availH > 0 && (window.innerHeight >= availH - 95 || (window.outerHeight && window.outerHeight >= availH - 20));
+    const isFullScreen = !!(document.fullscreenElement || window.fullScreen);
+    
+    const isMaximized = (isAvailW && isAvailH) || isFullScreen;
+
+    if (isMaximized) {
+      document.documentElement.classList.add('page-maximized');
+      document.body.classList.add('page-maximized');
+    } else {
+      document.documentElement.classList.remove('page-maximized');
+      document.body.classList.remove('page-maximized');
+    }
+  } catch (err) {
+    // fallback
+  }
+}
+
+window.addEventListener('resize', updateWindowMaximizedState);
+window.addEventListener('orientationchange', updateWindowMaximizedState);
+window.addEventListener('load', updateWindowMaximizedState);
+document.addEventListener('DOMContentLoaded', updateWindowMaximizedState);
+updateWindowMaximizedState();
