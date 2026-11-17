@@ -978,20 +978,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   const editInputOtherInfo = document.getElementById('edit-otherinfo');
   const editInputSurv = document.getElementById('edit-surv');
 
+  let currentEditingEntry = null;
+
   // Edit Entry Helper
   function editEntry(entry) {
     if (!entry) return;
+    currentEditingEntry = entry;
     
+    // Normalize datetime for datetime-local input (YYYY-MM-DDTHH:mm)
+    let dt = entry.datetime ? String(entry.datetime).replace(' ', 'T') : '';
+    if (/^\d{2}-\d{2}-\d{4}/.test(dt)) {
+      const parts = dt.split('T');
+      const dParts = parts[0].split('-');
+      dt = `${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1] || '00:00'}`;
+    }
+    if (dt.length > 16) dt = dt.slice(0, 16);
+
     // Populate modal form
-    editInputDateTime.value  = entry.datetime || getLocalTimeISOString();
-    editInputCD.value          = entry.cd        || '';
-    editInputType.value        = entry.type      || '';
-    editInputAmount.value      = entry.amount    || '';
-    editInputCashier.value     = entry.cashier   || '';
-    editInputGuestName.value   = entry.guestname || '';
-    editInputCard.value        = entry.card      || '';
-    editInputOtherInfo.value   = entry.otherinfo || '';
-    editInputSurv.value        = entry.surv      || '';
+    editInputDateTime.value  = dt || getLocalTimeISOString();
+    editInputCD.value        = entry.cd        || 'CD-01';
+    editInputType.value      = entry.type      || '';
+    editInputAmount.value    = entry.amount !== undefined ? entry.amount : '';
+    editInputCashier.value   = entry.cashier   || '-';
+    editInputGuestName.value = entry.guestname || '';
+    editInputCard.value      = entry.card      || '';
+    editInputOtherInfo.value = entry.otherinfo || '';
+    editInputSurv.value      = entry.surv      || (currentUser ? currentUser.id : 'ADMIN');
     
     editingEntryId = entry.id;
     
@@ -1003,47 +1015,74 @@ document.addEventListener('DOMContentLoaded', async () => {
   function closeEditModal() {
     editModal.style.display = 'none';
     editingEntryId = null;
+    currentEditingEntry = null;
     editEntryForm.reset();
   }
- if (btnCloseModal) btnCloseModal.addEventListener('click', closeEditModal);
- if (btnCancelEditModal) btnCancelEditModal.addEventListener('click', closeEditModal);
- if (editModal) editModal.addEventListener('click', (e) => {
-    if(e.target === editModal) closeEditModal();
+  if (btnCloseModal) btnCloseModal.addEventListener('click', closeEditModal);
+  if (btnCancelEditModal) btnCancelEditModal.addEventListener('click', closeEditModal);
+  if (editModal) editModal.addEventListener('click', (e) => {
+    if (e.target === editModal) closeEditModal();
   });
 
   // Handle Edit Form Submission
- if (editEntryForm) editEntryForm.addEventListener('submit', async (e) => {
+  if (editEntryForm) editEntryForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if(!editingEntryId) return;
+    if (editingEntryId === null || editingEntryId === undefined) return;
 
     let typeVal = editInputType.value.trim().toUpperCase();
     if (typeVal === 'C/IN') typeVal = 'CASHIN';
     if (typeVal === 'C/OUT') typeVal = 'CASHOUT';
 
+    const bDate = currentEditingEntry?.businessDate || currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+
     const updatedData = {
+      id: editingEntryId,
       datetime: editInputDateTime.value,
-      cd: (editInputCD && editInputCD.value) ? editInputCD.value.toUpperCase() : 'CD-01',
+      cd: (editInputCD && editInputCD.value) ? editInputCD.value.toUpperCase() : (currentEditingEntry?.cd || 'CD-01'),
       type: typeVal,
       amount: parseFloat(editInputAmount.value) || 0,
-      cashier: (editInputCashier && editInputCashier.value) ? editInputCashier.value.trim().toUpperCase() : '-',
+      cashier: (editInputCashier && editInputCashier.value) ? editInputCashier.value.trim().toUpperCase() : (currentEditingEntry?.cashier || '-'),
       guestname: editInputGuestName.value.trim().toUpperCase(),
       card: editInputCard.value.trim().toUpperCase(),
       otherinfo: editInputOtherInfo.value.trim().toUpperCase(),
-      surv: editInputSurv.value.toUpperCase()
+      surv: editInputSurv.value.toUpperCase(),
+      businessDate: bDate,
+      archived: currentEditingEntry?.archived !== undefined ? currentEditingEntry.archived : false
     };
 
     try {
-      const resp = await fetch(`/api/entries?id=${editingEntryId}`, {
+      const resp = await fetch(`/api/entries?id=${encodeURIComponent(editingEntryId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...updatedData, id: editingEntryId })
+        body: JSON.stringify(updatedData)
       });
-      if (!resp.ok) throw new Error('Update failed.');
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(data.error || 'Update failed.');
+      }
       
+      // Update entry in-memory immediately for instant 0ms UI update
+      const targetIdStr = String(editingEntryId);
+      const localIdx = allEntries.findIndex(item => String(item.id) === targetIdStr || item.id == editingEntryId);
+      if (localIdx !== -1) {
+        allEntries[localIdx] = { ...allEntries[localIdx], ...updatedData };
+      }
+      window.allEntries = allEntries;
+
       closeEditModal();
-      await fetchEntries(); // Re-render the view
+      showAppNotification('Entry updated successfully.', 'success');
+
+      // Re-render views
+      renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+      calculateStatistics(allEntries.filter(isEntryForToday));
+      populateDataLists(allEntries);
+      if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
+      if (typeof renderMajor === 'function') renderMajor();
+
+      // Background sync with server
+      fetchEntries().catch(console.error);
     } catch (err) {
-      alert(`Error updating entry: ${err.message}`);
+      showAppNotification(`Error updating entry: ${err.message}`, 'error');
     }
   });
 
@@ -1189,24 +1228,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Attach listeners for Edit & Delete across all containers
     document.querySelectorAll('#all-entries-panel-card .btn-edit-entry').forEach(btn => {
       btn.addEventListener('click', () => {
-        const id = Number(btn.getAttribute('data-id'));
-        const entry = allEntries.find(e => e.id === id);
+        const idAttr = btn.getAttribute('data-id');
+        const entry = allEntries.find(e => String(e.id) === String(idAttr) || e.id == idAttr);
         if (entry) editEntry(entry);
       });
     });
     document.querySelectorAll('#all-entries-panel-card .btn-delete-entry').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const id = Number(btn.getAttribute('data-id'));
+        const idAttr = btn.getAttribute('data-id');
         if (!(await showAppConfirm('Are you sure you want to delete this entry?'))) return;
         try {
           // Instant in-memory removal
-          allEntries = allEntries.filter(e => Number(e.id) !== id);
+          allEntries = allEntries.filter(e => String(e.id) !== String(idAttr) && e.id != idAttr);
+          window.allEntries = allEntries;
           if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
           if (typeof renderEntries === 'function') renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
           showAppNotification('Entry deleted successfully.', 'success');
 
           // Fast direct delete call
-          fetch(`/api/entries?id=${id}`, { method: 'DELETE' }).catch(e => console.error(e));
+          fetch(`/api/entries?id=${encodeURIComponent(idAttr)}`, { method: 'DELETE' }).catch(e => console.error(e));
         } catch (err) {
           showAppNotification(`Error deleting entry: ${err.message}`, 'error');
         }
@@ -4549,8 +4589,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Attach Edit listeners
     logsTableBody.querySelectorAll('.btn-edit-entry')?.forEach(btn => {
       btn.addEventListener('click', () => {
-        const id = Number(btn.getAttribute('data-id'));
-        const entry = allEntries.find(e => e.id === id);
+        const idAttr = btn.getAttribute('data-id');
+        const entry = allEntries.find(e => String(e.id) === String(idAttr) || e.id == idAttr);
         if (entry) editEntry(entry);
       });
     });
@@ -4558,17 +4598,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Attach Delete listeners
     logsTableBody.querySelectorAll('.btn-delete-entry')?.forEach(btn => {
       btn.addEventListener('click', async () => {
-        const id = Number(btn.getAttribute('data-id'));
+        const idAttr = btn.getAttribute('data-id');
         if (!(await showAppConfirm('Are you sure you want to delete this entry?'))) return;
         try {
           // Instant in-memory removal
-          allEntries = allEntries.filter(e => Number(e.id) !== id);
+          allEntries = allEntries.filter(e => String(e.id) !== String(idAttr) && e.id != idAttr);
+          window.allEntries = allEntries;
           if (typeof renderEntries === 'function') renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
           if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
           showAppNotification('Entry deleted successfully.', 'success');
 
           // Fast direct delete call
-          fetch(`/api/entries?id=${id}`, { method: 'DELETE' }).catch(e => console.error(e));
+          fetch(`/api/entries?id=${encodeURIComponent(idAttr)}`, { method: 'DELETE' }).catch(e => console.error(e));
         } catch (err) {
           showAppNotification(`Error deleting entry: ${err.message}`, 'error');
         }
@@ -5098,9 +5139,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payloads.length === 1 ? payloads[0] : payloads)
+      }).then(async res => {
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          console.error('Error saving entries:', errData);
+          const errMsg = errData.error || 'Server error';
+          setFb(`✗ Error saving: ${errMsg}`, '#fca5a5');
+          showAppNotification(`Error saving entry: ${errMsg}`, 'error');
+        }
       }).catch(err => {
         console.error('Error saving entries:', err);
         setFb(`✗ Error saving: ${err.message}`, '#fca5a5');
+        showAppNotification(`Error saving entry: ${err.message}`, 'error');
       });
     }
 
@@ -5838,6 +5888,12 @@ document.addEventListener('DOMContentLoaded', async () => {
           updateGamingDateDisplay();
           fetchEntries();
           showAppNotification('New Gaming Day started: ' + formatDisplayDate(data.newDate), 'info');
+          return;
+        }
+
+        if (data.type === 'entry-updated' || data.type === 'entry-created' || data.type === 'entry-deleted') {
+          console.log('[SSE] Live entry event received:', data.type);
+          fetchEntries().catch(() => {});
           return;
         }
 
