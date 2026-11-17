@@ -4268,8 +4268,7 @@ html, body {
   #supervisor-log-modal .modal-content,
   #barred-guest-modal .modal-content,
   #edit-modal .modal-container,
-  #new-day-modal .modal-content,
-  #barred-warning-modal .modal-content {
+  #new-day-modal .modal-content {
     width: 96vw !important;
     max-width: 96vw !important;
     max-height: 90vh !important;
@@ -5840,4 +5839,32 @@ body.page-maximized .excel-table td {
 /* Ensure Guest Summary Popup floats above AI Assistant */
 #guest-summary-modal {
   z-index: 20000 !important;
+}
+
+/* Barred Warning Modal: Compact, Small & Fits on Screen */
+#barred-warning-modal .modal-content {
+  width: 360px !important;
+  max-width: 90vw !important;
+  max-height: 85vh !important;
+  border-radius: 12px !important;
+  margin: auto !important;
+  overflow: hidden !important;
+  border: 1.5px solid var(--danger) !important;
+  box-shadow: 0 0 25px rgba(239, 68, 68, 0.45) !important;
+}
+
+#barred-warning-modal .modal-body {
+  padding: 12px 14px 14px 14px !important;
+  max-height: calc(85vh - 44px) !important;
+  overflow-y: auto !important;
+}
+
+#barred-warning-reason img {
+  max-height: 85px !important;
+  max-width: 100% !important;
+  object-fit: contain !important;
+  display: block !important;
+  margin: 0 auto 6px auto !important;
+  border-radius: 6px !important;
+  border: 1.5px solid rgba(239, 68, 68, 0.5) !important;
 }

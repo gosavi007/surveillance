@@ -1973,11 +1973,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       let photoUrl = match ? (match.photo || match.Photo || '') : '';
 
       if (photoUrl && (photoUrl.startsWith('data:image/') || photoUrl.startsWith('http') || photoUrl.startsWith('/'))) {
-        details += `<div style="text-align:center; margin-bottom:12px;"><img src="${photoUrl}" style="max-height:160px; max-width:100%; border-radius:8px; border:2px solid #ef4444;" /></div>`;
+        details += `<div style="text-align:center; margin-bottom:8px;"><img src="${photoUrl}" style="max-height:85px; max-width:100%; object-fit:contain; border-radius:6px; border:1.5px solid rgba(239,68,68,0.6);" /></div>`;
       }
 
       details += `
-        <div style="display:flex; flex-direction:column; gap:6px; text-align:left; font-size:0.95rem;">
+        <div style="display:flex; flex-direction:column; gap:3px; text-align:left; font-size:0.78rem; line-height:1.35;">
           <div><strong style="color:#ef4444;">REASON:</strong> <span style="color:#fff;">${escapeHTML(reasonText || 'No reason specified')}</span></div>
           ${dateText ? `<div><strong style="color:#94a3b8;">DATE:</strong> <span style="color:#fff;">${escapeHTML(dateText)}</span></div>` : ''}
           ${instText ? `<div><strong style="color:#94a3b8;">INSTRUCTION:</strong> <span style="color:#fff;">${escapeHTML(instText)}</span></div>` : ''}
@@ -5920,11 +5920,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                   const val = String(data.content[key] || '');
                   if (kLow.includes('photo') || kLow.includes('image')) {
                      if (val.startsWith('data:image/') || val.startsWith('http')) {
-                        details += `<div style="margin-bottom:4px;"><strong style="color:#a78bfa;">${key}:</strong><br/><img src="${val}" style="max-width: 150px; border-radius: 4px; margin-top: 4px;" /></div>`;
+                        details += `<div style="text-align:center; margin-bottom:6px;"><img src="${val}" style="max-height:85px; max-width:100%; object-fit:contain; border-radius:6px; border:1.5px solid rgba(239,68,68,0.6);" /></div>`;
                         continue;
                      }
                   }
-                  details += `<div style="margin-bottom:4px;"><strong style="color:#a78bfa;">${key}:</strong> ${val}</div>`;
+                  details += `<div style="font-size:0.78rem; line-height:1.35; margin-bottom:2px;"><strong style="color:#ef4444;">${key.toUpperCase()}:</strong> <span style="color:#fff;">${val}</span></div>`;
 
                 }
               }
