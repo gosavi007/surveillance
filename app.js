@@ -88,6 +88,80 @@ function isTotalOutType(type) {
 }
 window.isTotalOutType = isTotalOutType;
 
+// Universal Entry Sentence Helper (Always defined immediately)
+function getEntrySentence(entry, isHtmlLink = false) {
+  if (!entry) return '';
+  const t = (entry.type || '').toUpperCase();
+  const amt = (typeof formatKCurrency === 'function' ? formatKCurrency(Number(entry.amount) || 0) : (entry.amount || 0)).toString().toUpperCase();
+  const rawGuest = (entry.guestname || 'UNKNOWN').toUpperCase();
+  const guest = isHtmlLink
+    ? `<span class="clickable-guest-name" data-guest="${escapeHTML(rawGuest)}" style="cursor:pointer; color:#38bdf8 !important; text-decoration:underline; font-weight:700;">${escapeHTML(rawGuest)}</span>`
+    : escapeHTML(rawGuest);
+  const card = entry.card ? escapeHTML(String(entry.card).toUpperCase()) : '';
+  const info = entry.otherinfo ? ` (${escapeHTML(String(entry.otherinfo).toUpperCase())})` : '';
+
+  const cleanType = t.replace(/[\s\-_]/g, '');
+  if (cleanType === 'CASHIN' || cleanType === 'CIN' || t === 'C/IN')   return `${amt} CASHIN BY ${guest}${info}`;
+  if (cleanType === 'CASHOUT' || cleanType === 'COUT' || t === 'C/OUT')  return `${amt} CASHOUT BY ${guest}${info}`;
+  if (cleanType === 'ISSUE')    return `${amt} ISSUE TO ${guest}${card ? ` FROM ${card} CARD` : ''}${info}`;
+  if (cleanType === 'DEPOSIT')  return `${amt} DEPOSIT BY ${guest}${card ? ` ON ${card} CARD` : ''}${info}`;
+  if (cleanType === 'KEYIN' || t === 'KEY/IN')    return `${amt} KEYIN BY ${guest}${info}`;
+  if (cleanType === 'KEYOUT' || cleanType === 'KYOUT' || t === 'KEY/OUT' || t === 'KY/OUT')   return `${amt} KEYOUT BY ${guest}${info}`;
+  
+  return `${amt} ${t} BY ${guest}${info}`;
+}
+window.getEntrySentence = getEntrySentence;
+
+// Global AI Assistant Helpers (Always defined immediately)
+window.aiShowDateAllEntries = function(dStr) {
+  const aiDatePicker = document.getElementById('ai-date-picker');
+  const aiSelectedDateBadge = document.getElementById('ai-selected-date-badge');
+  const aiQueryInput = document.getElementById('ai-query-input');
+  if (dStr && aiDatePicker) aiDatePicker.value = dStr;
+  if (dStr && aiSelectedDateBadge && typeof formatDisplayDate === 'function') {
+    aiSelectedDateBadge.textContent = formatDisplayDate(dStr);
+  }
+  if (aiQueryInput) aiQueryInput.value = '';
+  if (typeof window.executeAiQuery === 'function') {
+    window.executeAiQuery('ALL ENTRIES');
+  }
+};
+
+window.aiSwitchDate = function(dStr, guestName) {
+  const aiDatePicker = document.getElementById('ai-date-picker');
+  const aiSelectedDateBadge = document.getElementById('ai-selected-date-badge');
+  const aiQueryInput = document.getElementById('ai-query-input');
+  if (dStr && aiDatePicker) aiDatePicker.value = dStr;
+  if (dStr && aiSelectedDateBadge && typeof formatDisplayDate === 'function') {
+    aiSelectedDateBadge.textContent = formatDisplayDate(dStr);
+  }
+  if (guestName && aiQueryInput) aiQueryInput.value = guestName;
+  if (typeof window.executeAiQuery === 'function') {
+    window.executeAiQuery(guestName || 'ALL ENTRIES');
+  }
+};
+
+window.aiOpenGuestSummary = function(guestName) {
+  if (!guestName) return;
+  const aiDatePicker = document.getElementById('ai-date-picker');
+  const activeDate = (aiDatePicker && aiDatePicker.value)
+    ? aiDatePicker.value
+    : (window.currentBusinessDateStr || window.currentBusinessDate || (typeof getBusinessDate === 'function' ? getBusinessDate() : ''));
+  const candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+    ? allEntries
+    : (window.allEntries || []);
+  const openFn = (typeof openGuestSummaryPopup === 'function')
+    ? openGuestSummaryPopup
+    : window.openGuestSummaryPopup;
+  if (openFn) {
+    openFn(guestName, candidateList, activeDate);
+  }
+};
+
+window.aiQueryGuest = function(guestName) {
+  window.aiOpenGuestSummary(guestName);
+};
+
 function parseEntryDateTime(datetimeStr) {
   if (!datetimeStr) return { date: '', time: '', dmy: '' };
   const str = String(datetimeStr).trim();
@@ -114,6 +188,269 @@ function parseEntryDateTime(datetimeStr) {
   return { date: datePart, time: cleanTime, dmy, timeOnly: cleanTime };
 }
 window.parseEntryDateTime = parseEntryDateTime;
+
+// Universal Date Display Helper (DD-MM-YYYY)
+function formatDisplayDate(dateStr) {
+  if (!dateStr) return '';
+  const clean = String(dateStr).split('T')[0];
+  const parts = clean.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+  return dateStr;
+}
+window.formatDisplayDate = formatDisplayDate;
+
+// Guest Name Matching & Priority System
+function isNameMatch(n1, n2) {
+  if (!n1 || !n2) return false;
+  const s1 = String(n1).trim().toUpperCase();
+  const s2 = String(n2).trim().toUpperCase();
+  if (s1 === s2) return true;
+
+  const words1 = s1.split(/[\s,._-]+/).filter(Boolean);
+  const words2 = s2.split(/[\s,._-]+/).filter(Boolean);
+  if (words1.length === 0 || words2.length === 0) return false;
+
+  const fullWords1 = words1.filter(w => w.length > 1);
+  const fullWords2 = words2.filter(w => w.length > 1);
+  const initials1 = words1.filter(w => w.length === 1);
+  const initials2 = words2.filter(w => w.length === 1);
+
+  // Check shared full words
+  const sharedFullWords = fullWords1.filter(w => fullWords2.includes(w));
+  if (sharedFullWords.length >= 1) {
+    if (words1.length === 1 && words2.length === 1) return true;
+    if (words1.length === 1 || words2.length === 1) return true;
+
+    const remainingWords1 = words1.filter(w => !sharedFullWords.includes(w));
+    const remainingWords2 = words2.filter(w => !sharedFullWords.includes(w));
+    if (remainingWords1.length === 0 || remainingWords2.length === 0) return true;
+
+    const remainingInitials1 = remainingWords1.map(w => w[0]);
+    const remainingInitials2 = remainingWords2.map(w => w[0]);
+    const matchesInitials = remainingInitials1.some(i => remainingInitials2.includes(i));
+    if (matchesInitials) return true;
+  }
+
+  // Pure initial cross-matching
+  if (words1.length >= 2 && words2.length >= 2) {
+    const initialsAll1 = words1.map(w => w[0]);
+    const initialsAll2 = words2.map(w => w[0]);
+    if (initialsAll1.join('') === initialsAll2.join('') && initialsAll1.length >= 2) return true;
+  }
+
+  return false;
+}
+window.isNameMatch = isNameMatch;
+
+function getCanonicalNamePriority(name) {
+  if (!name) return 0;
+  const s = String(name).trim().toUpperCase();
+  const words = s.split(/[\s,._-]+/).filter(Boolean);
+  if (words.length === 0) return 0;
+
+  const fullWords = words.filter(w => w.length > 1);
+  const initials = words.filter(w => w.length === 1);
+
+  if (fullWords.length >= 2) return 3000 + (fullWords.length * 100) + s.length;
+  if (fullWords.length === 1 && initials.length >= 1 && words[words.length - 1].length === 1) return 2000 + s.length;
+  if (fullWords.length === 1 && initials.length >= 1 && words[0].length === 1) return 1800 + s.length;
+  if (fullWords.length === 1 && initials.length >= 1) return 1600 + s.length;
+  if (fullWords.length === 1) return 1400 + s.length;
+  return 1000 + s.length;
+}
+window.getCanonicalNamePriority = getCanonicalNamePriority;
+
+function getGuestCluster(targetName, candidateEntries) {
+  if (!targetName || !Array.isArray(candidateEntries)) {
+    return { canonicalName: (targetName || '').toUpperCase(), entries: [] };
+  }
+  const target = String(targetName).trim().toUpperCase();
+
+  let clusterEntries = candidateEntries.filter(e => {
+    const gn = (e.guestname || '').trim();
+    return isNameMatch(target, gn);
+  });
+
+  if (clusterEntries.length === 0) {
+    clusterEntries = candidateEntries.filter(e => (e.guestname || '').trim().toUpperCase() === target);
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const e of candidateEntries) {
+      if (!clusterEntries.includes(e)) {
+        const gn = (e.guestname || '').trim();
+        if (clusterEntries.some(m => isNameMatch((m.guestname || '').trim(), gn))) {
+          clusterEntries.push(e);
+          changed = true;
+        }
+      }
+    }
+  }
+
+  const uniqueNames = [...new Set(clusterEntries.map(e => (e.guestname || '').trim().toUpperCase()))].filter(Boolean);
+  uniqueNames.sort((a, b) => getCanonicalNamePriority(b) - getCanonicalNamePriority(a));
+  const canonicalName = uniqueNames.length > 0 ? uniqueNames[0] : target;
+
+  return { canonicalName, entries: clusterEntries };
+}
+window.getGuestCluster = getGuestCluster;
+
+// Universal Guest Summary Popup (Always available immediately)
+function openGuestSummaryPopup(guestName, candidateEntries, activeDateStr) {
+  const modal = document.getElementById('guest-summary-modal');
+  if (!modal) return;
+
+  // Determine target full date string
+  let resolvedDateStr = activeDateStr || window.currentBusinessDateStr || window.currentBusinessDate || (typeof getBusinessDate === 'function' ? getBusinessDate() : '');
+  if (typeof resolvedDateStr === 'number' || (typeof resolvedDateStr === 'string' && /^\d{1,2}$/.test(resolvedDateStr.trim()))) {
+    const dayNum = parseInt(resolvedDateStr, 10);
+    const base = window.currentBusinessDateStr || window.currentBusinessDate || (typeof getBusinessDate === 'function' ? getBusinessDate() : '');
+    const ym = base ? base.slice(0, 7) : '';
+    resolvedDateStr = ym ? `${ym}-${String(dayNum).padStart(2, '0')}` : resolvedDateStr;
+  }
+
+  // Format display date: DD-MM-YYYY
+  const displayDate = formatDisplayDate(resolvedDateStr);
+  const dateEl = document.getElementById('guest-summary-modal-date');
+  if (dateEl) dateEl.textContent = displayDate;
+
+  // Full pool of candidate entries
+  const allCandidateEntries = (Array.isArray(candidateEntries) && candidateEntries.length > 0)
+    ? candidateEntries
+    : ((typeof allEntries !== 'undefined' && Array.isArray(allEntries)) ? allEntries : (window.allEntries || []));
+
+  // Cluster matching entries
+  const cluster = getGuestCluster(guestName, allCandidateEntries);
+  let canonicalName = cluster.canonicalName || (guestName || '').toUpperCase();
+  let clusterEntries = cluster.entries || [];
+
+  if (clusterEntries.length === 0) {
+    clusterEntries = allCandidateEntries.filter(e => {
+      const gn = (e.guestname || '').trim().toUpperCase();
+      return gn === canonicalName || gn.includes(canonicalName) || canonicalName.includes(gn);
+    });
+  }
+
+  // Filter to selected business date
+  let dayEntries = clusterEntries;
+  if (resolvedDateStr) {
+    const filtered = clusterEntries.filter(e => {
+      const d = getEntryDate(e) || (parseEntryDateTime(e.datetime).date);
+      return d === resolvedDateStr;
+    });
+    dayEntries = filtered;
+  }
+
+  // Calculate In / Out / Result for selected date
+  let totalIn = 0;
+  let totalOut = 0;
+  dayEntries.forEach(e => {
+    const amt = Number(e.amount) || 0;
+    const t = e.type || '';
+    if (isTotalInType(t)) {
+      totalIn += amt;
+    } else if (isTotalOutType(t)) {
+      totalOut += amt;
+    }
+  });
+
+  const netResult = totalOut - totalIn;
+  const isNegative = netResult < 0;
+  const totalInStr = formatIndianNumber(totalIn);
+  const totalOutStr = formatIndianNumber(totalOut);
+  const resFormatted = formatIndianNumber(Math.abs(netResult));
+  // USER RULE: IF NEGATIVE THAN RED, NO COLOUR FOR OTHER (#000000 on green card)
+  const resColor = isNegative ? '#FF0000' : '#000000';
+
+  // Render Excel Style Guest Summary Card
+  const cardContainer = document.getElementById('guest-summary-card-container') || document.querySelector('.guest-summary-card-box');
+  if (cardContainer) {
+    cardContainer.innerHTML = `
+      <div class="guest-summary-header-cyan" style="display: block !important; visibility: visible !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">
+        GUEST SUMMARY
+      </div>
+      <div class="guest-summary-body-green" style="display: flex !important; visibility: visible !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important; filter: none !important;">
+        <div class="summary-row" style="display: flex !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+          <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 700 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">NAME :-</span>
+          <span id="guest-summary-modal-name" class="summary-val" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">${escapeHTML(canonicalName || guestName || '—')}</span>
+        </div>
+        <div class="summary-row" style="display: flex !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+          <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 700 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">TOTAL IN :-</span>
+          <span id="guest-summary-modal-in" class="summary-val" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">${totalInStr}</span>
+        </div>
+        <div class="summary-row" style="display: flex !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+          <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 700 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">TOTAL OUT :-</span>
+          <span id="guest-summary-modal-out" class="summary-val" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">${totalOutStr}</span>
+        </div>
+        <div class="summary-row summary-row-result" style="display: flex !important; visibility: visible !important; min-height: 32px !important; border-bottom: 1.5px solid #000000 !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+          <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">RESULT :-</span>
+          <span id="guest-summary-modal-result" class="summary-val summary-val-result" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; color: ${resColor} !important; font-weight: 800 !important; font-size: 1.05rem !important; text-shadow: none !important; filter: none !important;">${escapeHTML(resFormatted)}</span>
+        </div>
+      </div>
+      <div class="guest-summary-footer-yellow" style="display: block !important; visibility: visible !important; height: 20px !important; min-height: 20px !important; background: #FFFF00 !important; border-top: 1.5px solid #000000 !important;"></div>
+    `;
+  }
+
+  const nameEl = document.getElementById('guest-summary-modal-name');
+  const inEl = document.getElementById('guest-summary-modal-in');
+  const outEl = document.getElementById('guest-summary-modal-out');
+  const resultEl = document.getElementById('guest-summary-modal-result');
+  if (nameEl) nameEl.textContent = canonicalName || guestName || '—';
+  if (inEl) inEl.textContent = totalInStr;
+  if (outEl) outEl.textContent = totalOutStr;
+  if (resultEl) {
+    resultEl.textContent = resFormatted;
+    resultEl.style.color = resColor;
+    resultEl.style.setProperty('color', resColor, 'important');
+  }
+
+  const countEl = document.getElementById('guest-summary-modal-count');
+  if (countEl) {
+    countEl.textContent = `${dayEntries.length} ${dayEntries.length === 1 ? 'ENTRY' : 'ENTRIES'}`;
+  }
+
+  // Sort entries chronologically
+  const sortedEntries = [...dayEntries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+
+  // Populate Entries List below
+  const listEl = document.getElementById('guest-summary-modal-entries');
+  if (listEl) {
+    if (sortedEntries.length === 0) {
+      listEl.innerHTML = `<div style="text-align:center; padding: 20px; color: #94a3b8; font-size: 0.9rem; font-weight: 700;">No entries found for ${escapeHTML(canonicalName)} on ${displayDate}</div>`;
+    } else {
+      listEl.innerHTML = sortedEntries.map(e => {
+        const t = (e.type || '').toUpperCase();
+        const isCredit = isTotalInType(t);
+        const typeBorder = isCredit ? '#10b981' : '#ef4444';
+        const dtObj = parseEntryDateTime(e.datetime);
+        const time = dtObj.time || '—';
+        const sentence = (typeof getEntrySentence === 'function') ? getEntrySentence(e, false) : (e.amount + ' ' + t + ' BY ' + (e.guestname || ''));
+
+        return `
+          <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 3.5px solid ${typeBorder}; border-radius: 6px; padding: 7px 12px; display: flex; align-items: center; gap: 14px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.84rem;">
+            <span style="color: #38bdf8; font-weight: 700; min-width: 48px; flex-shrink: 0; letter-spacing: 0.5px;">${time}</span>
+            <span style="color: #f1f5f9; font-weight: 600; flex: 1; word-break: break-word;">${escapeHTML(sentence)}</span>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  modal.style.display = 'flex';
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+window.openGuestSummaryPopup = openGuestSummaryPopup;
+
+function closeGuestSummaryPopup() {
+  const modal = document.getElementById('guest-summary-modal');
+  if (modal) modal.style.display = 'none';
+}
+window.closeGuestSummaryPopup = closeGuestSummaryPopup;
+
 
 function getEntryDate(entry) {
   if (!entry) return '';
@@ -2370,6 +2707,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Helper: Entry to Sentence Form (supports clickable hyperlink for guest name)
   function getEntrySentence(entry, isHtmlLink = false) {
+    if (!entry) return '';
     const t = (entry.type || '').toUpperCase();
     const amt = formatKCurrency(Number(entry.amount) || 0).toUpperCase();
     const rawGuest = (entry.guestname || 'UNKNOWN').toUpperCase();
@@ -2379,18 +2717,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const card = entry.card ? escapeHTML(String(entry.card).toUpperCase()) : '';
     const info = entry.otherinfo ? ` (${escapeHTML(String(entry.otherinfo).toUpperCase())})` : '';
 
-    // CASHIN/CASHOUT: include otherinfo if present
-    if (t === 'CASHIN' || t === 'C/IN')   return `${amt} CASHIN BY ${guest}${info}`;
-    if (t === 'CASHOUT' || t === 'C/OUT')  return `${amt} CASHOUT BY ${guest}${info}`;
-    // ISSUE/DEPOSIT: card + otherinfo
-    if (t === 'ISSUE')    return `${amt} ISSUE TO ${guest} FROM ${card} CARD${info}`;
-    if (t === 'DEPOSIT')  return `${amt} DEPOSIT BY ${guest} ON ${card} CARD${info}`;
-    // KEYIN/KEYOUT: otherinfo only (no card)
-    if (t === 'KEYIN')    return `${amt} KEYIN BY ${guest}${info}`;
-    if (t === 'KEYOUT')   return `${amt} KEYOUT BY ${guest}${info}`;
+    const cleanType = t.replace(/[\s\-_]/g, '');
+    if (cleanType === 'CASHIN' || cleanType === 'CIN' || t === 'C/IN')   return `${amt} CASHIN BY ${guest}${info}`;
+    if (cleanType === 'CASHOUT' || cleanType === 'COUT' || t === 'C/OUT')  return `${amt} CASHOUT BY ${guest}${info}`;
+    if (cleanType === 'ISSUE')    return `${amt} ISSUE TO ${guest}${card ? ` FROM ${card} CARD` : ''}${info}`;
+    if (cleanType === 'DEPOSIT')  return `${amt} DEPOSIT BY ${guest}${card ? ` ON ${card} CARD` : ''}${info}`;
+    if (cleanType === 'KEYIN' || t === 'KEY/IN')    return `${amt} KEYIN BY ${guest}${info}`;
+    if (cleanType === 'KEYOUT' || cleanType === 'KYOUT' || t === 'KEY/OUT' || t === 'KY/OUT')   return `${amt} KEYOUT BY ${guest}${info}`;
     
     return `${amt} ${t} BY ${guest}${info}`;
   }
+  window.getEntrySentence = getEntrySentence;
 
   // -------------------------------------------------------------
   // GUEST NAME ALIASING, CANONICAL SELECTION & SUMMARY POPUP SYSTEM
@@ -2549,10 +2886,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const modal = document.getElementById('guest-summary-modal');
     if (!modal) return;
 
-    // Cluster matching entries
-    const cluster = getGuestCluster(guestName, candidateEntries);
-    const { canonicalName, entries } = cluster;
-
     // Determine target full date string
     let resolvedDateStr = activeDateStr || currentBusinessDateStr || currentBusinessDate || getBusinessDate();
     if (typeof resolvedDateStr === 'number' || (typeof resolvedDateStr === 'string' && /^\d{1,2}$/.test(resolvedDateStr.trim()))) {
@@ -2567,10 +2900,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     const dateEl = document.getElementById('guest-summary-modal-date');
     if (dateEl) dateEl.textContent = displayDate;
 
-    // Calculate In / Out / Result
+    // Full pool of candidate entries
+    const allCandidateEntries = (Array.isArray(candidateEntries) && candidateEntries.length > 0)
+      ? candidateEntries
+      : ((typeof allEntries !== 'undefined' && Array.isArray(allEntries)) ? allEntries : (window.allEntries || []));
+
+    // Cluster matching entries
+    const cluster = getGuestCluster(guestName, allCandidateEntries);
+    let canonicalName = cluster.canonicalName || (guestName || '').toUpperCase();
+    let clusterEntries = cluster.entries || [];
+
+    if (clusterEntries.length === 0) {
+      clusterEntries = allCandidateEntries.filter(e => {
+        const gn = (e.guestname || '').trim().toUpperCase();
+        return gn === canonicalName || gn.includes(canonicalName) || canonicalName.includes(gn);
+      });
+    }
+
+    // Filter to selected business date
+    let dayEntries = clusterEntries;
+    if (resolvedDateStr) {
+      const filtered = clusterEntries.filter(e => {
+        const d = getEntryDate(e) || (parseEntryDateTime(e.datetime).date);
+        return d === resolvedDateStr;
+      });
+      dayEntries = filtered;
+    }
+
+    // Calculate In / Out / Result for selected date
     let totalIn = 0;
     let totalOut = 0;
-    entries.forEach(e => {
+    dayEntries.forEach(e => {
       const amt = Number(e.amount) || 0;
       const t = e.type || '';
       if (isTotalInType(t)) {
@@ -2585,8 +2945,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const totalInStr = formatIndianNumber(totalIn);
     const totalOutStr = formatIndianNumber(totalOut);
     const resFormatted = formatIndianNumber(Math.abs(netResult));
-    // Normal bold text colors: Solid Deep Green (#008000) for positive/zero, Solid Deep Red (#CC0000) for minus (NO +/- sign)
-    const resColor = isNegative ? '#CC0000' : '#008000';
+    // USER RULE: IF NEGATIVE THAN RED, NO COLOUR FOR OTHER (#000000 on green card)
+    const resColor = isNegative ? '#FF0000' : '#000000';
 
     // Render Excel Style Guest Summary Card (Normal text + Bold, ZERO blur or text-shadow)
     const cardContainer = document.getElementById('guest-summary-card-container') || document.querySelector('.guest-summary-card-box');
@@ -2633,17 +2993,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const countEl = document.getElementById('guest-summary-modal-count');
     if (countEl) {
-      countEl.textContent = `${entries.length} ${entries.length === 1 ? 'ENTRY' : 'ENTRIES'}`;
+      countEl.textContent = `${dayEntries.length} ${dayEntries.length === 1 ? 'ENTRY' : 'ENTRIES'}`;
     }
 
     // Sort entries chronologically
-    const sortedEntries = [...entries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+    const sortedEntries = [...dayEntries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
 
     // Populate Entries List below
     const listEl = document.getElementById('guest-summary-modal-entries');
     if (listEl) {
       if (sortedEntries.length === 0) {
-        listEl.innerHTML = `<div style="text-align:center; padding: 20px; color: #94a3b8; font-size: 0.9rem;">No entries found for this guest on ${displayDate}</div>`;
+        listEl.innerHTML = `<div style="text-align:center; padding: 20px; color: #94a3b8; font-size: 0.9rem; font-weight: 700;">No entries found for ${escapeHTML(canonicalName)} on ${displayDate}</div>`;
       } else {
         listEl.innerHTML = sortedEntries.map(e => {
           const t = (e.type || '').toUpperCase();
@@ -4263,7 +4623,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     btnSave.classList.add('loading');
 
+    const now = Date.now();
     const entryPayload = {
+      id: editingEntryId !== null ? editingEntryId : now,
       datetime,
       cd: cd || 'CD-01',
       cashier: cashier || '-',
@@ -4272,88 +4634,46 @@ document.addEventListener('DOMContentLoaded', async () => {
       guestname,
       card,
       otherinfo,
-      surv
+      surv,
+      businessDate: currentBusinessDateStr || currentBusinessDate || getBusinessDate(),
+      archived: false,
+      modifiedAt: now
     };
 
+    // If new entry, optimistically update UI instantly with 0ms waiting
+    if (editingEntryId === null) {
+      allEntries.unshift(entryPayload);
+      window.allEntries = allEntries;
+      renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+      calculateStatistics(allEntries.filter(isEntryForToday));
+      populateDataLists(allEntries);
+      if (typeof renderMajor === 'function') renderMajor();
+      if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
+      resetFormInputs();
+      closeLogModal();
+    }
+
     try {
-      let response;
       if (editingEntryId !== null) {
         // UPDATE existing entry
-        response = await fetch(`/api/entries?id=${editingEntryId}`, {
+        const response = await fetch(`/api/entries?id=${editingEntryId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...entryPayload, id: editingEntryId })
         });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to save entry.');
+        resetFormInputs();
+        closeLogModal();
+        await fetchEntries();
       } else {
-        // CREATE new entry
-        response = await fetch('/api/entries', {
+        // CREATE new entry in background (Already optimistically rendered)
+        fetch('/api/entries', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(entryPayload)
-        });
+        }).catch(err => console.error('Save entry background error:', err));
       }
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to save entry.');
-
-      // Save quick entry concurrently if there is text and skipQuickSave is false
-      if (!skipQuickSave) {
-        let activeQuickInput = null;
-        let activeQuickFeedback = null;
-
-        const offPanel = document.getElementById('officer-quick-entry-panel');
-        if (offPanel && window.getComputedStyle(offPanel).display !== 'none') {
-          activeQuickInput = document.getElementById('officer-quick-input');
-          activeQuickFeedback = document.getElementById('officer-quick-feedback');
-        }
-
-        if (activeQuickInput && activeQuickInput.value.trim() && activeQuickFeedback) {
-          const raw = activeQuickInput.value.trim();
-          const parsed = parseQuickSentence(raw);
-          if (parsed) {
-            const cdFinal = cd || parsed.cd || 'CD-01';
-            const quickPayload = {
-              datetime: getLocalTimeISOString(),
-              cd: cdFinal,
-              cashier: cashier || '',
-              type: parsed.type,
-              amount: parsed.amount,
-              guestname: parsed.guestname,
-              card: parsed.card,
-              otherinfo: parsed.otherinfo,
-              surv: surv
-            };
-            try {
-              activeQuickFeedback.textContent = 'Saving quick entry...';
-              activeQuickFeedback.style.color = '#a78bfa';
-              const resp = await fetch('/api/entries', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(quickPayload)
-              });
-              const qdata = await resp.json();
-              if (resp.ok) {
-                activeQuickInput.value = '';
-                activeQuickFeedback.textContent = `✓ Saved: ${parsed.amount.toLocaleString('en-IN')} ${parsed.type} – ${parsed.guestname}`;
-                activeQuickFeedback.style.color = '#86efac';
-              } else {
-                activeQuickFeedback.textContent = `✗ Quick entry: ${qdata.error || 'Save failed'}`;
-                activeQuickFeedback.style.color = '#fca5a5';
-              }
-            } catch (err) {
-              activeQuickFeedback.textContent = `✗ Quick entry: ${err.message}`;
-              activeQuickFeedback.style.color = '#fca5a5';
-            }
-          } else {
-            activeQuickFeedback.textContent = '⚠ Quick entry cannot parse — check format.';
-            activeQuickFeedback.style.color = '#fca5a5';
-          }
-        }
-      }
-
-      resetFormInputs();
-      closeLogModal();
-      await fetchEntries();
     } catch (err) {
       console.error(err);
       alert(`Error saving entry: ${err.message}`);
@@ -4714,7 +5034,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Check if any parsed quick entry is for a barred guest
       for (const item of parsedEntries) {
         if (item.guestname) {
-          const match = await ensureCheckBarredGuest(item.guestname);
+          const match = checkClientBarredGuest(item.guestname);
           if (match) {
             await showBarredWarningPopup(match, item.guestname);
           }
@@ -4724,58 +5044,64 @@ document.addEventListener('DOMContentLoaded', async () => {
       const cdFinal = cdVal || 'CD-01';
       const cashierFinal = cashierVal || '-';
       const survVal = (currentUser ? currentUser.id : 'ADMIN').toUpperCase();
+      const now = Date.now();
+      const isoNow = getLocalTimeISOString();
+      const curBDate = currentBusinessDateStr || currentBusinessDate || getBusinessDate();
 
-      setFb(parsedEntries.length === 1 ? 'Saving…' : `Saving ${parsedEntries.length} entries…`, '#a78bfa');
-      qSaveBtn.disabled = true;
+      const payloads = parsedEntries.map((item, idx) => {
+        const itemCd = (item.cd && item.cd !== 'C' && item.cd !== 'D') ? item.cd : cdFinal;
+        return {
+          id: now + idx,
+          datetime: isoNow,
+          cd: itemCd,
+          cashier: cashierFinal,
+          type: item.type,
+          amount: item.amount,
+          guestname: item.guestname,
+          card: item.card || '',
+          otherinfo: item.otherinfo || '',
+          surv: survVal,
+          businessDate: curBDate,
+          archived: false,
+          modifiedAt: now + idx
+        };
+      });
 
-      try {
-        let savedCount = 0;
-        for (const item of parsedEntries) {
-          const itemCd = (item.cd && item.cd !== 'C' && item.cd !== 'D') ? item.cd : cdFinal;
-          const payload = {
-            datetime : getLocalTimeISOString(),
-            cd       : itemCd,
-            cashier  : cashierFinal,
-            type     : item.type,
-            amount   : item.amount,
-            guestname: item.guestname,
-            card     : item.card,
-            otherinfo: item.otherinfo,
-            surv     : survVal
-          };
-          const resp = await fetch('/api/entries', {
-            method : 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body   : JSON.stringify(payload)
-          });
-          const data = await resp.json();
-          if (!resp.ok) throw new Error(data.error || 'Save failed');
-          savedCount++;
-        }
+      // ─── INSTANTANEOUS ACTIONS ON ENTER (ZERO WAITING / SUDDENLY CLEARS & UPDATES) ───
+      qInput.value = '';
+      qInput.style.height = '';
+      qInput.focus();
 
-        if (savedCount === 1) {
-          const p = parsedEntries[0];
-          setFb(`✓ ${p.amount.toLocaleString('en-IN')} ${p.type} – ${p.guestname}${p.otherinfo ? ' ('+p.otherinfo+')' : ''}`, '#86efac');
-        } else {
-          setFb(`✓ Successfully saved ${savedCount} entries!`, '#86efac');
-        }
+      if (qCashier) qCashier.value = '';
+      if (inputCashier) inputCashier.value = '';
 
-        qInput.value = '';
-        qInput.style.height = ''; // Reset auto-resize
-
-        // AFTER SAVED CLEAR CD AND CASHIER in both forms
-        if (qCashier) qCashier.value = '';
-        if (qCDSelect) qCDSelect.value = 'CD-01';
-        if (inputCashier) inputCashier.value = '';
-        if (inputCD) inputCD.value = 'CD-01';
-
-        qInput.focus();
-        await fetchEntries();
-      } catch (err) {
-        setFb(`✗ ${err.message}`, '#fca5a5');
-      } finally {
-        qSaveBtn.disabled = false;
+      if (parsedEntries.length === 1) {
+        const p = parsedEntries[0];
+        setFb(`✓ ${p.amount.toLocaleString('en-IN')} ${p.type} – ${p.guestname}${p.otherinfo ? ' ('+p.otherinfo+')' : ''}`, '#86efac');
+      } else {
+        setFb(`✓ Successfully added ${parsedEntries.length} entries!`, '#86efac');
       }
+
+      // Optimistic table update in 0ms: entries appear suddenly on screen
+      for (let i = payloads.length - 1; i >= 0; i--) {
+        allEntries.unshift(payloads[i]);
+      }
+      window.allEntries = allEntries;
+      renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+      calculateStatistics(allEntries.filter(isEntryForToday));
+      populateDataLists(allEntries);
+      if (typeof renderMajor === 'function') renderMajor();
+      if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
+
+      // High-speed single batch background save (non-blocking)
+      fetch('/api/entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloads.length === 1 ? payloads[0] : payloads)
+      }).catch(err => {
+        console.error('Error saving entries:', err);
+        setFb(`✗ Error saving: ${err.message}`, '#fca5a5');
+      });
     }
 
     if (qSaveBtn) qSaveBtn.addEventListener('click', doSave);
@@ -5695,8 +6021,12 @@ document.addEventListener('DOMContentLoaded', () => {
   function openAiAssistantModal(initialQuery = '') {
     if (!aiAssistantModal) return;
     aiAssistantModal.style.setProperty('display', 'flex', 'important');
-    if (aiDatePicker && !aiDatePicker.value) {
-      aiDatePicker.value = currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+    const allEntriesDatePicker = document.getElementById('all-entries-date-picker');
+    const activeDashboardDate = (allEntriesDatePicker && allEntriesDatePicker.value)
+      ? allEntriesDatePicker.value
+      : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+    if (aiDatePicker && (!aiDatePicker.value || !initialQuery)) {
+      aiDatePicker.value = activeDashboardDate;
     }
     const curDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
     if (aiSelectedDateBadge) {
@@ -5785,7 +6115,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const gName = btn.getAttribute('data-guest');
         const activeDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
         if (gName) {
-          closeAiAssistantModal();
           const openFn = typeof openGuestSummaryPopup === 'function' ? openGuestSummaryPopup : window.openGuestSummaryPopup;
           const candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
             ? allEntries
@@ -5802,6 +6131,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  window.executeAiQuery = executeAiQuery;
   async function executeAiQuery(rawQuery) {
     if (!rawQuery || !rawQuery.trim()) return;
     const query = rawQuery.trim();
@@ -5888,10 +6218,9 @@ document.addEventListener('DOMContentLoaded', () => {
       // Re-attach listeners for interactive buttons inside the result card
       resultCard.querySelectorAll('.ai-open-guest-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-          const gName = btn.getAttribute('data-guest');
-          const activeDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
-          if (gName) {
-            closeAiAssistantModal();
+        const gName = btn.getAttribute('data-guest');
+        const activeDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+        if (gName) {
             const openFn = typeof openGuestSummaryPopup === 'function' ? openGuestSummaryPopup : window.openGuestSummaryPopup;
             const candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
               ? allEntries
@@ -5904,6 +6233,12 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', () => {
           const q = btn.getAttribute('data-query');
           if (q) executeAiQuery(q);
+        });
+      });
+      resultCard.querySelectorAll('.ai-btn-show-date-all').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const d = btn.getAttribute('data-date');
+          window.aiShowDateAllEntries(d);
         });
       });
     }
@@ -5932,7 +6267,7 @@ document.addEventListener('DOMContentLoaded', () => {
     allUniqueGuests.sort((a, b) => b.length - a.length);
 
     // Pure general overall commands should not match guest names
-    const isGeneralQuery = /^(overall\s*total\s*in|total\s*in\s*overall|total\s*in\s*today|today.*total\s*in|how\s*much.*in$|total\s*drop|total\s*cashin|^total\s*in$|overall\s*total\s*out|total\s*out\s*overall|total\s*out\s*today|today.*total\s*out|how\s*much.*out$|total\s*cashout|total\s*paid|^total\s*out$|overall\s*result|gaming\s*result|today\s*result|net\s*result|overall\s*performance|^result$|all\s*entries|how\s*many\s*entries|entries\s*count|all\s*records|^entries$|top\s*guests?|top\s*patrons?|major\s*patrons?|major\s*guests?|biggest\s*players?)$/i.test(qLower);
+    const isGeneralQuery = /^(overall\s*total\s*in|total\s*in\s*overall|total\s*in\s*today|today.*total\s*in|how\s*much.*in$|total\s*drop|total\s*cashin|^total\s*in$|overall\s*total\s*out|total\s*out\s*overall|total\s*out\s*today|today.*total\s*out|how\s*much.*out$|total\s*cashout|total\s*paid|^total\s*out$|overall\s*result|gaming\s*result|today\s*result|net\s*result|overall\s*performance|^result$|all\s*entries|how\s*many\s*entries|entries\s*count|all\s*records|^entries$|selected\s*date|that\s*day|day\s*entries|show\s*entries|date|sent[ae]nce.*|.*sent[ae]nce.*|perticular\s*day|particular\s*day|top\s*guests?|top\s*patrons?|major\s*patrons?|major\s*guests?|biggest\s*players?)$/i.test(qLower) || /^\d{2}[-/]\d{2}[-/]\d{4}$/.test(qLower) || /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(qLower);
 
     if (!isGeneralQuery) {
       for (const g of allUniqueGuests) {
@@ -5944,7 +6279,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!detectedGuest) {
         const cleanWords = qLower
-          .replace(/total\s*in|total\s*out|result|entries|entry|detail|details|info|guest|patron|how\s*much|what\s*is|tell\s*me\s*about|summary\s*of|show|for|of|on|at|\?/g, '')
+          .replace(/total\s*in|total\s*out|result|entries|entry|detail|details|info|guest|patron|how\s*much|what\s*is|tell\s*me\s*about|summary\s*of|show|for|of|on|at|selected|that\s*day|day|date|sent[ae]nce\s*form|sent[ae]nce|perticular|particular|\?/g, '')
           .trim();
         if (cleanWords.length >= 2) {
           for (const g of allUniqueGuests) {
@@ -5953,7 +6288,7 @@ document.addEventListener('DOMContentLoaded', () => {
               break;
             }
           }
-          if (!detectedGuest && !/^(total|result|entries|in|out|drop|paid|today|yesterday)$/i.test(cleanWords)) {
+          if (!detectedGuest && !/^(total|result|entries|in|out|drop|paid|today|yesterday|date|day|sentence|sentences|form)$/i.test(cleanWords)) {
             detectedGuest = cleanWords.toUpperCase();
           }
         }
@@ -6054,12 +6389,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 3. Overall Result & Performance
     if (!detectedGuest && /overall\s*result|gaming\s*result|today\s*result|net\s*result|overall\s*performance|^result$|how\s*did\s*we\s*do|win\s*or\s*loss|pnl|profit/i.test(qLower)) {
+      // Consolidate entries by guest on this date
+      const dateGuestsMap = {};
+      dateEntries.forEach(e => {
+        const raw = (e.guestname || 'UNKNOWN').trim();
+        if (!raw) return;
+        const canonical = clusterFn(raw, dateEntries).canonicalName || raw.toUpperCase();
+        if (!dateGuestsMap[canonical]) {
+          dateGuestsMap[canonical] = { name: canonical, totalIn: 0, totalOut: 0, count: 0 };
+        }
+        const amt = Number(e.amount) || 0;
+        if (isTotalInType(e.type)) dateGuestsMap[canonical].totalIn += amt;
+        else if (isTotalOutType(e.type)) dateGuestsMap[canonical].totalOut += amt;
+        dateGuestsMap[canonical].count++;
+      });
+
+      const dateGuestList = Object.values(dateGuestsMap).sort((a, b) => b.totalIn - a.totalIn);
+
       let totalIn = 0;
       let totalOut = 0;
-      dateEntries.forEach(e => {
-        const amt = Number(e.amount) || 0;
-        if (isTotalInType(e.type)) totalIn += amt;
-        else if (isTotalOutType(e.type)) totalOut += amt;
+      dateGuestList.forEach(g => {
+        totalIn += g.totalIn;
+        totalOut += g.totalOut;
       });
 
       const netResult = totalOut - totalIn;
@@ -6067,6 +6418,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // USER RULE: IF NEGATIVE THAN RED, NO COLOUR FOR OTHER (#FFFFFF)
       const resColor = isNegative ? '#FF0000' : '#FFFFFF';
       const resFormatted = formatIndianNumber(Math.abs(netResult));
+      const sortedDayEntries = [...dateEntries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
 
       return `
         <div class="ai-assistant-card">
@@ -6077,39 +6429,134 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="ai-stat-grid">
             <div class="ai-stat-box">
               <span class="ai-stat-label">TOTAL IN</span>
-              <span class="ai-stat-val" style="color: #38bdf8;">₹${formatIndianNumber(totalIn)}</span>
+              <span class="ai-stat-val">₹${formatIndianNumber(totalIn)}</span>
             </div>
             <div class="ai-stat-box">
               <span class="ai-stat-label">TOTAL OUT</span>
-              <span class="ai-stat-val" style="color: #f87171;">₹${formatIndianNumber(totalOut)}</span>
+              <span class="ai-stat-val">₹${formatIndianNumber(totalOut)}</span>
             </div>
-            <div class="ai-stat-box" style="border-color: ${isNegative ? '#FF0000' : 'rgba(255,255,255,0.1)'};">
+            <div class="ai-stat-box ${isNegative ? 'is-negative' : ''}" style="border-color: ${isNegative ? '#FF0000' : 'rgba(255,255,255,0.1)'};">
               <span class="ai-stat-label">RESULT</span>
-              <span class="ai-stat-val" style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</span>
+              <span class="ai-stat-val ${isNegative ? 'is-negative' : ''}" style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</span>
             </div>
           </div>
-          <div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px; font-size: 0.82rem; font-weight: 700; color: #cbd5e1; display: flex; justify-content: space-between;">
-            <span>TOTAL ENTRIES: <strong>${dateEntries.length}</strong></span>
-            <span>NET STATUS: <strong style="color: ${resColor};">${isNegative ? 'CASINO WIN / GUESTS NET DROP' : 'CASINO LOSS / GUESTS NET WIN'}</strong></span>
+
+          <!-- ENTRIES OF SELECTED DATE (Matching user drawing) -->
+          <div class="ai-date-entries-box">
+            <div class="ai-date-entries-title">
+              ENTRIES OF SELECTED DATE
+            </div>
+            <div class="ai-entries-table-wrap">
+              <table class="ai-entries-table">
+                <thead>
+                  <tr>
+                    <th>DATE</th>
+                    <th>GUEST NAME</th>
+                    <th>TOTAL IN</th>
+                    <th>TOTAL OUT</th>
+                    <th>RESULT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${dateGuestList.length === 0 ? `
+                    <tr>
+                      <td colspan="5" style="padding: 14px; color: #94a3b8; font-weight: 700;">
+                        NO ENTRIES RECORDED ON ${dispDate}
+                      </td>
+                    </tr>
+                  ` : `
+                    ${dateGuestList.map(g => {
+                      const gNet = g.totalOut - g.totalIn;
+                      const gIsNeg = gNet < 0;
+                      const gResColor = gIsNeg ? '#FF0000' : '#FFFFFF';
+                      const gResFormatted = formatIndianNumber(Math.abs(gNet));
+                      return `
+                        <tr>
+                          <td>${dispDate}</td>
+                          <td class="guest-clickable" onclick="window.aiQueryGuest('${escapeHTML(g.name)}')">${escapeHTML(g.name)}</td>
+                          <td style="font-weight: 700;">₹${formatIndianNumber(g.totalIn)}</td>
+                          <td style="font-weight: 700;">₹${formatIndianNumber(g.totalOut)}</td>
+                          <td style="color: ${gResColor}; font-weight: 900;">₹${gResFormatted}</td>
+                        </tr>
+                      `;
+                    }).join('')}
+                    <tr style="background: rgba(255, 255, 255, 0.08); font-weight: 900; border-top: 1.5px solid rgba(255, 255, 255, 0.35);">
+                      <td style="color: #38bdf8;">TOTAL</td>
+                      <td style="text-align: center;">${dateGuestList.length} GUESTS (${dateEntries.length} TRANSACTIONS)</td>
+                      <td>₹${formatIndianNumber(totalIn)}</td>
+                      <td>₹${formatIndianNumber(totalOut)}</td>
+                      <td style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</td>
+                    </tr>
+                  `}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ENTRIES IN SENTENCE FORM (SHOW OF PARTICULAR DAY) -->
+          <div class="ai-date-entries-box" style="margin-top: 14px;">
+            <div class="ai-date-entries-title" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>📝 ENTRIES IN SENTENCE FORM (${dispDate})</span>
+              <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">${sortedDayEntries.length} ${sortedDayEntries.length === 1 ? 'TRANSACTION' : 'TRANSACTIONS'}</span>
+            </div>
+            ${sortedDayEntries.length === 0 ? `
+              <div style="text-align: center; color: #94a3b8; padding: 16px; font-weight: 700;">
+                NO TRANSACTIONS RECORDED ON ${dispDate}
+              </div>
+            ` : `
+              <div style="display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; padding-right: 4px;">
+                ${sortedDayEntries.map(e => {
+                  const dt = parseEntryDateTime(e.datetime);
+                  const time = dt.time || '--:--';
+                  const typeClean = (e.type || '').toLowerCase().replace(/[\/\s]/g, '-');
+                  const sentence = getEntrySentence(e, true);
+                  const isCredit = isTotalInType(e.type);
+                  const borderCol = isCredit ? '#10b981' : '#ef4444';
+                  return `
+                    <div class="sentence-item ${typeClean}" style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.12); border-left: 4px solid ${borderCol}; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.86rem; background: rgba(10, 16, 32, 0.65);">
+                      <span style="color: #38bdf8; font-weight: 800; min-width: 48px; flex-shrink: 0; letter-spacing: 0.5px;">${time}</span>
+                      <span style="color: #ffffff; font-weight: 700; flex: 1; word-break: break-word;">${sentence}</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
           </div>
         </div>
       `;
     }
 
-    // 4. All Entries Summary
-    if (!detectedGuest && /all\s*entries|how\s*many\s*entries|entries\s*count|all\s*records|^entries$/i.test(qLower)) {
+    // 4. All Entries Summary / Date Entries / Sentences View
+    if (!detectedGuest && (/all\s*entries|how\s*many\s*entries|entries\s*count|all\s*records|^entries$|selected\s*date|that\s*day|day\s*entries|show\s*entries|sent[ae]nce|particular|perticular/i.test(qLower) || /^\d{2}[-/]\d{2}[-/]\d{4}$/.test(qLower) || /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(qLower))) {
+      // Consolidate entries by guest on this date
+      const dateGuestsMap = {};
+      dateEntries.forEach(e => {
+        const raw = (e.guestname || 'UNKNOWN').trim();
+        if (!raw) return;
+        const canonical = clusterFn(raw, dateEntries).canonicalName || raw.toUpperCase();
+        if (!dateGuestsMap[canonical]) {
+          dateGuestsMap[canonical] = { name: canonical, totalIn: 0, totalOut: 0, count: 0 };
+        }
+        const amt = Number(e.amount) || 0;
+        if (isTotalInType(e.type)) dateGuestsMap[canonical].totalIn += amt;
+        else if (isTotalOutType(e.type)) dateGuestsMap[canonical].totalOut += amt;
+        dateGuestsMap[canonical].count++;
+      });
+
+      const dateGuestList = Object.values(dateGuestsMap).sort((a, b) => b.totalIn - a.totalIn);
+
       let totalIn = 0;
       let totalOut = 0;
-      dateEntries.forEach(e => {
-        const amt = Number(e.amount) || 0;
-        if (isTotalInType(e.type)) totalIn += amt;
-        else if (isTotalOutType(e.type)) totalOut += amt;
+      dateGuestList.forEach(g => {
+        totalIn += g.totalIn;
+        totalOut += g.totalOut;
       });
+
       const netResult = totalOut - totalIn;
       const isNegative = netResult < 0;
       const resColor = isNegative ? '#FF0000' : '#FFFFFF';
-
-      const recent = [...dateEntries].sort((a, b) => new Date(b.datetime) - new Date(a.datetime)).slice(0, 10);
+      const resFormatted = formatIndianNumber(Math.abs(netResult));
+      const sortedDayEntries = [...dateEntries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
 
       return `
         <div class="ai-assistant-card">
@@ -6119,37 +6566,99 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           <div class="ai-stat-grid">
             <div class="ai-stat-box">
-              <span class="ai-stat-label">ENTRIES COUNT</span>
-              <span class="ai-stat-val" style="color: #c084fc;">${dateEntries.length}</span>
+              <span class="ai-stat-label">TOTAL IN</span>
+              <span class="ai-stat-val">₹${formatIndianNumber(totalIn)}</span>
             </div>
             <div class="ai-stat-box">
-              <span class="ai-stat-label">TOTAL IN</span>
-              <span class="ai-stat-val" style="color: #38bdf8;">₹${formatIndianNumber(totalIn)}</span>
+              <span class="ai-stat-label">TOTAL OUT</span>
+              <span class="ai-stat-val">₹${formatIndianNumber(totalOut)}</span>
             </div>
-            <div class="ai-stat-box" style="border-color: ${isNegative ? '#FF0000' : 'rgba(255,255,255,0.1)'};">
+            <div class="ai-stat-box ${isNegative ? 'is-negative' : ''}" style="border-color: ${isNegative ? '#FF0000' : 'rgba(255,255,255,0.1)'};">
               <span class="ai-stat-label">RESULT</span>
-              <span class="ai-stat-val" style="color: ${resColor}; font-weight: 900;">₹${formatIndianNumber(Math.abs(netResult))}</span>
+              <span class="ai-stat-val ${isNegative ? 'is-negative' : ''}" style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</span>
             </div>
           </div>
-          <div style="font-size: 0.78rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">LATEST ENTRIES FOR THIS DATE:</div>
-          <div style="display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto;">
-            ${recent.map(e => {
-              const dt = parseEntryDateTime(e.datetime);
-              const dStr = formatDisplayDate(dt.date || getEntryDate(e) || dispDate);
-              const tStr = dt.time || '00:00';
-              const amtK = formatKCurrency(Number(e.amount) || 0).toUpperCase();
-              const typeStr = (e.type || '').toUpperCase();
-              const guestStr = (e.guestname || 'UNKNOWN').toUpperCase().trim();
-              const isCredit = isTotalInType(typeStr);
-              const typeBorder = isCredit ? '#38bdf8' : '#f87171';
-              const sentence = `${tStr} ${amtK} ${typeStr} ${guestStr}`;
-              return `
-                <div class="ai-entry-row" style="font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.82rem; padding: 7px 12px; border-left: 3.5px solid ${typeBorder}; display: flex; align-items: center; justify-content: space-between;">
-                  <span style="color: #38bdf8; font-weight: 800; min-width: 95px; margin-right: 8px;">${dStr}</span>
-                  <span style="color: #ffffff; font-weight: 700; flex: 1; letter-spacing: 0.3px;">${escapeHTML(sentence)}</span>
-                </div>
-              `;
-            }).join('')}
+
+          <!-- ENTRIES OF SELECTED DATE (Matching user drawing) -->
+          <div class="ai-date-entries-box">
+            <div class="ai-date-entries-title">
+              ENTRIES OF SELECTED DATE
+            </div>
+            <div class="ai-entries-table-wrap">
+              <table class="ai-entries-table">
+                <thead>
+                  <tr>
+                    <th>DATE</th>
+                    <th>GUEST NAME</th>
+                    <th>TOTAL IN</th>
+                    <th>TOTAL OUT</th>
+                    <th>RESULT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${dateGuestList.length === 0 ? `
+                    <tr>
+                      <td colspan="5" style="padding: 14px; color: #94a3b8; font-weight: 700;">
+                        NO ENTRIES RECORDED ON ${dispDate}
+                      </td>
+                    </tr>
+                  ` : `
+                    ${dateGuestList.map(g => {
+                      const gNet = g.totalOut - g.totalIn;
+                      const gIsNeg = gNet < 0;
+                      const gResColor = gIsNeg ? '#FF0000' : '#FFFFFF';
+                      const gResFormatted = formatIndianNumber(Math.abs(gNet));
+                      return `
+                        <tr>
+                          <td>${dispDate}</td>
+                          <td class="guest-clickable" onclick="window.aiQueryGuest('${escapeHTML(g.name)}')">${escapeHTML(g.name)}</td>
+                          <td style="font-weight: 700;">₹${formatIndianNumber(g.totalIn)}</td>
+                          <td style="font-weight: 700;">₹${formatIndianNumber(g.totalOut)}</td>
+                          <td style="color: ${gResColor}; font-weight: 900;">₹${gResFormatted}</td>
+                        </tr>
+                      `;
+                    }).join('')}
+                    <tr style="background: rgba(255, 255, 255, 0.08); font-weight: 900; border-top: 1.5px solid rgba(255, 255, 255, 0.35);">
+                      <td style="color: #38bdf8;">TOTAL</td>
+                      <td style="text-align: center;">${dateGuestList.length} GUESTS (${dateEntries.length} TRANSACTIONS)</td>
+                      <td>₹${formatIndianNumber(totalIn)}</td>
+                      <td>₹${formatIndianNumber(totalOut)}</td>
+                      <td style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</td>
+                    </tr>
+                  `}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ENTRIES IN SENTENCE FORM (SHOW OF PARTICULAR DAY) -->
+          <div class="ai-date-entries-box" style="margin-top: 14px;">
+            <div class="ai-date-entries-title" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>📝 ENTRIES IN SENTENCE FORM (${dispDate})</span>
+              <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">${sortedDayEntries.length} ${sortedDayEntries.length === 1 ? 'TRANSACTION' : 'TRANSACTIONS'}</span>
+            </div>
+            ${sortedDayEntries.length === 0 ? `
+              <div style="text-align: center; color: #94a3b8; padding: 16px; font-weight: 700;">
+                NO TRANSACTIONS RECORDED ON ${dispDate}
+              </div>
+            ` : `
+              <div style="display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; padding-right: 4px;">
+                ${sortedDayEntries.map(e => {
+                  const dt = parseEntryDateTime(e.datetime);
+                  const time = dt.time || '--:--';
+                  const typeClean = (e.type || '').toLowerCase().replace(/[\/\s]/g, '-');
+                  const sentence = getEntrySentence(e, true);
+                  const isCredit = isTotalInType(e.type);
+                  const borderCol = isCredit ? '#10b981' : '#ef4444';
+                  return `
+                    <div class="sentence-item ${typeClean}" style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.12); border-left: 4px solid ${borderCol}; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.86rem; background: rgba(10, 16, 32, 0.65);">
+                      <span style="color: #38bdf8; font-weight: 800; min-width: 48px; flex-shrink: 0; letter-spacing: 0.5px;">${time}</span>
+                      <span style="color: #ffffff; font-weight: 700; flex: 1; word-break: break-word;">${sentence}</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
           </div>
         </div>
       `;
@@ -6266,7 +6775,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (detectedGuest) {
       const allCluster = clusterFn(detectedGuest, candidateList);
       const canonicalName = allCluster.canonicalName || detectedGuest.toUpperCase();
-      const allGuestEntries = allCluster.entries || [];
+      let allGuestEntries = (allCluster && Array.isArray(allCluster.entries) && allCluster.entries.length > 0)
+        ? allCluster.entries
+        : candidateList.filter(e => {
+            const gn = (e.guestname || '').trim().toUpperCase();
+            return gn === canonicalName || gn.includes(detectedGuest.toUpperCase()) || detectedGuest.toUpperCase().includes(gn);
+          });
 
       if (allGuestEntries.length === 0) {
         return `
@@ -6282,20 +6796,31 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
       }
 
-      // 1. Overall Totals (Across all dates)
-      let totalIn = 0;
-      let totalOut = 0;
+      // 1. Group all entries of this guest by date
+      const guestDatesMap = {};
       allGuestEntries.forEach(e => {
+        const dIso = getEntryDate(e) || (parseEntryDateTime(e.datetime).date);
+        if (!dIso) return;
+        if (!guestDatesMap[dIso]) {
+          guestDatesMap[dIso] = { dateIso: dIso, totalIn: 0, totalOut: 0, count: 0 };
+        }
         const amt = Number(e.amount) || 0;
-        if (isTotalInType(e.type)) totalIn += amt;
-        else if (isTotalOutType(e.type)) totalOut += amt;
+        if (isTotalInType(e.type)) guestDatesMap[dIso].totalIn += amt;
+        else if (isTotalOutType(e.type)) guestDatesMap[dIso].totalOut += amt;
+        guestDatesMap[dIso].count++;
       });
 
-      const netResult = totalOut - totalIn;
-      const isNegative = netResult < 0;
+      // Selected date summary
+      const currentDayData = guestDatesMap[targetDate] || { totalIn: 0, totalOut: 0, count: 0 };
+      const dayTotalIn = currentDayData.totalIn;
+      const dayTotalOut = currentDayData.totalOut;
+      const countTx = currentDayData.count;
+
+      const dayNetResult = dayTotalOut - dayTotalIn;
+      const isNegative = dayNetResult < 0;
       // USER RULE: IF NEGATIVE THAN RED, NO COLOUR FOR OTHER (#FFFFFF)
       const resColor = isNegative ? '#FF0000' : '#FFFFFF';
-      const resFormatted = formatIndianNumber(Math.abs(netResult));
+      const resFormatted = formatIndianNumber(Math.abs(dayNetResult));
 
       // 2. Barred Status Check
       const isBarred = barredList.some(b => {
@@ -6303,147 +6828,188 @@ document.addEventListener('DOMContentLoaded', () => {
         return bName && canonicalName.toLowerCase().includes(bName);
       });
 
+      // Overall sum to check major patron status
+      let allTotalIn = 0;
+      let allTotalOut = 0;
+      Object.values(guestDatesMap).forEach(d => {
+        allTotalIn += d.totalIn;
+        allTotalOut += d.totalOut;
+      });
+      const allNetResult = allTotalOut - allTotalIn;
+      const allIsNegative = allNetResult < 0;
+      const allResColor = allIsNegative ? '#FF0000' : '#FFFFFF';
+      const allResFormatted = formatIndianNumber(Math.abs(allNetResult));
+
+      const isMajor = dayTotalIn >= 1000000 || allTotalIn >= 1000000;
       const statusBadge = isBarred
         ? '<span style="background: #ef4444; color: #fff; font-size: 0.72rem; font-weight: 900; padding: 2px 8px; border-radius: 4px;">🚨 BARRED</span>'
-        : (totalIn >= 1000000
+        : (isMajor
             ? '<span style="background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.4); font-size: 0.72rem; font-weight: 900; padding: 2px 8px; border-radius: 4px;">⭐ MAJOR PATRON</span>'
             : '<span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 4px;">PATRON</span>');
 
-      // 3. First Entry Date & Last Entry Date
-      const sortedChronological = [...allGuestEntries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
-      const firstEntry = sortedChronological[0];
-      const lastEntry = sortedChronological[sortedChronological.length - 1];
+      // 3. Transactions count text for current day
+      const txText = `${countTx} ${countTx === 1 ? 'TRANSACTION' : 'TRANSACTIONS'}`;
+      const dayGuestEntries = allGuestEntries.filter(e => {
+        const d = getEntryDate(e) || (parseEntryDateTime(e.datetime).date);
+        return d === targetDate;
+      });
+      const sortedGuestDayEntries = [...dayGuestEntries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
 
-      function formatFullDateAndTime(dtStr) {
-        if (!dtStr) return '—';
-        const parsed = parseEntryDateTime(dtStr);
-        const d = formatDisplayDate(parsed.date);
-        const t = parsed.time || '00:00';
-        return `${d} ${t}`;
+      // Dates sorted descending
+      const sortedDateKeys = Object.keys(guestDatesMap).sort((a, b) => b.localeCompare(a));
+      const hasSelectedDateActivity = guestDatesMap[targetDate] !== undefined;
+      const otherDateKeys = sortedDateKeys.filter(k => k !== targetDate);
+      const lastEntryDateIso = sortedDateKeys[0] || '';
+      const dispLastDate = lastEntryDateIso ? formatDisplayDate(lastEntryDateIso) : '';
+
+      // Construct table rows: Consolidated row per date
+      let tableRowsHtml = '';
+      if (hasSelectedDateActivity) {
+        tableRowsHtml += `
+          <tr style="background: rgba(56, 189, 248, 0.12); border-left: 3px solid #38bdf8;">
+            <td style="font-weight: 900; color: #38bdf8; white-space: nowrap;">${dispDate}</td>
+            <td style="font-weight: 800;">${escapeHTML(canonicalName)}</td>
+            <td style="font-weight: 700;">₹${formatIndianNumber(dayTotalIn)}</td>
+            <td style="font-weight: 700;">₹${formatIndianNumber(dayTotalOut)}</td>
+            <td style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</td>
+          </tr>
+        `;
+      } else {
+        tableRowsHtml += `
+          <tr style="background: rgba(255, 255, 255, 0.03); opacity: 0.7;">
+            <td style="font-weight: 800; color: #94a3b8; white-space: nowrap;">${dispDate}</td>
+            <td style="font-weight: 800;">${escapeHTML(canonicalName)}</td>
+            <td style="font-weight: 700;">₹0</td>
+            <td style="font-weight: 700;">₹0</td>
+            <td style="font-weight: 700;">₹0</td>
+          </tr>
+        `;
       }
 
-      const firstEntryStr = formatFullDateAndTime(firstEntry.datetime);
-      const lastEntryStr = formatFullDateAndTime(lastEntry.datetime);
-
-      // 4. Date-Wise Total In, Total Out, Result Breakdown
-      const dateGroups = {};
-      allGuestEntries.forEach(e => {
-        const d = getEntryDate(e) || parseEntryDateTime(e.datetime).date;
-        if (!d) return;
-        if (!dateGroups[d]) dateGroups[d] = { in: 0, out: 0, entries: [] };
-        const amt = Number(e.amount) || 0;
-        if (isTotalInType(e.type)) dateGroups[d].in += amt;
-        else if (isTotalOutType(e.type)) dateGroups[d].out += amt;
-        dateGroups[d].entries.push(e);
+      // If guest has other dates recorded:
+      otherDateKeys.forEach(dIso => {
+        const item = guestDatesMap[dIso];
+        const itemNet = item.totalOut - item.totalIn;
+        const itemIsNeg = itemNet < 0;
+        const itemResColor = itemIsNeg ? '#FF0000' : '#FFFFFF';
+        const itemDisp = formatDisplayDate(dIso);
+        tableRowsHtml += `
+          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.15);">
+            <td style="cursor: pointer; text-decoration: underline; color: #38bdf8; font-weight: 700; white-space: nowrap;" title="Click to view this date" onclick="window.aiSwitchDate('${dIso}', '${escapeHTML(canonicalName)}')">${itemDisp}</td>
+            <td style="font-weight: 800;">${escapeHTML(canonicalName)}</td>
+            <td style="font-weight: 700;">₹${formatIndianNumber(item.totalIn)}</td>
+            <td style="font-weight: 700;">₹${formatIndianNumber(item.totalOut)}</td>
+            <td style="color: ${itemResColor}; font-weight: 900;">₹${formatIndianNumber(Math.abs(itemNet))}</td>
+          </tr>
+        `;
       });
 
-      const sortedDates = Object.keys(dateGroups).sort((a, b) => b.localeCompare(a));
-
-      // 5. Entries in Sentence Format with Date (Sorted newest first, e.g. "07-11-2026 20:00 50K CASHIN MANTHAN")
-      const sortedNewestFirst = [...allGuestEntries].sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
+      // If multiple dates exist in history, append overall total row
+      if (sortedDateKeys.length > 1) {
+        tableRowsHtml += `
+          <tr style="background: rgba(255, 255, 255, 0.08); font-weight: 900; border-top: 1.5px solid rgba(255, 255, 255, 0.35);">
+            <td style="color: #38bdf8;">OVERALL TOTAL</td>
+            <td style="text-align: center;">${escapeHTML(canonicalName)} (${sortedDateKeys.length} DATES)</td>
+            <td>₹${formatIndianNumber(allTotalIn)}</td>
+            <td>₹${formatIndianNumber(allTotalOut)}</td>
+            <td style="color: ${allResColor}; font-weight: 900;">₹${allResFormatted}</td>
+          </tr>
+        `;
+      }
 
       return `
         <div class="ai-assistant-card">
-          <!-- Card Header with Guest Name & Badges -->
+          <!-- Card Header with Guest Name, Badge & Current Day Transactions -->
           <div class="ai-card-badge-header">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span class="ai-card-title">${escapeHTML(canonicalName)}</span>
               ${statusBadge}
             </div>
             <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">
-              ${allGuestEntries.length} ${allGuestEntries.length === 1 ? 'TRANSACTION' : 'TRANSACTIONS'}
+              ${txText}
             </span>
           </div>
 
-          <!-- Top Overview: TOTAL IN | TOTAL OUT | RESULT (No colour for other, Red if negative) -->
+          <!-- Current Day Overview: TOTAL IN | TOTAL OUT | RESULT (Matching photo) -->
           <div class="ai-stat-grid">
             <div class="ai-stat-box">
               <span class="ai-stat-label">TOTAL IN</span>
-              <span class="ai-stat-val" style="color: #38bdf8;">₹${formatIndianNumber(totalIn)}</span>
+              <span class="ai-stat-val">₹${formatIndianNumber(dayTotalIn)}</span>
             </div>
             <div class="ai-stat-box">
               <span class="ai-stat-label">TOTAL OUT</span>
-              <span class="ai-stat-val" style="color: #f87171;">₹${formatIndianNumber(totalOut)}</span>
+              <span class="ai-stat-val">₹${formatIndianNumber(dayTotalOut)}</span>
             </div>
-            <div class="ai-stat-box" style="border-color: ${isNegative ? '#FF0000' : 'rgba(255,255,255,0.1)'};">
+            <div class="ai-stat-box ${isNegative ? 'is-negative' : ''}" style="border-color: ${isNegative ? '#FF0000' : 'rgba(255,255,255,0.1)'};">
               <span class="ai-stat-label">RESULT</span>
-              <span class="ai-stat-val" style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</span>
+              <span class="ai-stat-val ${isNegative ? 'is-negative' : ''}" style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</span>
             </div>
           </div>
+          ${countTx === 0 && lastEntryDateIso ? `
+            <div style="font-size: 0.74rem; color: #94a3b8; font-weight: 700; text-align: center; margin-top: 4px;">
+              NO TRANSACTIONS ON ${dispDate} · LAST RECORDED: <span style="color: #38bdf8; cursor: pointer; text-decoration: underline;" onclick="window.aiSwitchDate('${lastEntryDateIso}', '${escapeHTML(canonicalName)}')">${dispLastDate}</span>
+            </div>
+          ` : ''}
 
-          <!-- FIRST ENTRY DATE & LAST ENTRY DATE -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 14px;">
-            <div>
-              <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">FIRST ENTRY DATE</div>
-              <div style="font-size: 0.88rem; color: #ffffff; font-weight: 900; font-family: 'JetBrains Mono', Consolas, monospace; margin-top: 3px;">
-                ${firstEntryStr}
-              </div>
+          <!-- ENTRIES OF SELECTED DATE (Matching user drawing) -->
+          <div class="ai-date-entries-box">
+            <div class="ai-date-entries-title">
+              ENTRIES OF SELECTED DATE
             </div>
-            <div style="text-align: right;">
-              <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">LAST ENTRY</div>
-              <div style="font-size: 0.88rem; color: #ffffff; font-weight: 900; font-family: 'JetBrains Mono', Consolas, monospace; margin-top: 3px;">
-                ${lastEntryStr}
-              </div>
+            <div class="ai-entries-table-wrap">
+              <table class="ai-entries-table">
+                <thead>
+                  <tr>
+                    <th>DATE</th>
+                    <th>GUEST NAME</th>
+                    <th>TOTAL IN</th>
+                    <th>TOTAL OUT</th>
+                    <th>RESULT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${tableRowsHtml}
+                </tbody>
+              </table>
             </div>
-          </div>
-
-          <!-- DATE WISE TOTAL IN/OUT -->
-          <div style="margin-top: 6px;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; margin-bottom: 4px; padding: 0 8px; letter-spacing: 0.5px;">
-              <span style="min-width: 95px;">DATE</span>
-              <span style="min-width: 80px; text-align: center;">TOTAL IN</span>
-              <span style="min-width: 80px; text-align: center;">TOTAL OUT</span>
-              <span style="min-width: 80px; text-align: right;">RESULT</span>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 4px; max-height: 140px; overflow-y: auto;">
-              ${sortedDates.map(d => {
-                const dayData = dateGroups[d];
-                const dayNet = dayData.out - dayData.in;
-                const dayIsNeg = dayNet < 0;
-                // USER RULE: IF NEGATIVE THAN RED, NO COLOUR FOR OTHER (#FFFFFF)
-                const dayResColor = dayIsNeg ? '#FF0000' : '#FFFFFF';
-                return `
-                  <div class="ai-entry-row" style="padding: 7px 12px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.8rem; display: flex; justify-content: space-between; align-items: center;">
-                    <span style="color: #38bdf8; font-weight: 800; min-width: 95px;">${formatDisplayDate(d)}</span>
-                    <span style="color: #cbd5e1; font-weight: 700; min-width: 80px; text-align: center;">₹${formatIndianNumber(dayData.in)}</span>
-                    <span style="color: #cbd5e1; font-weight: 700; min-width: 80px; text-align: center;">₹${formatIndianNumber(dayData.out)}</span>
-                    <span style="color: ${dayResColor}; font-weight: 900; min-width: 80px; text-align: right;">₹${formatIndianNumber(Math.abs(dayNet))}</span>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          </div>
-
-          <!-- IN SENTENCE ENTRIES WITH DATE -->
-          <div style="margin-top: 6px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span style="font-size: 0.76rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
-                📝 IN SENTENCE ENTRIES WITH DATE (${allGuestEntries.length}):
-              </span>
-              <button type="button" class="btn btn-sm btn-primary ai-open-guest-btn" data-guest="${escapeHTML(canonicalName)}" style="padding: 2px 10px; font-size: 0.72rem; font-weight: 800; border-radius: 6px; letter-spacing: 0.5px;">
-                SUMMARY CARD
+            <div style="display: flex; gap: 8px; margin-top: 10px;">
+              <button type="button" class="ai-chip-btn" style="flex: 1; justify-content: center; font-size: 0.82rem; padding: 7px 12px; background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; color: #38bdf8; font-weight: 800;" onclick="window.aiOpenGuestSummary('${escapeHTML(canonicalName)}')">
+                👤 OPEN GUEST SUMMARY POPUP
+              </button>
+              <button type="button" class="ai-chip-btn ai-ask-suggest-btn ai-btn-show-date-all" data-query="ALL ENTRIES" data-date="${targetDate}" style="flex: 1; justify-content: center; font-size: 0.82rem; padding: 7px 12px;" onclick="window.aiShowDateAllEntries && window.aiShowDateAllEntries('${targetDate}')">
+                📋 VIEW ALL GUESTS
               </button>
             </div>
-            <div style="display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto;">
-              ${sortedNewestFirst.map(e => {
-                const dt = parseEntryDateTime(e.datetime);
-                const dStr = formatDisplayDate(dt.date || getEntryDate(e) || currentBusinessDateStr || currentBusinessDate);
-                const tStr = dt.time || '00:00';
-                const amtK = formatKCurrency(Number(e.amount) || 0).toUpperCase();
-                const typeStr = (e.type || '').toUpperCase();
-                const guestStr = (e.guestname || canonicalName).toUpperCase().trim();
-                const isCredit = isTotalInType(typeStr);
-                const typeBorder = isCredit ? '#38bdf8' : '#f87171';
-                // Clean sentence format matching user example: "20:00 50K CASHIN MANTHAN"
-                const sentence = `${tStr} ${amtK} ${typeStr} ${guestStr}`;
-                return `
-                  <div class="ai-entry-row" style="font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.82rem; padding: 7px 12px; border-left: 3.5px solid ${typeBorder}; display: flex; align-items: center; justify-content: space-between;">
-                    <span style="color: #38bdf8; font-weight: 800; min-width: 95px; margin-right: 10px;">${dStr}</span>
-                    <span style="color: #ffffff; font-weight: 700; flex: 1; letter-spacing: 0.3px;">${escapeHTML(sentence)}</span>
-                  </div>
-                `;
-              }).join('')}
+          </div>
+
+          <!-- ENTRIES IN SENTENCE FORM FOR THIS GUEST ON SELECTED DATE -->
+          <div class="ai-date-entries-box" style="margin-top: 14px;">
+            <div class="ai-date-entries-title" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>📝 ENTRIES IN SENTENCE FORM (${dispDate})</span>
+              <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">${sortedGuestDayEntries.length} ${sortedGuestDayEntries.length === 1 ? 'TRANSACTION' : 'TRANSACTIONS'}</span>
             </div>
+            ${sortedGuestDayEntries.length === 0 ? `
+              <div style="text-align: center; color: #94a3b8; padding: 14px; font-weight: 700; font-size: 0.84rem;">
+                NO TRANSACTIONS FOR ${escapeHTML(canonicalName)} ON ${dispDate}
+              </div>
+            ` : `
+              <div style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 4px;">
+                ${sortedGuestDayEntries.map(e => {
+                  const dt = parseEntryDateTime(e.datetime);
+                  const time = dt.time || '--:--';
+                  const typeClean = (e.type || '').toLowerCase().replace(/[\/\s]/g, '-');
+                  const sentence = getEntrySentence(e, true);
+                  const isCredit = isTotalInType(e.type);
+                  const borderCol = isCredit ? '#10b981' : '#ef4444';
+                  return `
+                    <div class="sentence-item ${typeClean}" style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.12); border-left: 4px solid ${borderCol}; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.86rem; background: rgba(10, 16, 32, 0.65);">
+                      <span style="color: #38bdf8; font-weight: 800; min-width: 48px; flex-shrink: 0; letter-spacing: 0.5px;">${time}</span>
+                      <span style="color: #ffffff; font-weight: 700; flex: 1; word-break: break-word;">${sentence}</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
           </div>
         </div>
       `;
@@ -6473,17 +7039,39 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     `;
   }
+  window.processOfflineAiQuestion = processOfflineAiQuestion;
 
   // Global helpers for inline click handlers in AI cards
+  window.aiOpenGuestSummary = function(guestName) {
+    if (!guestName) return;
+    const activeDate = (aiDatePicker && aiDatePicker.value)
+      ? aiDatePicker.value
+      : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+    const candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+      ? allEntries
+      : (window.allEntries || []);
+    const openFn = typeof window.openGuestSummaryPopup === 'function' ? window.openGuestSummaryPopup : (typeof openGuestSummaryPopup === 'function' ? openGuestSummaryPopup : null);
+    if (openFn) {
+      openFn(guestName, candidateList, activeDate);
+    }
+  };
+
   window.aiQueryGuest = function(guestName) {
-    if (aiQueryInput) aiQueryInput.value = guestName;
-    executeAiQuery(guestName);
+    window.aiOpenGuestSummary(guestName);
   };
 
   window.aiSwitchDate = function(dStr, guestName) {
-    if (aiDatePicker) aiDatePicker.value = dStr;
-    if (aiSelectedDateBadge) aiSelectedDateBadge.textContent = formatDisplayDate(dStr);
-    executeAiQuery(guestName || 'OVERALL RESULT');
+    if (dStr && aiDatePicker) aiDatePicker.value = dStr;
+    if (dStr && aiSelectedDateBadge) aiSelectedDateBadge.textContent = formatDisplayDate(dStr);
+    if (guestName && aiQueryInput) aiQueryInput.value = guestName;
+    executeAiQuery(guestName || 'ALL ENTRIES');
+  };
+
+  window.aiShowDateAllEntries = function(dStr) {
+    if (dStr && aiDatePicker) aiDatePicker.value = dStr;
+    if (dStr && aiSelectedDateBadge) aiSelectedDateBadge.textContent = formatDisplayDate(dStr);
+    if (aiQueryInput) aiQueryInput.value = '';
+    executeAiQuery('ALL ENTRIES');
   };
 
   // Event Listeners for Offline AI Assistant
@@ -6523,28 +7111,43 @@ document.addEventListener('DOMContentLoaded', () => {
   if (aiDatePicker) {
     const pickerWrap = aiDatePicker.parentElement;
     if (pickerWrap) {
-      pickerWrap.addEventListener('click', () => {
-        if (typeof aiDatePicker.showPicker === 'function') {
+      pickerWrap.addEventListener('click', (e) => {
+        if (e.target !== aiDatePicker && typeof aiDatePicker.showPicker === 'function') {
           try { aiDatePicker.showPicker(); } catch (err) {}
         }
       });
     }
-    aiDatePicker.addEventListener('change', () => {
-      const val = aiDatePicker.value;
-      if (aiSelectedDateBadge) {
-        aiSelectedDateBadge.textContent = formatDisplayDate(val);
-      }
-      if (val) {
-        appendAiMessage('assistant', `
-          <div class="ai-assistant-card" style="padding: 8px 12px;">
-            <span style="color: #38bdf8; font-weight: 800; font-size: 0.85rem;">
-              📅 ACTIVE GAMING DATE SWITCHED TO: <strong>${formatDisplayDate(val)}</strong>
-            </span>
-          </div>
-        `);
-      }
-    });
 
+    if (aiSelectedDateBadge) {
+      aiSelectedDateBadge.style.cursor = 'pointer';
+      aiSelectedDateBadge.title = 'Click Calendar to select date';
+      aiSelectedDateBadge.addEventListener('click', () => {
+        if (typeof aiDatePicker.showPicker === 'function') {
+          try { aiDatePicker.showPicker(); } catch (err) { aiDatePicker.click(); }
+        } else {
+          aiDatePicker.click();
+        }
+      });
+    }
+
+    let dateDebounceTimer = null;
+    const triggerDateFilter = () => {
+      clearTimeout(dateDebounceTimer);
+      dateDebounceTimer = setTimeout(() => {
+        const val = aiDatePicker.value;
+        if (aiSelectedDateBadge) {
+          aiSelectedDateBadge.textContent = formatDisplayDate(val);
+        }
+        if (val) {
+          // As requested: AFTER CLICKING DATE SHOW ALL ENTRIES OF PARTICULAR DATE
+          if (aiQueryInput) aiQueryInput.value = '';
+          executeAiQuery('ALL ENTRIES');
+        }
+      }, 30);
+    };
+
+    aiDatePicker.addEventListener('change', triggerDateFilter);
+    aiDatePicker.addEventListener('input', triggerDateFilter);
   }
 
   // Quick Action Chips in AI Header
@@ -6553,6 +7156,34 @@ document.addEventListener('DOMContentLoaded', () => {
       const q = btn.getAttribute('data-query');
       if (q) executeAiQuery(q);
     });
+  });
+
+  // Global document click delegation for AI Assistant buttons & clickable guest names
+  document.addEventListener('click', (e) => {
+    const showAllBtn = e.target.closest('.ai-btn-show-date-all');
+    if (showAllBtn) {
+      e.preventDefault();
+      const d = showAllBtn.getAttribute('data-date');
+      if (typeof window.aiShowDateAllEntries === 'function') {
+        window.aiShowDateAllEntries(d);
+      } else if (typeof executeAiQuery === 'function') {
+        executeAiQuery('ALL ENTRIES');
+      }
+      return;
+    }
+
+    const aiGuestSpan = e.target.closest('#ai-chat-messages .clickable-guest-name, #ai-chat-messages .guest-clickable');
+    if (aiGuestSpan) {
+      e.preventDefault();
+      e.stopPropagation();
+      const g = aiGuestSpan.getAttribute('data-guest') || aiGuestSpan.textContent.trim();
+      if (g && typeof window.aiOpenGuestSummary === 'function') {
+        window.aiOpenGuestSummary(g);
+      } else if (g && typeof window.aiQueryGuest === 'function') {
+        window.aiQueryGuest(g);
+      }
+      return;
+    }
   });
 });
 

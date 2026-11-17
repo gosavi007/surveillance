@@ -57,6 +57,41 @@
     };
     var formatKCurrency = window.formatKCurrency;
 
+    // Global AI Assistant Handlers (Immediate definition in head)
+    window.aiShowDateAllEntries = function(d) {
+      var dp = document.getElementById('ai-date-picker');
+      var b = document.getElementById('ai-selected-date-badge');
+      var inp = document.getElementById('ai-query-input');
+      if (d && dp) dp.value = d;
+      if (d && b && window.formatDisplayDate) b.textContent = window.formatDisplayDate(d);
+      if (inp) inp.value = '';
+      if (typeof window.executeAiQuery === 'function') {
+        window.executeAiQuery('ALL ENTRIES');
+      }
+    };
+    window.aiSwitchDate = function(d, g) {
+      var dp = document.getElementById('ai-date-picker');
+      var b = document.getElementById('ai-selected-date-badge');
+      var inp = document.getElementById('ai-query-input');
+      if (d && dp) dp.value = d;
+      if (d && b && window.formatDisplayDate) b.textContent = window.formatDisplayDate(d);
+      if (g && inp) inp.value = g;
+      if (typeof window.executeAiQuery === 'function') {
+        window.executeAiQuery(g || 'ALL ENTRIES');
+      }
+    };
+    window.aiOpenGuestSummary = function(g) {
+      if (!g) return;
+      var dp = document.getElementById('ai-date-picker');
+      var d = (dp && dp.value) ? dp.value : '';
+      if (typeof window.openGuestSummaryPopup === 'function') {
+        window.openGuestSummaryPopup(g, window.allEntries || [], d);
+      }
+    };
+    window.aiQueryGuest = function(g) {
+      window.aiOpenGuestSummary(g);
+    };
+
     // In-app alert interceptor: never allow browser's "localhost:3000 says" popup
     window.alert = function(msg) {
       if (window.showAppNotification) {
@@ -105,7 +140,7 @@
   <script src="jszip.min.js"></script>
   <script src="xlsx.style.min.js"></script>
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="style.css?v=58">
+  <link rel="stylesheet" href="style.css?v=60">
 </head>
 <body>
 
@@ -771,7 +806,7 @@
   </div>
 
   <!-- MODAL: GUEST SUMMARY POPUP -->
-  <div id="guest-summary-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 10000;">
+  <div id="guest-summary-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 20000;">
     <div class="modal-content" style="max-width: 92vw; width: 620px; max-height: 88vh; display: flex; flex-direction: column; background: rgba(10, 16, 32, 0.68); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1.5px solid rgba(0, 162, 232, 0.5); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.9); overflow: hidden;">
       
       <!-- Top Bar with Date & Close Button -->
@@ -872,6 +907,7 @@
         <button type="button" class="ai-chip-btn" data-query="OVERALL TOTAL OUT">⚡ OVERALL TOTAL OUT</button>
         <button type="button" class="ai-chip-btn" data-query="OVERALL RESULT">⚡ OVERALL RESULT</button>
         <button type="button" class="ai-chip-btn" data-query="ALL ENTRIES SUMMARY">📋 ALL ENTRIES</button>
+        <button type="button" class="ai-chip-btn" data-query="ENTRIES IN SENTENCE FORM">📝 SENTENCES</button>
         <button type="button" class="ai-chip-btn" data-query="TOP MAJOR PATRONS">⭐ TOP GUESTS</button>
         <button type="button" class="ai-chip-btn" data-query="BARRED GUESTS CHECK">🚫 BARRED GUESTS</button>
       </div>
@@ -1096,7 +1132,7 @@
   <!-- IN-APP TOAST NOTIFICATION CONTAINER -->
   <div id="app-notification-container" class="app-notification-container"></div>
 
-  <script src="app.js?v=100"></script>
+  <script src="app.js?v=107"></script>
 
   <!-- DIRECT PHOTO UPLOADS -->
   <input type="file" id="direct-photo-barred" accept="image/*" style="display:none;" />

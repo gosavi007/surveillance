@@ -5104,6 +5104,85 @@ html, body {
   color: #ffffff !important;
 }
 
+.ai-stat-box.is-negative {
+  border-color: #ef4444 !important;
+}
+
+.ai-stat-val.is-negative {
+  color: #ef4444 !important;
+}
+
+/* AI Assistant Entries Table (Selected Date Entries) */
+.ai-date-entries-box {
+  margin-top: 14px !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.25) !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+  box-sizing: border-box !important;
+}
+
+.ai-date-entries-title {
+  text-align: center !important;
+  font-weight: 900 !important;
+  font-size: 0.92rem !important;
+  color: #ffffff !important;
+  letter-spacing: 1px !important;
+  text-decoration: underline !important;
+  text-underline-offset: 4px !important;
+  text-transform: uppercase !important;
+  margin-bottom: 12px !important;
+}
+
+.ai-entries-table-wrap {
+  width: 100% !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ai-entries-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  font-family: 'JetBrains Mono', Consolas, monospace !important;
+  font-size: 0.82rem !important;
+  text-align: center !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+.ai-entries-table th {
+  padding: 8px 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  font-size: 0.8rem !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  white-space: nowrap !important;
+  letter-spacing: 0.5px !important;
+}
+
+.ai-entries-table td {
+  padding: 8px 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: #ffffff !important;
+  white-space: nowrap !important;
+}
+
+.ai-entries-table tbody tr:hover {
+  background: rgba(56, 189, 248, 0.08) !important;
+}
+
+.ai-entries-table .guest-clickable {
+  cursor: pointer !important;
+  text-decoration: underline !important;
+  font-weight: 800 !important;
+  color: #ffffff !important;
+  transition: color 0.15s ease !important;
+}
+
+.ai-entries-table .guest-clickable:hover {
+  color: #38bdf8 !important;
+}
+
 .ai-entry-row {
   display: flex !important;
   align-items: center !important;
@@ -5756,3 +5835,9 @@ body.page-maximized .excel-table td {
 
 .page-maximized .excel-table th.col-summary,
 .page-maximized .excel-table td:nth-child(11) { width: 19% !important; }
+
+
+/* Ensure Guest Summary Popup floats above AI Assistant */
+#guest-summary-modal {
+  z-index: 20000 !important;
+}
