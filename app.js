@@ -515,6 +515,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const entryFormEl = document.getElementById('entry-form');
   const entryFormSection = entryFormEl ? entryFormEl.closest('section') : null;
   const allEntriesDatePicker = document.getElementById('all-entries-datepicker');
+  const allEntriesYear = document.getElementById('all-entries-year');
   const allEntriesSearch = document.getElementById('all-entries-search');
   const btnAllEntriesHome = document.getElementById('btn-all-entries-home');
   const dayNumbersContainer = document.getElementById('day-numbers-container');
@@ -851,7 +852,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function populateArchiveYears() {
-    if (!allEntriesYear) return;
+    const el = document.getElementById('all-entries-year');
+    if (!el) return;
     const colors = [
       '#e53935', '#d81b60', '#8e24aa', '#5e35b1', '#3949ab', '#1e88e5',
       '#039be5', '#00acc1', '#00897b', '#43a047', '#7cb342', '#f4511e'
@@ -861,7 +863,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const color = colors[(y - 2026) % colors.length];
       html += `<option value="${y}" style="background: ${color}; color: white;">${y}</option>`;
     }
-    allEntriesYear.innerHTML = html;
+    el.innerHTML = html;
   }
 
   let activeAllEntriesDay = Number(getBusinessDate().split('-')[2]);
@@ -3486,7 +3488,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     return `${amt} ${t} BY ${guest}${info}`;
   }
 
-  function buildClientStyledSheet(dayEntries) {
+  function buildClientStyledSheet(dayEntries, sheetName = '') {
     dayEntries = Array.isArray(dayEntries) ? dayEntries : [];
     const headers = [
       'DATE', 'TIME', 'TYPE', 'AMOUNT', 'GUEST NAME', 'CARD', 'OTHER INFO', 'SURV ID', 'SENTENCE ENTRIES', 'GUEST SUMMARY'
@@ -3494,35 +3496,55 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const guestGroups = [];
     const assignedEntryIds = new Set();
+    const guestFirstEntryRow = {}; // Map guest uppercase name -> first entry row in column E
 
-    dayEntries.forEach(e => {
-      if (assignedEntryIds.has(e.id)) return;
-      const rawGuest = (e.guestname || '').trim();
+    dayEntries.forEach((e, idx) => {
+      const rawGuest = (e.guestname || '').trim().toUpperCase();
       if (!rawGuest) return;
 
-      const cluster = getGuestCluster(rawGuest, dayEntries);
-      cluster.entries.forEach(ce => assignedEntryIds.add(ce.id));
+      const rowNum = idx + 2; // Row 1 is header
+      if (!guestFirstEntryRow[rawGuest]) {
+        guestFirstEntryRow[rawGuest] = rowNum;
+      }
 
-      let totalIn = 0;
-      let totalOut = 0;
-      cluster.entries.forEach(ce => {
-        const amt = Number(ce.amount) || 0;
-        const t = ce.type || '';
-        if (isTotalInType(t)) totalIn += amt;
-        else if (isTotalOutType(t)) totalOut += amt;
-      });
+      if (!assignedEntryIds.has(e.id)) {
+        const cluster = getGuestCluster(rawGuest, dayEntries);
+        cluster.entries.forEach(ce => assignedEntryIds.add(ce.id));
 
-      guestGroups.push({
-        name: cluster.canonicalName,
-        totalIn,
-        totalOut
-      });
+        let totalIn = 0;
+        let totalOut = 0;
+        cluster.entries.forEach(ce => {
+          const amt = Number(ce.amount) || 0;
+          const t = ce.type || '';
+          if (isTotalInType(t)) totalIn += amt;
+          else if (isTotalOutType(t)) totalOut += amt;
+        });
+
+        const memberNames = [...new Set(cluster.entries.map(ce => (ce.guestname || '').trim().toUpperCase()))].filter(Boolean);
+
+        guestGroups.push({
+          name: cluster.canonicalName,
+          totalIn,
+          totalOut,
+          memberNames
+        });
+      }
     });
 
     guestGroups.sort((a, b) => a.name.localeCompare(b.name));
 
     const summaryRows = [];
+    const guestCardRowMap = {}; // Maps guest name (canonical and aliases) to J row number in current sheet
+
     guestGroups.forEach(g => {
+      const cardStartRow = 2 + summaryRows.length; // Row where "NAME :- <g.name>" is located in Column J
+      guestCardRowMap[g.name] = cardStartRow;
+      if (Array.isArray(g.memberNames)) {
+        g.memberNames.forEach(m => {
+          guestCardRowMap[m] = cardStartRow;
+        });
+      }
+
       const netResult = g.totalOut - g.totalIn;
       const isMinus = netResult < 0;
       // NO +/- SIGN: Directly show formatted number, color-coded red for minus, fluorescent green for plus/0
@@ -3530,7 +3552,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       summaryRows.push({
         text: `NAME :- ${g.name}`,
-        type: 'guest_name'
+        type: 'guest_name',
+        guestName: g.name,
+        cardRow: cardStartRow,
+        returnRow: guestFirstEntryRow[g.name] || (g.memberNames && g.memberNames.map(m => guestFirstEntryRow[m]).find(Boolean))
       });
       summaryRows.push({
         text: `TOTAL IN :- ${g.totalIn.toLocaleString('en-IN')}`,
@@ -3569,13 +3594,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const blueDataStyle = {
       fill: { fgColor: { rgb: 'D9E1F2' } },
-      font: { name: 'Calibri', sz: 10, color: { rgb: '000000' } },
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '000000' } },
       alignment: { horizontal: 'center', vertical: 'center' },
       border: {
         top: { style: 'thin', color: { rgb: '000000' } },
         bottom: { style: 'thin', color: { rgb: '000000' } },
         left: { style: 'thin', color: { rgb: '000000' } },
         right: { style: 'thin', color: { rgb: '000000' } }
+      }
+    };
+
+    const summaryNameHeaderStyle = {
+      fill: { fgColor: { rgb: 'A7F3D0' } }, // Luminous Emerald Glow for Destination
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '0000FF' }, underline: true },
+      alignment: { vertical: 'center', horizontal: 'center' },
+      border: {
+        top: { style: 'medium', color: { rgb: '059669' } },
+        bottom: { style: 'thin', color: { rgb: '059669' } },
+        left: { style: 'medium', color: { rgb: '059669' } },
+        right: { style: 'medium', color: { rgb: '059669' } }
       }
     };
 
@@ -3669,8 +3706,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Hyperlink styling for Guest Name in Excel (Column E, cIdx === 4)
         let cellFont = blueDataStyle.font;
+        let cellLink = null;
         if (cIdx === 4 && val) {
           cellFont = { name: 'Calibri', sz: 10, bold: true, color: { rgb: '0000FF' }, underline: true };
+          const rawName = String(val).trim().toUpperCase();
+          let targetCardRow = guestCardRowMap[rawName];
+          if (!targetCardRow) {
+            const matchedGroup = guestGroups.find(g => isNameMatch(g.name, rawName) || (g.memberNames && g.memberNames.some(m => isNameMatch(m, rawName))));
+            if (matchedGroup) {
+              targetCardRow = guestCardRowMap[matchedGroup.name];
+            }
+          }
+          if (targetCardRow) {
+            const linkTarget = sheetName ? `#'${sheetName}'!J${targetCardRow}` : `#J${targetCardRow}`;
+            cellLink = {
+              Target: linkTarget,
+              Tooltip: `View ${val} in Guest Summary (J${targetCardRow})`
+            };
+          }
         }
 
         ws[cellRef] = {
@@ -3683,6 +3736,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
         };
 
+        if (cellLink) {
+          ws[cellRef].l = cellLink;
+        }
+
         const valLen = String(val).length;
         if (valLen > colWidths[cIdx]) colWidths[cIdx] = valLen;
       });
@@ -3690,7 +3747,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const jCellRef = `J${rowNum}`;
       if (summary) {
         let cellStyle = summaryGreenStyle;
-        if (summary.type === 'guest_result') {
+        if (summary.type === 'guest_name') {
+          cellStyle = summaryNameHeaderStyle;
+        } else if (summary.type === 'guest_result') {
           cellStyle = summary.isMinus ? summaryRedResultStyle : summaryGreenResultStyle;
         } else if (summary.type === 'separator_yellow') {
           cellStyle = yellowSeparatorStyle;
@@ -3701,6 +3760,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           v: summary.text,
           s: cellStyle
         };
+
+        if (summary.type === 'guest_name' && summary.returnRow) {
+          const returnTarget = sheetName ? `#'${sheetName}'!E${summary.returnRow}` : `#E${summary.returnRow}`;
+          ws[jCellRef].l = {
+            Target: returnTarget,
+            Tooltip: `Return to entry for ${summary.guestName} (E${summary.returnRow})`
+          };
+        }
 
         const sLen = summary.text.length;
         if (sLen > colWidths[9]) colWidths[9] = sLen;
@@ -3767,7 +3834,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (dayEntries.length > 0) {
         dayEntries.sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
       }
-      const ws = buildClientStyledSheet(dayEntries);
+      const ws = buildClientStyledSheet(dayEntries, sheetName);
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
     }
 
@@ -3826,8 +3893,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     dayEntries.sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
     const wb = XLSX.utils.book_new();
-    const ws = buildClientStyledSheet(dayEntries);
-    XLSX.utils.book_append_sheet(wb, ws, `Day ${parseInt(parts[2], 10) || 1}`);
+    const daySheetName = `Day ${parseInt(parts[2], 10) || 1}`;
+    const ws = buildClientStyledSheet(dayEntries, daySheetName);
+    XLSX.utils.book_append_sheet(wb, ws, daySheetName);
     XLSX.writeFile(wb, `${dmy}.xlsx`);
   }
 
@@ -4340,18 +4408,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       const resFormatted = Math.abs(netResult).toLocaleString('en-IN');
 
       summaryRows.push({
-        html: `<td class="cell-guest-info" style="text-align:center; vertical-align:middle;">NAME :- <span class="clickable-guest-name" data-guest="${escapeHTML(g.name)}" style="color: #0000FF !important; cursor: pointer; text-decoration: underline; font-weight: 800;">${escapeHTML(g.name)}</span></td>`
+        guestName: g.name,
+        html: `<td class="cell-guest-info guest-summary-cell" data-summary-guest="${escapeHTML(g.name)}" data-summary-part="header" style="text-align:center; vertical-align:middle;">NAME :- <a href="javascript:void(0)" class="clickable-guest-summary-name" data-guest="${escapeHTML(g.name)}" style="color: #0000FF !important; cursor: pointer; text-decoration: underline; font-weight: 800;">${escapeHTML(g.name)}</a></td>`
       });
       summaryRows.push({
-        html: `<td class="cell-guest-info" style="text-align:center; vertical-align:middle;">TOTAL IN :- ${g.totalIn.toLocaleString('en-IN')}</td>`
+        guestName: g.name,
+        html: `<td class="cell-guest-info guest-summary-cell" data-summary-guest="${escapeHTML(g.name)}" data-summary-part="in" style="text-align:center; vertical-align:middle;">TOTAL IN :- ${g.totalIn.toLocaleString('en-IN')}</td>`
       });
       summaryRows.push({
-        html: `<td class="cell-guest-info" style="text-align:center; vertical-align:middle;">TOTAL OUT :- ${g.totalOut.toLocaleString('en-IN')}</td>`
+        guestName: g.name,
+        html: `<td class="cell-guest-info guest-summary-cell" data-summary-guest="${escapeHTML(g.name)}" data-summary-part="out" style="text-align:center; vertical-align:middle;">TOTAL OUT :- ${g.totalOut.toLocaleString('en-IN')}</td>`
       });
       summaryRows.push({
-        html: `<td class="${isMinus ? 'cell-guest-result-minus' : 'cell-guest-result-plus'}" style="text-align:center; vertical-align:middle; font-weight:800; color: ${isMinus ? '#FF0000' : '#00B050'} !important;">RESULT :- ${resFormatted}</td>`
+        guestName: g.name,
+        html: `<td class="${isMinus ? 'cell-guest-result-minus' : 'cell-guest-result-plus'} guest-summary-cell" data-summary-guest="${escapeHTML(g.name)}" data-summary-part="result" style="text-align:center; vertical-align:middle; font-weight:800; color: ${isMinus ? '#FF0000' : '#00B050'} !important;">RESULT :- ${resFormatted}</td>`
       });
       summaryRows.push({
+        guestName: null,
         html: `<td class="cell-guest-separator"></td>`
       });
     });
@@ -4378,16 +4451,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       const surv = entry && entry.surv ? entry.surv : '';
       const sentence = entry ? getEntrySentence(entry) : '';
 
+      let canonicalGuest = guest;
+      if (entry && guest) {
+        const cluster = getGuestCluster(guest, safeEntries);
+        if (cluster && cluster.canonicalName) canonicalGuest = cluster.canonicalName;
+      }
+
       const colJHtml = summary ? summary.html : `<td class="cell-guest-info" style="text-align:center; vertical-align:middle;"></td>`;
 
       excelRowsHtml += `
-        <tr>
+        <tr class="excel-data-row" data-row-guest="${escapeHTML(canonicalGuest)}">
           <td class="excel-row-num col-idx" style="text-align:center; vertical-align:middle; font-weight:800;">${r + 1}</td>
           <td class="cell-blue col-date" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? dt : ''}</td>
           <td class="cell-blue col-time" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? tm : ''}</td>
           <td class="cell-blue col-type" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(type) : ''}</td>
           <td class="cell-blue col-amount" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? amt : ''}</td>
-          <td class="cell-blue col-guest" style="text-align:center; vertical-align:middle; font-weight:800;"><span class="clickable-guest-name" data-guest="${escapeHTML(guest)}" style="color: #0000FF !important; cursor:pointer; text-decoration:underline; font-weight:800;">${escapeHTML(guest)}</span></td>
+          <td class="cell-blue col-guest" data-guest="${escapeHTML(canonicalGuest)}" style="text-align:center; vertical-align:middle; font-weight:800;">${entry && guest ? `<a href="javascript:void(0)" class="clickable-guest-name" data-guest="${escapeHTML(canonicalGuest)}" style="color: #0000FF !important; cursor:pointer; text-decoration:underline; font-weight:800;">${escapeHTML(guest)}</a>` : ''}</td>
           <td class="cell-blue col-card" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(card) : ''}</td>
           <td class="cell-blue col-other" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(otherinfo) : ''}</td>
           <td class="cell-blue col-surv" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(surv) : ''}</td>
@@ -4424,11 +4503,87 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     containerEl.innerHTML = tableHtml;
 
-    // Attach click listeners to guest names in spreadsheet
-    containerEl.querySelectorAll('.clickable-guest-name').forEach(span => {
-      span.addEventListener('click', (e) => {
+    // Selected Guest Glow & Smooth Scroll Controller
+    function selectAndGlowGuest(targetGuestName, fromSource) {
+      if (!targetGuestName) return;
+      const cleanTarget = targetGuestName.trim().toUpperCase();
+
+      // Clear previous active glows
+      containerEl.querySelectorAll('.guest-cell-selected-glow').forEach(el => el.classList.remove('guest-cell-selected-glow'));
+      containerEl.querySelectorAll('.guest-row-selected-glow').forEach(el => el.classList.remove('guest-row-selected-glow'));
+      containerEl.querySelectorAll('.guest-summary-card-glow').forEach(el => el.classList.remove('guest-summary-card-glow', 'card-header-glow', 'card-footer-glow'));
+
+      // 1. Highlight all matching data rows and Column E guest cells
+      const matchingRows = [];
+      const matchingGuestCells = [];
+      containerEl.querySelectorAll('tr[data-row-guest]').forEach(tr => {
+        const rowGuest = (tr.getAttribute('data-row-guest') || '').trim().toUpperCase();
+        if (rowGuest && (rowGuest === cleanTarget || isNameMatch(rowGuest, cleanTarget))) {
+          tr.classList.add('guest-row-selected-glow');
+          matchingRows.push(tr);
+          const gCell = tr.querySelector('.col-guest');
+          if (gCell) {
+            gCell.classList.add('guest-cell-selected-glow');
+            matchingGuestCells.push(gCell);
+          }
+        }
+      });
+
+      // 2. Highlight matching summary card in Column J
+      const summaryCells = [];
+      containerEl.querySelectorAll('td[data-summary-guest]').forEach(td => {
+        const sg = (td.getAttribute('data-summary-guest') || '').trim().toUpperCase();
+        if (sg && (sg === cleanTarget || isNameMatch(sg, cleanTarget))) {
+          td.classList.add('guest-summary-card-glow');
+          const part = td.getAttribute('data-summary-part');
+          if (part === 'header') td.classList.add('card-header-glow');
+          if (part === 'result') td.classList.add('card-footer-glow');
+          summaryCells.push(td);
+        }
+      });
+
+      // 3. Smooth scroll to destination
+      if (fromSource === 'data' && summaryCells.length > 0) {
+        summaryCells[0].scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      } else if (fromSource === 'summary' && matchingRows.length > 0) {
+        matchingRows[0].scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      }
+    }
+
+    // Attach click listeners to guest names in Column E -> Jump & Glow in Column J Summary
+    containerEl.querySelectorAll('.clickable-guest-name').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
         e.stopPropagation();
-        const gName = span.getAttribute('data-guest');
+        const gName = link.getAttribute('data-guest');
+        if (!gName) return;
+        selectAndGlowGuest(gName, 'data');
+      });
+      // Double click opens the detailed guest modal
+      link.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const gName = link.getAttribute('data-guest');
+        if (!gName) return;
+        const activeDate = homeSelectedDate || (allEntriesDatePicker ? allEntriesDatePicker.value : null) || currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+        openGuestSummaryPopup(gName, safeEntries, activeDate);
+      });
+    });
+
+    // Attach click listeners to guest summary headers in Column J -> Jump & Glow back to Column E Data Row
+    containerEl.querySelectorAll('.clickable-guest-summary-name').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const gName = link.getAttribute('data-guest');
+        if (!gName) return;
+        selectAndGlowGuest(gName, 'summary');
+      });
+      // Double click opens the detailed guest modal
+      link.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const gName = link.getAttribute('data-guest');
         if (!gName) return;
         const activeDate = homeSelectedDate || (allEntriesDatePicker ? allEntriesDatePicker.value : null) || currentBusinessDateStr || currentBusinessDate || getBusinessDate();
         openGuestSummaryPopup(gName, safeEntries, activeDate);
@@ -6294,7 +6449,11 @@ document.addEventListener('DOMContentLoaded', () => {
       resultCard.querySelectorAll('.ai-btn-show-date-all').forEach(btn => {
         btn.addEventListener('click', () => {
           const d = btn.getAttribute('data-date');
-          window.aiShowDateAllEntries(d);
+          if (typeof window.aiShowDateAllEntries === 'function') {
+            window.aiShowDateAllEntries(d);
+          } else if (typeof executeAiQuery === 'function') {
+            executeAiQuery('ALL ENTRIES');
+          }
         });
       });
     }
@@ -6386,7 +6545,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div style="font-size: 0.78rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">TOP CASHIN GUESTS ON THIS DATE:</div>
             <div style="display: flex; flex-direction: column; gap: 4px;">
               ${topGuests.map(([name, sum], idx) => `
-                <div class="ai-entry-row" style="cursor: pointer;" onclick="window.aiQueryGuest('${escapeHTML(name)}')">
+                <div class="ai-entry-row" style="cursor: pointer;" onclick="(typeof window.aiQueryGuest === 'function' ? window.aiQueryGuest('${escapeHTML(name)}') : null)">
                   <span style="font-weight: 800; color: #ffffff;">#${idx + 1} ${escapeHTML(name)}</span>
                   <span style="font-weight: 900; color: #38bdf8;">₹${formatIndianNumber(sum)}</span>
                 </div>
@@ -6432,7 +6591,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div style="font-size: 0.78rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">TOP CASHOUT GUESTS ON THIS DATE:</div>
             <div style="display: flex; flex-direction: column; gap: 4px;">
               ${topGuests.map(([name, sum], idx) => `
-                <div class="ai-entry-row" style="cursor: pointer;" onclick="window.aiQueryGuest('${escapeHTML(name)}')">
+                <div class="ai-entry-row" style="cursor: pointer;" onclick="(typeof window.aiQueryGuest === 'function' ? window.aiQueryGuest('${escapeHTML(name)}') : null)">
                   <span style="font-weight: 800; color: #ffffff;">#${idx + 1} ${escapeHTML(name)}</span>
                   <span style="font-weight: 900; color: #f87171;">₹${formatIndianNumber(sum)}</span>
                 </div>
@@ -6529,7 +6688,7 @@ document.addEventListener('DOMContentLoaded', () => {
                       return `
                         <tr>
                           <td>${dispDate}</td>
-                          <td class="guest-clickable" onclick="window.aiQueryGuest('${escapeHTML(g.name)}')">${escapeHTML(g.name)}</td>
+                          <td class="guest-clickable" onclick="(typeof window.aiQueryGuest === 'function' ? window.aiQueryGuest('${escapeHTML(g.name)}') : null)">${escapeHTML(g.name)}</td>
                           <td style="font-weight: 700;">₹${formatIndianNumber(g.totalIn)}</td>
                           <td style="font-weight: 700;">₹${formatIndianNumber(g.totalOut)}</td>
                           <td style="color: ${gResColor}; font-weight: 900;">₹${gResFormatted}</td>
@@ -6667,7 +6826,7 @@ document.addEventListener('DOMContentLoaded', () => {
                       return `
                         <tr>
                           <td>${dispDate}</td>
-                          <td class="guest-clickable" onclick="window.aiQueryGuest('${escapeHTML(g.name)}')">${escapeHTML(g.name)}</td>
+                          <td class="guest-clickable" onclick="(typeof window.aiQueryGuest === 'function' ? window.aiQueryGuest('${escapeHTML(g.name)}') : null)">${escapeHTML(g.name)}</td>
                           <td style="font-weight: 700;">₹${formatIndianNumber(g.totalIn)}</td>
                           <td style="font-weight: 700;">₹${formatIndianNumber(g.totalOut)}</td>
                           <td style="color: ${gResColor}; font-weight: 900;">₹${gResFormatted}</td>
@@ -6750,7 +6909,7 @@ document.addEventListener('DOMContentLoaded', () => {
               ${ranked.map((g, idx) => {
                 const resColor = g.result < 0 ? '#FF0000' : '#FFFFFF';
                 return `
-                  <div class="ai-entry-row" style="cursor: pointer;" onclick="window.aiQueryGuest('${escapeHTML(g.name)}')">
+                  <div class="ai-entry-row" style="cursor: pointer;" onclick="(typeof window.aiQueryGuest === 'function' ? window.aiQueryGuest('${escapeHTML(g.name)}') : null)">
                     <div style="display: flex; align-items: center; gap: 8px;">
                       <span style="color: #fbbf24; font-weight: 900;">#${idx + 1}</span>
                       <span style="font-weight: 800; color: #ffffff;">${escapeHTML(g.name)}</span>
@@ -6951,7 +7110,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const itemDisp = formatDisplayDate(dIso);
         tableRowsHtml += `
           <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.15);">
-            <td style="cursor: pointer; text-decoration: underline; color: #38bdf8; font-weight: 700; white-space: nowrap;" title="Click to view this date" onclick="window.aiSwitchDate('${dIso}', '${escapeHTML(canonicalName)}')">${itemDisp}</td>
+            <td style="cursor: pointer; text-decoration: underline; color: #38bdf8; font-weight: 700; white-space: nowrap;" title="Click to view this date" onclick="(typeof window.aiSwitchDate === 'function' ? window.aiSwitchDate('${dIso}', '${escapeHTML(canonicalName)}') : null)">${itemDisp}</td>
             <td style="font-weight: 800;">${escapeHTML(canonicalName)}</td>
             <td style="font-weight: 700;">₹${formatIndianNumber(item.totalIn)}</td>
             <td style="font-weight: 700;">₹${formatIndianNumber(item.totalOut)}</td>
@@ -7003,7 +7162,7 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           ${countTx === 0 && lastEntryDateIso ? `
             <div style="font-size: 0.74rem; color: #94a3b8; font-weight: 700; text-align: center; margin-top: 4px;">
-              NO TRANSACTIONS ON ${dispDate} · LAST RECORDED: <span style="color: #38bdf8; cursor: pointer; text-decoration: underline;" onclick="window.aiSwitchDate('${lastEntryDateIso}', '${escapeHTML(canonicalName)}')">${dispLastDate}</span>
+              NO TRANSACTIONS ON ${dispDate} · LAST RECORDED: <span style="color: #38bdf8; cursor: pointer; text-decoration: underline;" onclick="(typeof window.aiSwitchDate === 'function' ? window.aiSwitchDate('${lastEntryDateIso}', '${escapeHTML(canonicalName)}') : null)">${dispLastDate}</span>
             </div>
           ` : ''}
 
@@ -7029,10 +7188,10 @@ document.addEventListener('DOMContentLoaded', () => {
               </table>
             </div>
             <div style="display: flex; gap: 8px; margin-top: 10px;">
-              <button type="button" class="ai-chip-btn" style="flex: 1; justify-content: center; font-size: 0.82rem; padding: 7px 12px; background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; color: #38bdf8; font-weight: 800;" onclick="window.aiOpenGuestSummary('${escapeHTML(canonicalName)}')">
+              <button type="button" class="ai-chip-btn" style="flex: 1; justify-content: center; font-size: 0.82rem; padding: 7px 12px; background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; color: #38bdf8; font-weight: 800;" onclick="(typeof window.aiOpenGuestSummary === 'function' ? window.aiOpenGuestSummary('${escapeHTML(canonicalName)}') : null)">
                 👤 OPEN GUEST SUMMARY POPUP
               </button>
-              <button type="button" class="ai-chip-btn ai-ask-suggest-btn ai-btn-show-date-all" data-query="ALL ENTRIES" data-date="${targetDate}" style="flex: 1; justify-content: center; font-size: 0.82rem; padding: 7px 12px;" onclick="window.aiShowDateAllEntries && window.aiShowDateAllEntries('${targetDate}')">
+              <button type="button" class="ai-chip-btn ai-ask-suggest-btn ai-btn-show-date-all" data-query="ALL ENTRIES" data-date="${targetDate}" style="flex: 1; justify-content: center; font-size: 0.82rem; padding: 7px 12px;" onclick="(typeof window.aiShowDateAllEntries === 'function' ? window.aiShowDateAllEntries('${targetDate}') : (typeof executeAiQuery === 'function' ? executeAiQuery('ALL ENTRIES') : null))">
                 📋 VIEW ALL GUESTS
               </button>
             </div>

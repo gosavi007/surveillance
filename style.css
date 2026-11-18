@@ -561,13 +561,11 @@ input::placeholder, textarea::placeholder {
 }
 
 .brand-status-dot {
-  width: 12px;
-  height: 12px;
-  background-color: var(--success);
-  border-radius: 50%;
-  box-shadow: 0 0 10px var(--success-glow);
-  flex-shrink: 0;
-  display: inline-block;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
 }
 
 .brand-icon {
@@ -4626,55 +4624,117 @@ html, body {
   }
 }
 
-/* ADD BARRED GUEST MODAL - RESPONSIVE FIT TO PAGE */
+/* ADD BARRED GUEST MODAL - COMPACT CLEAN FIT (ZERO SCROLLBAR, SMALL SIZE) */
 #barred-guest-modal .modal-content {
-  width: 95vw !important;
-  max-width: 760px !important;
-  max-height: 92vh !important;
+  width: 530px !important;
+  max-width: 95vw !important;
+  max-height: 90vh !important;
   display: flex !important;
   flex-direction: column !important;
-  border-radius: 14px !important;
+  border-radius: 12px !important;
   overflow: hidden !important;
-  border: 1.5px solid rgba(59, 130, 246, 0.4) !important;
-  background: rgba(10, 16, 32, 0.68) !important;
+  border: 1.5px solid rgba(59, 130, 246, 0.45) !important;
+  background: rgba(10, 16, 32, 0.85) !important;
   backdrop-filter: blur(20px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9) !important;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.9) !important;
+  margin: auto !important;
+}
+
+#barred-guest-modal .modal-header {
+  background: rgba(0, 0, 0, 0.45) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  padding: 8px 14px !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+}
+
+#barred-guest-modal .modal-header h3 {
+  margin: 0 !important;
+  font-size: 0.9rem !important;
+  font-weight: 800 !important;
+  color: #f8fafc !important;
+  letter-spacing: 0.5px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 7px !important;
 }
 
 #barred-guest-modal .modal-body {
-  overflow-y: auto !important;
+  overflow-y: hidden !important;
+  overflow-x: hidden !important;
   flex: 1 1 auto !important;
-  max-height: calc(92vh - 130px) !important;
-  padding: 20px !important;
+  padding: 10px 14px !important;
+  max-height: none !important;
 }
 
-@media (max-width: 640px) {
-  #barred-guest-modal .modal-content {
-    width: 96vw !important;
-    max-width: 96vw !important;
-    max-height: 94vh !important;
-  }
-  #barred-guest-form {
-    flex-direction: column !important;
-    gap: 16px !important;
-  }
-  #barred-guest-form .form-group {
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: 6px !important;
-  }
-  #barred-guest-form .form-group label {
-    width: 100% !important;
-  }
-  #barred-guest-form .form-group input {
-    width: 100% !important;
-  }
-  #barred-photo-box {
-    width: 100% !important;
-    min-height: 180px !important;
-    height: 180px !important;
-  }
+#barred-guest-form {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 12px !important;
+  align-items: stretch !important;
+}
+
+#barred-guest-form .form-group {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin-bottom: 0 !important;
+}
+
+#barred-guest-form .form-group label {
+  width: 78px !important;
+  font-weight: 800 !important;
+  font-size: 0.72rem !important;
+  color: #cbd5e1 !important;
+  flex-shrink: 0 !important;
+  margin: 0 !important;
+  text-align: left !important;
+}
+
+#barred-guest-form .form-group input {
+  flex: 1 !important;
+  height: 28px !important;
+  padding: 2px 8px !important;
+  font-size: 0.78rem !important;
+  border-radius: 5px !important;
+  min-width: 0 !important;
+}
+
+#barred-photo-box {
+  flex: 1 !important;
+  min-width: 140px !important;
+  max-width: 190px !important;
+  height: 100% !important;
+  min-height: 195px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1.5px dashed rgba(255, 255, 255, 0.25) !important;
+  border-radius: 8px !important;
+  padding: 6px !important;
+  position: relative !important;
+  cursor: pointer !important;
+  text-align: center !important;
+  background: rgba(0, 0, 0, 0.25) !important;
+}
+
+#barred-guest-modal .modal-footer {
+  padding: 8px 14px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(0, 0, 0, 0.25) !important;
+  display: flex !important;
+  justify-content: center !important;
+  gap: 10px !important;
+}
+
+#barred-guest-modal .modal-footer button {
+  height: 32px !important;
+  font-size: 0.85rem !important;
+  font-weight: 800 !important;
 }
 
 #guest-summary-modal-entries::-webkit-scrollbar {
@@ -5867,4 +5927,72 @@ body.page-maximized .excel-table td {
   margin: 0 auto 6px auto !important;
   border-radius: 6px !important;
   border: 1.5px solid rgba(239, 68, 68, 0.5) !important;
+}
+
+/* ==========================================================================
+   EXCEL VIEW: SELECTED GUEST GLOW EFFECT ("AFTER CLICKING IT GLOW / SELECTED IT WILL GLOW")
+   ========================================================================== */
+
+@keyframes excelGuestGlowPulse {
+  0% {
+    box-shadow: 0 0 10px rgba(0, 242, 254, 0.85), inset 0 0 12px rgba(0, 242, 254, 0.45);
+    border-color: #00f2fe !important;
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(0, 242, 254, 1), 0 0 40px rgba(56, 189, 248, 0.85), inset 0 0 18px rgba(0, 242, 254, 0.75);
+    border-color: #38bdf8 !important;
+  }
+  100% {
+    box-shadow: 0 0 10px rgba(0, 242, 254, 0.85), inset 0 0 12px rgba(0, 242, 254, 0.45);
+    border-color: #00f2fe !important;
+  }
+}
+
+/* Glowing Selected Guest Name Cell */
+.excel-table td.guest-cell-selected-glow {
+  background: #0284c7 !important;
+  color: #ffffff !important;
+  font-weight: 900 !important;
+  border: 2px solid #00f2fe !important;
+  animation: excelGuestGlowPulse 1.4s infinite alternate !important;
+  position: relative;
+  z-index: 5;
+}
+
+.excel-table td.guest-cell-selected-glow .clickable-guest-name,
+.excel-table td.guest-cell-selected-glow a {
+  color: #ffffff !important;
+  text-shadow: 0 0 8px #00f2fe, 0 0 18px #38bdf8 !important;
+  font-weight: 900 !important;
+}
+
+/* Glowing Row for Selected Guest Across Spreadsheet */
+.excel-table tr.guest-row-selected-glow td:not(.guest-summary-cell):not(.cell-guest-separator) {
+  background: #bfdbfe !important;
+  border-top: 1.5px solid #0284c7 !important;
+  border-bottom: 1.5px solid #0284c7 !important;
+  transition: all 0.25s ease;
+}
+
+/* Glowing Guest Summary Card in Column J */
+.excel-table td.guest-summary-card-glow {
+  background: #a7f3d0 !important;
+  border-left: 3px solid #00f2fe !important;
+  border-right: 3px solid #00f2fe !important;
+  box-shadow: 0 0 18px rgba(0, 242, 254, 0.9), inset 0 0 14px rgba(16, 185, 129, 0.4) !important;
+  animation: excelGuestGlowPulse 1.4s infinite alternate !important;
+  position: relative;
+  z-index: 6;
+}
+
+.excel-table td.guest-summary-card-glow.card-header-glow {
+  background: #34d399 !important;
+  color: #022c22 !important;
+  font-weight: 900 !important;
+  border-top: 3px solid #00f2fe !important;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.9) !important;
+}
+
+.excel-table td.guest-summary-card-glow.card-footer-glow {
+  border-bottom: 3px solid #00f2fe !important;
 }
