@@ -1,93 +1,500 @@
 const CREDIT_TYPES = ['CASHIN', 'C/IN', 'ISSUE', 'KEYIN'];
 const DEBIT_TYPES = ['CASHOUT', 'C/OUT', 'DEPOSIT', 'KEYOUT', 'PAID'];
 
+// Universal Global Data References (Safe across all scopes and event handlers)
+var allEntries = [];
+window.allEntries = allEntries;
+var globalBarredList = [];
+window.globalBarredList = globalBarredList;
+var currentBusinessDate = '';
+var currentBusinessDateStr = '';
+window.currentBusinessDate = '';
+window.currentBusinessDateStr = '';
+
+// Global Safe HTML Escape
+function escapeHTML(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+window.escapeHTML = escapeHTML;
+
+// Global Date Formatting Helper (Safe across all scopes)
+function formatDisplayDate(dateStr) {
+  if (!dateStr) return '';
+  const clean = String(dateStr).split('T')[0];
+  const parts = clean.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+  return dateStr;
+}
+window.formatDisplayDate = formatDisplayDate;
+
+// Global Number Formatter Helper (Indian Format)
+function formatIndianNumber(val) {
+  const n = Math.abs(Math.round(Number(val) || 0));
+  return n.toLocaleString('en-IN');
+}
+window.formatIndianNumber = formatIndianNumber;
+
+// Global K Amount Formatter Helper
+function formatKCurrency(val) {
+  if (!val || isNaN(val)) return '0';
+  const num = Math.abs(Number(val));
+  if (num >= 1000) {
+    const k = num / 1000;
+    return (Number.isInteger(k) ? k : k.toFixed(1)) + 'K';
+  }
+  return num.toString();
+}
+window.formatKCurrency = formatKCurrency;
+
+// Global Entry Type Helpers
+function isTotalInType(type) {
+  if (!type) return false;
+  const clean = String(type).trim().toUpperCase().replace(/[\s\-_]/g, '');
+  const norm = clean.replace(/[\/\\]/g, '/');
+  return (
+    norm === 'CASHIN' ||
+    norm === 'C/IN' ||
+    norm === 'CIN' ||
+    norm === 'ISSUE' ||
+    norm === 'KEY/IN' ||
+    norm === 'KEYIN'
+  );
+}
+window.isTotalInType = isTotalInType;
+
+function isTotalOutType(type) {
+  if (!type) return false;
+  const clean = String(type).trim().toUpperCase().replace(/[\s\-_]/g, '');
+  const norm = clean.replace(/[\/\\]/g, '/');
+  return (
+    norm === 'CASHOUT' ||
+    norm === 'C/OUT' ||
+    norm === 'COUT' ||
+    norm === 'DEPOSIT' ||
+    norm === 'KEY/OUT' ||
+    norm === 'KEYOUT' ||
+    norm === 'KY/OUT' ||
+    norm === 'KYOUT' ||
+    norm === 'PAID'
+  );
+}
+window.isTotalOutType = isTotalOutType;
+
+// Universal Entry Sentence Helper (Always defined immediately)
+function getEntrySentence(entry, isHtmlLink = false) {
+  if (!entry) return '';
+  const t = (entry.type || '').toUpperCase();
+  const amt = (typeof formatKCurrency === 'function' ? formatKCurrency(Number(entry.amount) || 0) : (entry.amount || 0)).toString().toUpperCase();
+  const rawGuest = (entry.guestname || 'UNKNOWN').toUpperCase();
+  const guest = isHtmlLink
+    ? `<span class="clickable-guest-name" data-guest="${escapeHTML(rawGuest)}" style="cursor:pointer; color:#38bdf8 !important; text-decoration:underline; font-weight:700;">${escapeHTML(rawGuest)}</span>`
+    : escapeHTML(rawGuest);
+  const card = entry.card ? escapeHTML(String(entry.card).toUpperCase()) : '';
+  const info = entry.otherinfo ? ` (${escapeHTML(String(entry.otherinfo).toUpperCase())})` : '';
+
+  const cleanType = t.replace(/[\s\-_]/g, '');
+  if (cleanType === 'CASHIN' || cleanType === 'CIN' || t === 'C/IN')   return `${amt} CASHIN BY ${guest}${info}`;
+  if (cleanType === 'CASHOUT' || cleanType === 'COUT' || t === 'C/OUT')  return `${amt} CASHOUT BY ${guest}${info}`;
+  if (cleanType === 'ISSUE')    return `${amt} ISSUE TO ${guest}${card ? ` FROM ${card} CARD` : ''}${info}`;
+  if (cleanType === 'DEPOSIT')  return `${amt} DEPOSIT BY ${guest}${card ? ` ON ${card} CARD` : ''}${info}`;
+  if (cleanType === 'KEYIN' || t === 'KEY/IN')    return `${amt} KEYIN BY ${guest}${info}`;
+  if (cleanType === 'KEYOUT' || cleanType === 'KYOUT' || t === 'KEY/OUT' || t === 'KY/OUT')   return `${amt} KEYOUT BY ${guest}${info}`;
+  
+  return `${amt} ${t} BY ${guest}${info}`;
+}
+window.getEntrySentence = getEntrySentence;
+
+// Global AI Assistant Helpers (Always defined immediately)
+window.aiShowDateAllEntries = function(dStr) {
+  const aiDatePicker = document.getElementById('ai-date-picker');
+  const aiSelectedDateBadge = document.getElementById('ai-selected-date-badge');
+  const aiQueryInput = document.getElementById('ai-query-input');
+  if (dStr && aiDatePicker) aiDatePicker.value = dStr;
+  if (dStr && aiSelectedDateBadge && typeof formatDisplayDate === 'function') {
+    aiSelectedDateBadge.textContent = formatDisplayDate(dStr);
+  }
+  if (aiQueryInput) aiQueryInput.value = '';
+  if (typeof window.executeAiQuery === 'function') {
+    window.executeAiQuery('ALL ENTRIES');
+  }
+};
+
+window.aiSwitchDate = function(dStr, guestName) {
+  const aiDatePicker = document.getElementById('ai-date-picker');
+  const aiSelectedDateBadge = document.getElementById('ai-selected-date-badge');
+  const aiQueryInput = document.getElementById('ai-query-input');
+  if (dStr && aiDatePicker) aiDatePicker.value = dStr;
+  if (dStr && aiSelectedDateBadge && typeof formatDisplayDate === 'function') {
+    aiSelectedDateBadge.textContent = formatDisplayDate(dStr);
+  }
+  if (guestName && aiQueryInput) aiQueryInput.value = guestName;
+  if (typeof window.executeAiQuery === 'function') {
+    window.executeAiQuery(guestName || 'ALL ENTRIES');
+  }
+};
+
+window.aiOpenGuestSummary = function(guestName) {
+  if (!guestName) return;
+  const aiDatePicker = document.getElementById('ai-date-picker');
+  const activeDate = (aiDatePicker && aiDatePicker.value)
+    ? aiDatePicker.value
+    : (window.currentBusinessDateStr || window.currentBusinessDate || (typeof getBusinessDate === 'function' ? getBusinessDate() : ''));
+  const candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+    ? allEntries
+    : (window.allEntries || []);
+  const openFn = (typeof openGuestSummaryPopup === 'function')
+    ? openGuestSummaryPopup
+    : window.openGuestSummaryPopup;
+  if (openFn) {
+    openFn(guestName, candidateList, activeDate);
+  }
+};
+
+window.aiQueryGuest = function(guestName) {
+  window.aiOpenGuestSummary(guestName);
+};
+
+function parseEntryDateTime(datetimeStr) {
+  if (!datetimeStr) return { date: '', time: '', dmy: '' };
+  const str = String(datetimeStr).trim();
+  let datePart = '';
+  let timePart = '';
+  if (str.includes('T')) {
+    const parts = str.split('T');
+    datePart = parts[0] || '';
+    timePart = parts[1] || '';
+  } else if (str.includes(' ')) {
+    const parts = str.split(' ');
+    datePart = parts[0] || '';
+    timePart = parts[1] || '';
+  } else {
+    datePart = str.slice(0, 10);
+    timePart = str.slice(11);
+  }
+  const cleanTime = timePart ? timePart.slice(0, 5) : '';
+  let dmy = datePart;
+  const dp = datePart.split('-');
+  if (dp.length === 3) {
+    dmy = `${dp[2]}-${dp[1]}-${dp[0]}`;
+  }
+  return { date: datePart, time: cleanTime, dmy, timeOnly: cleanTime };
+}
+window.parseEntryDateTime = parseEntryDateTime;
+
+// Universal Date Display Helper (DD-MM-YYYY)
+function formatDisplayDate(dateStr) {
+  if (!dateStr) return '';
+  const clean = String(dateStr).split('T')[0];
+  const parts = clean.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+  return dateStr;
+}
+window.formatDisplayDate = formatDisplayDate;
+
+// Guest Name Matching & Priority System
+function isNameMatch(n1, n2) {
+  if (!n1 || !n2) return false;
+  const s1 = String(n1).trim().toUpperCase();
+  const s2 = String(n2).trim().toUpperCase();
+  if (s1 === s2) return true;
+
+  const words1 = s1.split(/[\s,._-]+/).filter(Boolean);
+  const words2 = s2.split(/[\s,._-]+/).filter(Boolean);
+  if (words1.length === 0 || words2.length === 0) return false;
+
+  const fullWords1 = words1.filter(w => w.length > 1);
+  const fullWords2 = words2.filter(w => w.length > 1);
+  const initials1 = words1.filter(w => w.length === 1);
+  const initials2 = words2.filter(w => w.length === 1);
+
+  // Check shared full words
+  const sharedFullWords = fullWords1.filter(w => fullWords2.includes(w));
+  if (sharedFullWords.length >= 1) {
+    if (words1.length === 1 && words2.length === 1) return true;
+    if (words1.length === 1 || words2.length === 1) return true;
+
+    const remainingWords1 = words1.filter(w => !sharedFullWords.includes(w));
+    const remainingWords2 = words2.filter(w => !sharedFullWords.includes(w));
+    if (remainingWords1.length === 0 || remainingWords2.length === 0) return true;
+
+    const remainingInitials1 = remainingWords1.map(w => w[0]);
+    const remainingInitials2 = remainingWords2.map(w => w[0]);
+    const matchesInitials = remainingInitials1.some(i => remainingInitials2.includes(i));
+    if (matchesInitials) return true;
+  }
+
+  // Pure initial cross-matching
+  if (words1.length >= 2 && words2.length >= 2) {
+    const initialsAll1 = words1.map(w => w[0]);
+    const initialsAll2 = words2.map(w => w[0]);
+    if (initialsAll1.join('') === initialsAll2.join('') && initialsAll1.length >= 2) return true;
+  }
+
+  return false;
+}
+window.isNameMatch = isNameMatch;
+
+function getCanonicalNamePriority(name) {
+  if (!name) return 0;
+  const s = String(name).trim().toUpperCase();
+  const words = s.split(/[\s,._-]+/).filter(Boolean);
+  if (words.length === 0) return 0;
+
+  const fullWords = words.filter(w => w.length > 1);
+  const initials = words.filter(w => w.length === 1);
+
+  if (fullWords.length >= 2) return 3000 + (fullWords.length * 100) + s.length;
+  if (fullWords.length === 1 && initials.length >= 1 && words[words.length - 1].length === 1) return 2000 + s.length;
+  if (fullWords.length === 1 && initials.length >= 1 && words[0].length === 1) return 1800 + s.length;
+  if (fullWords.length === 1 && initials.length >= 1) return 1600 + s.length;
+  if (fullWords.length === 1) return 1400 + s.length;
+  return 1000 + s.length;
+}
+window.getCanonicalNamePriority = getCanonicalNamePriority;
+
+function getGuestCluster(targetName, candidateEntries) {
+  if (!targetName || !Array.isArray(candidateEntries)) {
+    return { canonicalName: (targetName || '').toUpperCase(), entries: [] };
+  }
+  const target = String(targetName).trim().toUpperCase();
+
+  let clusterEntries = candidateEntries.filter(e => {
+    const gn = (e.guestname || '').trim();
+    return isNameMatch(target, gn);
+  });
+
+  if (clusterEntries.length === 0) {
+    clusterEntries = candidateEntries.filter(e => (e.guestname || '').trim().toUpperCase() === target);
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const e of candidateEntries) {
+      if (!clusterEntries.includes(e)) {
+        const gn = (e.guestname || '').trim();
+        if (clusterEntries.some(m => isNameMatch((m.guestname || '').trim(), gn))) {
+          clusterEntries.push(e);
+          changed = true;
+        }
+      }
+    }
+  }
+
+  const uniqueNames = [...new Set(clusterEntries.map(e => (e.guestname || '').trim().toUpperCase()))].filter(Boolean);
+  uniqueNames.sort((a, b) => getCanonicalNamePriority(b) - getCanonicalNamePriority(a));
+  const canonicalName = uniqueNames.length > 0 ? uniqueNames[0] : target;
+
+  return { canonicalName, entries: clusterEntries };
+}
+window.getGuestCluster = getGuestCluster;
+
+// Universal Guest Summary Popup (Always available immediately)
+function openGuestSummaryPopup(guestName, candidateEntries, activeDateStr) {
+  const modal = document.getElementById('guest-summary-modal');
+  if (!modal) return;
+
+  // Determine target full date string
+  let resolvedDateStr = activeDateStr || window.currentBusinessDateStr || window.currentBusinessDate || (typeof getBusinessDate === 'function' ? getBusinessDate() : '');
+  if (typeof resolvedDateStr === 'number' || (typeof resolvedDateStr === 'string' && /^\d{1,2}$/.test(resolvedDateStr.trim()))) {
+    const dayNum = parseInt(resolvedDateStr, 10);
+    const base = window.currentBusinessDateStr || window.currentBusinessDate || (typeof getBusinessDate === 'function' ? getBusinessDate() : '');
+    const ym = base ? base.slice(0, 7) : '';
+    resolvedDateStr = ym ? `${ym}-${String(dayNum).padStart(2, '0')}` : resolvedDateStr;
+  }
+
+  // Format display date: DD-MM-YYYY
+  const displayDate = formatDisplayDate(resolvedDateStr);
+  const dateEl = document.getElementById('guest-summary-modal-date');
+  if (dateEl) dateEl.textContent = displayDate;
+
+  // Full pool of candidate entries
+  const allCandidateEntries = (Array.isArray(candidateEntries) && candidateEntries.length > 0)
+    ? candidateEntries
+    : ((typeof allEntries !== 'undefined' && Array.isArray(allEntries)) ? allEntries : (window.allEntries || []));
+
+  // Cluster matching entries
+  const cluster = getGuestCluster(guestName, allCandidateEntries);
+  let canonicalName = cluster.canonicalName || (guestName || '').toUpperCase();
+  let clusterEntries = cluster.entries || [];
+
+  if (clusterEntries.length === 0) {
+    clusterEntries = allCandidateEntries.filter(e => {
+      const gn = (e.guestname || '').trim().toUpperCase();
+      return gn === canonicalName || gn.includes(canonicalName) || canonicalName.includes(gn);
+    });
+  }
+
+  // Filter to selected business date
+  let dayEntries = clusterEntries;
+  if (resolvedDateStr) {
+    const filtered = clusterEntries.filter(e => {
+      const d = getEntryDate(e) || (parseEntryDateTime(e.datetime).date);
+      return d === resolvedDateStr;
+    });
+    dayEntries = filtered;
+  }
+
+  // Calculate In / Out / Result for selected date
+  let totalIn = 0;
+  let totalOut = 0;
+  dayEntries.forEach(e => {
+    const amt = Number(e.amount) || 0;
+    const t = e.type || '';
+    if (isTotalInType(t)) {
+      totalIn += amt;
+    } else if (isTotalOutType(t)) {
+      totalOut += amt;
+    }
+  });
+
+  const netResult = totalOut - totalIn;
+  const isNegative = netResult < 0;
+  const totalInStr = formatIndianNumber(totalIn);
+  const totalOutStr = formatIndianNumber(totalOut);
+  const resFormatted = formatIndianNumber(Math.abs(netResult));
+  // USER RULE: IF NEGATIVE THAN RED, NO COLOUR FOR OTHER (#000000 on green card)
+  const resColor = isNegative ? '#FF0000' : '#000000';
+
+  // Render Excel Style Guest Summary Card
+  const cardContainer = document.getElementById('guest-summary-card-container') || document.querySelector('.guest-summary-card-box');
+  if (cardContainer) {
+    cardContainer.innerHTML = `
+      <div class="guest-summary-header-cyan" style="display: block !important; visibility: visible !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">
+        GUEST SUMMARY
+      </div>
+      <div class="guest-summary-body-green" style="display: flex !important; visibility: visible !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important; filter: none !important;">
+        <div class="summary-row" style="display: flex !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+          <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 700 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">NAME :-</span>
+          <span id="guest-summary-modal-name" class="summary-val" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">${escapeHTML(canonicalName || guestName || '—')}</span>
+        </div>
+        <div class="summary-row" style="display: flex !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+          <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 700 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">TOTAL IN :-</span>
+          <span id="guest-summary-modal-in" class="summary-val" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">${totalInStr}</span>
+        </div>
+        <div class="summary-row" style="display: flex !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+          <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 700 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">TOTAL OUT :-</span>
+          <span id="guest-summary-modal-out" class="summary-val" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">${totalOutStr}</span>
+        </div>
+        <div class="summary-row summary-row-result" style="display: flex !important; visibility: visible !important; min-height: 32px !important; border-bottom: 1.5px solid #000000 !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+          <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">RESULT :-</span>
+          <span id="guest-summary-modal-result" class="summary-val summary-val-result" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; color: ${resColor} !important; font-weight: 800 !important; font-size: 1.05rem !important; text-shadow: none !important; filter: none !important;">${escapeHTML(resFormatted)}</span>
+        </div>
+      </div>
+      <div class="guest-summary-footer-yellow" style="display: block !important; visibility: visible !important; height: 20px !important; min-height: 20px !important; background: #FFFF00 !important; border-top: 1.5px solid #000000 !important;"></div>
+    `;
+  }
+
+  const nameEl = document.getElementById('guest-summary-modal-name');
+  const inEl = document.getElementById('guest-summary-modal-in');
+  const outEl = document.getElementById('guest-summary-modal-out');
+  const resultEl = document.getElementById('guest-summary-modal-result');
+  if (nameEl) nameEl.textContent = canonicalName || guestName || '—';
+  if (inEl) inEl.textContent = totalInStr;
+  if (outEl) outEl.textContent = totalOutStr;
+  if (resultEl) {
+    resultEl.textContent = resFormatted;
+    resultEl.style.color = resColor;
+    resultEl.style.setProperty('color', resColor, 'important');
+  }
+
+  const countEl = document.getElementById('guest-summary-modal-count');
+  if (countEl) {
+    countEl.textContent = `${dayEntries.length} ${dayEntries.length === 1 ? 'ENTRY' : 'ENTRIES'}`;
+  }
+
+  // Sort entries chronologically
+  const sortedEntries = [...dayEntries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+
+  // Populate Entries List below
+  const listEl = document.getElementById('guest-summary-modal-entries');
+  if (listEl) {
+    if (sortedEntries.length === 0) {
+      listEl.innerHTML = `<div style="text-align:center; padding: 20px; color: #94a3b8; font-size: 0.9rem; font-weight: 700;">No entries found for ${escapeHTML(canonicalName)} on ${displayDate}</div>`;
+    } else {
+      listEl.innerHTML = sortedEntries.map(e => {
+        const t = (e.type || '').toUpperCase();
+        const isCredit = isTotalInType(t);
+        const typeBorder = isCredit ? '#10b981' : '#ef4444';
+        const dtObj = parseEntryDateTime(e.datetime);
+        const time = dtObj.time || '—';
+        const sentence = (typeof getEntrySentence === 'function') ? getEntrySentence(e, false) : (e.amount + ' ' + t + ' BY ' + (e.guestname || ''));
+
+        return `
+          <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 3.5px solid ${typeBorder}; border-radius: 6px; padding: 7px 12px; display: flex; align-items: center; gap: 14px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.84rem;">
+            <span style="color: #38bdf8; font-weight: 700; min-width: 48px; flex-shrink: 0; letter-spacing: 0.5px;">${time}</span>
+            <span style="color: #f1f5f9; font-weight: 600; flex: 1; word-break: break-word;">${escapeHTML(sentence)}</span>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  modal.style.display = 'flex';
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+window.openGuestSummaryPopup = openGuestSummaryPopup;
+
+function closeGuestSummaryPopup() {
+  const modal = document.getElementById('guest-summary-modal');
+  if (modal) modal.style.display = 'none';
+}
+window.closeGuestSummaryPopup = closeGuestSummaryPopup;
+
+
+function getEntryDate(entry) {
+  if (!entry) return '';
+  if (entry.businessDate) return String(entry.businessDate).trim();
+  if (!entry.datetime) return '';
+  return parseEntryDateTime(entry.datetime).date;
+}
+window.getEntryDate = getEntryDate;
+
+// Universal Business Date Calculator Helper (Safe across all scopes)
+function getBusinessDate(dateObj) {
+  if (!dateObj && (window.currentBusinessDateStr || window.currentBusinessDate || currentBusinessDateStr || currentBusinessDate)) {
+    return window.currentBusinessDateStr || window.currentBusinessDate || currentBusinessDateStr || currentBusinessDate;
+  }
+  if (dateObj) {
+    if (typeof dateObj === 'string') {
+      const parsed = parseEntryDateTime(dateObj);
+      if (parsed && parsed.date) return parsed.date;
+    }
+    const d = new Date(dateObj);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  }
+  const d = new Date();
+  if (d.getHours() < 6) {
+    d.setDate(d.getDate() - 1);
+  }
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+window.getBusinessDate = getBusinessDate;
+
 /**
  * CLIENT-SIDE APP LOGIC
  * Surveillance Entry Portal
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // ==========================================================================
-  // IN-APP TOAST & CONFIRM SYSTEM (NO BROWSER "LOCALHOST SAYS" DIALOGS)
-  // ==========================================================================
-  function showToast(message, type = 'info') {
-    if (!message) return;
-    let toastContainer = document.getElementById('app-toast-container');
-    if (!toastContainer) {
-      toastContainer = document.createElement('div');
-      toastContainer.id = 'app-toast-container';
-      toastContainer.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999999;display:flex;flex-direction:column;gap:8px;pointer-events:none;align-items:center;max-width:90vw;';
-      document.body.appendChild(toastContainer);
-    }
-    const toast = document.createElement('div');
-    const msgStr = String(message);
-    const isError = type === 'error' || /fail|error|wrong|invalid|missing|denied/i.test(msgStr);
-    const isSuccess = type === 'success' || /success|saved|uploaded|imported|exported|deleted|updated/i.test(msgStr);
-    const borderColor = isError ? '#ef4444' : (isSuccess ? '#10b981' : '#38bdf8');
-    const dotColor = isError ? '#ef4444' : (isSuccess ? '#10b981' : '#38bdf8');
-
-    toast.style.cssText = `background:#0f172a;border:1.5px solid ${borderColor};color:#ffffff;padding:10px 22px;border-radius:10px;font-weight:700;font-size:0.9rem;box-shadow:0 10px 25px -5px rgba(0,0,0,0.6),0 0 15px ${borderColor}33;display:flex;align-items:center;gap:10px;opacity:0;transform:translateY(-12px);transition:all 0.25s cubic-bezier(0.16,1,0.3,1);pointer-events:auto;cursor:pointer;`;
-    const cleanEscaped = msgStr.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    toast.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};flex-shrink:0;"></span><span style="letter-spacing:0.3px;">${cleanEscaped}</span>`;
-
-    toastContainer.appendChild(toast);
-    requestAnimationFrame(() => {
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateY(0)';
-    });
-
-    const removeToast = () => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateY(-12px)';
-      setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 250);
-    };
-
-    toast.addEventListener('click', removeToast);
-    setTimeout(removeToast, 3500);
-  }
-
-  // Override window.alert completely so NO "localhost says" popup ever appears!
-  window.alert = function(msg) {
-    showToast(msg);
-  };
-
-  // Custom In-App Confirm Modal (NO browser "localhost says" dialogs)
-  function customConfirm(message) {
-    return new Promise((resolve) => {
-      let modal = document.getElementById('app-confirm-modal');
-      if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'app-confirm-modal';
-        modal.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(4px);z-index:9999999;align-items:center;justify-content:center;';
-        modal.innerHTML = `
-          <div style="background:#1e293b;border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:24px;max-width:420px;width:90%;box-shadow:0 20px 25px -5px rgba(0,0,0,0.6);text-align:center;">
-            <div style="font-size:1.05rem;font-weight:700;color:#fff;margin-bottom:20px;line-height:1.4;" id="app-confirm-msg"></div>
-            <div style="display:flex;justify-content:center;gap:12px;">
-              <button id="app-confirm-cancel" style="padding:9px 22px;border-radius:8px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);cursor:pointer;font-weight:700;font-size:0.9rem;">CANCEL</button>
-              <button id="app-confirm-ok" style="padding:9px 22px;border-radius:8px;background:#ef4444;color:#fff;border:none;cursor:pointer;font-weight:800;font-size:0.9rem;">CONFIRM</button>
-            </div>
-          </div>
-        `;
-        document.body.appendChild(modal);
-      }
-      const msgEl = document.getElementById('app-confirm-msg');
-      if (msgEl) msgEl.textContent = message;
-      modal.style.display = 'flex';
-
-      const okBtn = document.getElementById('app-confirm-ok');
-      const cancelBtn = document.getElementById('app-confirm-cancel');
-
-      const cleanup = () => {
-        modal.style.display = 'none';
-        okBtn.onclick = null;
-        cancelBtn.onclick = null;
-      };
-
-      okBtn.onclick = () => { cleanup(); resolve(true); };
-      cancelBtn.onclick = () => { cleanup(); resolve(false); };
-    });
-  }
-
   // Time Synchronization
   let timeOffset = 0;
   function getServerTimeDate() {
@@ -108,6 +515,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const entryFormEl = document.getElementById('entry-form');
   const entryFormSection = entryFormEl ? entryFormEl.closest('section') : null;
   const allEntriesDatePicker = document.getElementById('all-entries-datepicker');
+  const allEntriesYear = document.getElementById('all-entries-year');
   const allEntriesSearch = document.getElementById('all-entries-search');
   const btnAllEntriesHome = document.getElementById('btn-all-entries-home');
   const dayNumbersContainer = document.getElementById('day-numbers-container');
@@ -122,8 +530,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const adminPanelCard = document.getElementById('admin-panel-card');
   const majorPanelCard = document.getElementById('major-panel-card');
   const allEntriesPanelCard = document.getElementById('all-entries-panel-card');
-  let allEntriesViewMode = 'table'; // 'table' | 'sentence' | 'excel' | 'guestwise' | 'custom-entries'
-  let staffList = [];
   
   // DOM Elements - Supervisor / Log Modal
   const btnSupervisorLog = document.getElementById('btn-supervisor-log');
@@ -139,7 +545,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   function openLogModal() {
     if (supervisorLogModal) {
       resetFormInputs();
-      if (typeof renderCashierSuggestions === 'function') renderCashierSuggestions('');
       supervisorLogModal.style.display = 'flex';
       if (typeof lucide !== 'undefined') lucide.createIcons();
     }
@@ -203,28 +608,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const tableSearchInput = document.getElementById('table-search');
   const btnRefresh = document.getElementById('btn-refresh');
 
-  // DOM Elements - New Gaming Day / Change Date
-  const btnStartNewDay = document.getElementById('btn-start-new-day');
-  const newDayModal = document.getElementById('new-day-modal');
-  const newDayDateInput = document.getElementById('new-day-date-input');
-  const btnCancelNewDay = document.getElementById('btn-cancel-new-day');
-  const btnConfirmNewDay = document.getElementById('btn-confirm-new-day');
-  const homeGamingDateDisplay = document.getElementById('home-gaming-date-display');
-  const modalCurrentDateDisplay = document.getElementById('modal-current-date-display');
-
-  // Local state cache
-  let allEntries = [];
+  // Local state cache synced to universal window scope
+  allEntries = window.allEntries || [];
+  window.allEntries = allEntries;
   let currentUser = null;
-  let globalBarredList = [];
+  globalBarredList = window.globalBarredList || [];
+  window.globalBarredList = globalBarredList;
   let summaryChart = null;
-
-  // Helper: Strictly verify if active user is administrator
-  function isAdmin() {
-    if (!currentUser) return false;
-    const uid = String(currentUser.id || currentUser.name || '').toLowerCase().trim();
-    const urole = String(currentUser.role || '').toLowerCase().trim();
-    return uid === 'admin' || urole === 'admin';
-  }
 
   // Initialize Lucide Icons
   lucide.createIcons();
@@ -238,10 +628,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (data.serverTime) {
         const rtt = Date.now() - startFetch;
         timeOffset = data.serverTime + (rtt / 2) - Date.now();
-      }
-      if (data.currentBusinessDate) {
-        currentBusinessDateStr = data.currentBusinessDate;
-        if (homeGamingDateDisplay) homeGamingDateDisplay.textContent = currentBusinessDateStr;
       }
     }
   } catch (e) {
@@ -269,17 +655,146 @@ document.addEventListener('DOMContentLoaded', async () => {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   }
 
-  let currentBusinessDateStr = '';
+  // ==========================================================================
+  // IN-APP NOTIFICATION SYSTEM (NO BROWSER "localhost:3000 says" POPUPS)
+  // ==========================================================================
+  function showAppNotification(message, type = 'info', durationMs = 4000) {
+    if (!message) return;
+    let container = document.getElementById('app-notification-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'app-notification-container';
+      container.className = 'app-notification-container';
+      document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    const toastType = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
+    toast.className = `app-toast toast-${toastType}`;
+
+    let iconSvg = '';
+    if (toastType === 'success') {
+      iconSvg = '<svg class="app-toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>';
+    } else if (toastType === 'error') {
+      iconSvg = '<svg class="app-toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+    } else if (toastType === 'warning') {
+      iconSvg = '<svg class="app-toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+    } else {
+      iconSvg = '<svg class="app-toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+    }
+
+    toast.innerHTML = `
+      ${iconSvg}
+      <div class="app-toast-content">${escapeHTML(String(message))}</div>
+      <button class="app-toast-close" title="Close">&times;</button>
+    `;
+
+    const closeBtn = toast.querySelector('.app-toast-close');
+    const dismiss = () => {
+      toast.classList.add('toast-hiding');
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 250);
+    };
+
+    if (closeBtn) closeBtn.addEventListener('click', dismiss);
+    if (durationMs > 0) setTimeout(dismiss, durationMs);
+
+    container.appendChild(toast);
+  }
+  window.showAppNotification = showAppNotification;
+
+  // Intercept and replace all window.alert calls with in-app notifications
+  window.alert = function(msg) {
+    const text = String(msg || '');
+    let type = 'info';
+    const low = text.toLowerCase();
+    if (low.includes('error') || low.includes('failed')) type = 'error';
+    else if (low.includes('success') || low.includes('started') || low.includes('copied') || low.includes('saved') || low.includes('imported')) type = 'success';
+    else if (low.includes('warning') || low.includes('please') || low.includes('require') || low.includes('choose')) type = 'warning';
+    showAppNotification(text, type);
+  };
+
+  currentBusinessDateStr = currentBusinessDateStr || '';
+  currentBusinessDate = currentBusinessDate || '';
+
+  // In-app confirmation dialog (replaces browser confirm() "localhost:3000 says")
+  function showAppConfirm(message) {
+    return new Promise(resolve => {
+      const modal = document.getElementById('app-confirm-modal');
+      const msgEl = document.getElementById('app-confirm-message');
+      const btnOk = document.getElementById('app-confirm-ok');
+      const btnCancel = document.getElementById('app-confirm-cancel');
+      if (!modal) {
+        return resolve(true);
+      }
+      if (msgEl) msgEl.textContent = message || 'Are you sure?';
+      modal.style.display = 'flex';
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+
+      const cleanup = (val) => {
+        modal.style.display = 'none';
+        btnOk.onclick = null;
+        btnCancel.onclick = null;
+        resolve(val);
+      };
+
+      if (btnOk) btnOk.onclick = () => cleanup(true);
+      if (btnCancel) btnCancel.onclick = () => cleanup(false);
+    });
+  }
+
+  // Parse datetime string safely whether formatted with 'T' or space ' '
+  function parseEntryDateTime(datetimeStr) {
+    if (!datetimeStr) return { date: '', time: '', dmy: '' };
+    const str = String(datetimeStr).trim();
+    let datePart = '';
+    let timePart = '';
+    if (str.includes('T')) {
+      const parts = str.split('T');
+      datePart = parts[0] || '';
+      timePart = parts[1] || '';
+    } else if (str.includes(' ')) {
+      const parts = str.split(' ');
+      datePart = parts[0] || '';
+      timePart = parts[1] || '';
+    } else {
+      datePart = str.slice(0, 10);
+      timePart = str.slice(11);
+    }
+    const cleanTime = timePart ? timePart.slice(0, 5) : '';
+    let dmy = datePart;
+    const dp = datePart.split('-');
+    if (dp.length === 3) {
+      dmy = `${dp[2]}-${dp[1]}-${dp[0]}`;
+    }
+    return { date: datePart, time: cleanTime, dmy, timeOnly: cleanTime };
+  }
+
+  // Extract pure YYYY-MM-DD from entry
+  function getEntryDate(entry) {
+    if (!entry) return '';
+    if (entry.businessDate) return String(entry.businessDate).trim();
+    if (!entry.datetime) return '';
+    return parseEntryDateTime(entry.datetime).date;
+  }
+
+  // Format number in Indian numbering format (e.g. 41,00,000) without currency symbol
+  function formatIndianNumber(val) {
+    const n = Math.abs(Math.round(Number(val) || 0));
+    return n.toLocaleString('en-IN');
+  }
 
   // Helper: Get the business date string (YYYY-MM-DD) for a given datetime.
   function getBusinessDate(dateObj) {
-    if (!dateObj && currentBusinessDateStr) {
-      return currentBusinessDateStr;
+    if (!dateObj && (currentBusinessDateStr || currentBusinessDate)) {
+      return currentBusinessDateStr || currentBusinessDate;
     }
     
     if (dateObj) {
-      if (typeof dateObj === 'string' && dateObj.includes('T')) {
-        return dateObj.split('T')[0];
+      if (typeof dateObj === 'string') {
+        const parsed = parseEntryDateTime(dateObj);
+        if (parsed.date) return parsed.date;
       }
       const d = new Date(dateObj);
       if (isNaN(d.getTime())) return '';
@@ -299,15 +814,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     return `${year}-${month}-${day}`;
   }
 
-  // Helper: Check if an entry belongs to today's business session.
+  // Helper: Check if an entry belongs to today's active business session.
+  // STRICT RULE: Only unarchived entries matching current gaming date belong to today.
   function isEntryForToday(e) {
     if (!e) return false;
-    // Archived entries belong to past gaming days, exclude from today's home screen
     if (e.archived === true || e.archived === 'true') return false;
-
-    const todayBus = currentBusinessDateStr || getBusinessDate();
-    const eDate = e.businessDate || (e.datetime ? getBusinessDate(e.datetime) : '');
-    return eDate === todayBus;
+    const todayBus = currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+    if (!todayBus) return true;
+    const entryDate = getEntryDate(e);
+    return entryDate === todayBus;
   }
 
   // Helper: Format amount as Indian Rupee (INR) without decimal zeroes
@@ -337,7 +852,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function populateArchiveYears() {
-    if (!allEntriesYear) return;
+    const el = document.getElementById('all-entries-year');
+    if (!el) return;
     const colors = [
       '#e53935', '#d81b60', '#8e24aa', '#5e35b1', '#3949ab', '#1e88e5',
       '#039be5', '#00acc1', '#00897b', '#43a047', '#7cb342', '#f4511e'
@@ -347,7 +863,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const color = colors[(y - 2026) % colors.length];
       html += `<option value="${y}" style="background: ${color}; color: white;">${y}</option>`;
     }
-    allEntriesYear.innerHTML = html;
+    el.innerHTML = html;
   }
 
   let activeAllEntriesDay = Number(getBusinessDate().split('-')[2]);
@@ -373,6 +889,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     dayNumbersContainer.innerHTML = html;
 
+    if (gotoDayInput && activeAllEntriesDay) {
+      gotoDayInput.value = activeAllEntriesDay;
+    }
+
     // Attach listeners
     dayNumbersContainer.querySelectorAll('.day-nav-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -384,24 +904,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateAllEntriesView();
       });
     });
+
+    // Auto-scroll active day into view
+    setTimeout(() => {
+      const activeBtn = dayNumbersContainer.querySelector('.day-nav-btn.active');
+      if (activeBtn && activeBtn.scrollIntoView) {
+        activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    }, 10);
   }
 
-  // Next/Prev logic
+  // Next/Prev logic (< PREV and NEXT >)
   if(dayNavPrev) {
     dayNavPrev.addEventListener('click', () => {
       if(activeAllEntriesDay > 1) {
         activeAllEntriesDay--;
-        if(gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
-        syncDatePickerWithDay();
-        renderDayPagination();
-        updateAllEntriesView();
+      } else {
+        activeAllEntriesDay = 31; // wrap around
       }
+      if(gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
+      syncDatePickerWithDay();
+      renderDayPagination();
+      updateAllEntriesView();
     });
   }
   if(dayNavNext) {
     dayNavNext.addEventListener('click', () => {
       if(activeAllEntriesDay === null) activeAllEntriesDay = 1;
       else if(activeAllEntriesDay < 31) activeAllEntriesDay++;
+      else activeAllEntriesDay = 1; // wrap around
       if(gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
       syncDatePickerWithDay();
       renderDayPagination();
@@ -409,13 +940,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   if(gotoDayInput) {
-    gotoDayInput.addEventListener('change', () => {
-      let val = parseInt(gotoDayInput.value);
-      if(val >= 1 && val <= 31) {
+    const handleGoto = () => {
+      let val = parseInt(gotoDayInput.value, 10);
+      if(!isNaN(val)) {
+        if (val < 1) val = 1;
+        if (val > 31) val = 31;
         activeAllEntriesDay = val;
+        gotoDayInput.value = val;
         syncDatePickerWithDay();
         renderDayPagination();
         updateAllEntriesView();
+      }
+    };
+    gotoDayInput.addEventListener('change', handleGoto);
+    gotoDayInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleGoto();
+        gotoDayInput.blur();
       }
     });
   }
@@ -438,20 +980,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   const editInputOtherInfo = document.getElementById('edit-otherinfo');
   const editInputSurv = document.getElementById('edit-surv');
 
+  let currentEditingEntry = null;
+
   // Edit Entry Helper
   function editEntry(entry) {
     if (!entry) return;
+    currentEditingEntry = entry;
     
+    // Normalize datetime for datetime-local input (YYYY-MM-DDTHH:mm)
+    let dt = entry.datetime ? String(entry.datetime).replace(' ', 'T') : '';
+    if (/^\d{2}-\d{2}-\d{4}/.test(dt)) {
+      const parts = dt.split('T');
+      const dParts = parts[0].split('-');
+      dt = `${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1] || '00:00'}`;
+    }
+    if (dt.length > 16) dt = dt.slice(0, 16);
+
     // Populate modal form
-    editInputDateTime.value  = entry.datetime || getLocalTimeISOString();
-    editInputCD.value          = entry.cd        || '';
-    editInputType.value        = entry.type      || '';
-    editInputAmount.value      = entry.amount    || '';
-    editInputCashier.value     = entry.cashier   || '';
-    editInputGuestName.value   = entry.guestname || '';
-    editInputCard.value        = entry.card      || '';
-    editInputOtherInfo.value   = entry.otherinfo || '';
-    editInputSurv.value        = entry.surv      || '';
+    editInputDateTime.value  = dt || getLocalTimeISOString();
+    editInputCD.value        = entry.cd        || 'CD-01';
+    editInputType.value      = entry.type      || '';
+    editInputAmount.value    = entry.amount !== undefined ? entry.amount : '';
+    editInputCashier.value   = entry.cashier   || '-';
+    editInputGuestName.value = entry.guestname || '';
+    editInputCard.value      = entry.card      || '';
+    editInputOtherInfo.value = entry.otherinfo || '';
+    editInputSurv.value      = entry.surv      || (currentUser ? (currentUser.name || currentUser.id) : 'ADMIN');
     
     editingEntryId = entry.id;
     
@@ -463,72 +1017,76 @@ document.addEventListener('DOMContentLoaded', async () => {
   function closeEditModal() {
     editModal.style.display = 'none';
     editingEntryId = null;
+    currentEditingEntry = null;
     editEntryForm.reset();
   }
- if (btnCloseModal) btnCloseModal.addEventListener('click', closeEditModal);
- if (btnCancelEditModal) btnCancelEditModal.addEventListener('click', closeEditModal);
- if (editModal) editModal.addEventListener('click', (e) => {
-    if(e.target === editModal) closeEditModal();
+  if (btnCloseModal) btnCloseModal.addEventListener('click', closeEditModal);
+  if (btnCancelEditModal) btnCancelEditModal.addEventListener('click', closeEditModal);
+  if (editModal) editModal.addEventListener('click', (e) => {
+    if (e.target === editModal) closeEditModal();
   });
 
   // Handle Edit Form Submission
- if (editEntryForm) editEntryForm.addEventListener('submit', async (e) => {
+  if (editEntryForm) editEntryForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if(!editingEntryId) return;
+    if (editingEntryId === null || editingEntryId === undefined) return;
 
     let typeVal = editInputType.value.trim().toUpperCase();
     if (typeVal === 'C/IN') typeVal = 'CASHIN';
     if (typeVal === 'C/OUT') typeVal = 'CASHOUT';
 
+    const bDate = currentEditingEntry?.businessDate || currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+
     const updatedData = {
+      id: editingEntryId,
       datetime: editInputDateTime.value,
-      cd: (editInputCD && editInputCD.value) ? editInputCD.value.toUpperCase() : 'CD-01',
+      cd: (editInputCD && editInputCD.value) ? editInputCD.value.toUpperCase() : (currentEditingEntry?.cd || 'CD-01'),
       type: typeVal,
       amount: parseFloat(editInputAmount.value) || 0,
-      cashier: (editInputCashier && editInputCashier.value) ? editInputCashier.value.trim().toUpperCase() : '-',
+      cashier: (editInputCashier && editInputCashier.value) ? editInputCashier.value.trim().toUpperCase() : (currentEditingEntry?.cashier || '-'),
       guestname: editInputGuestName.value.trim().toUpperCase(),
       card: editInputCard.value.trim().toUpperCase(),
       otherinfo: editInputOtherInfo.value.trim().toUpperCase(),
-      surv: editInputSurv.value.toUpperCase()
+      surv: editInputSurv.value.toUpperCase(),
+      businessDate: bDate,
+      archived: currentEditingEntry?.archived !== undefined ? currentEditingEntry.archived : false
     };
 
     try {
-      const resp = await fetch(`/api/entries?id=${editingEntryId}`, {
+      const resp = await fetch(`/api/entries?id=${encodeURIComponent(editingEntryId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...updatedData, id: editingEntryId })
+        body: JSON.stringify(updatedData)
       });
-      if (!resp.ok) throw new Error('Update failed.');
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(data.error || 'Update failed.');
+      }
       
+      // Update entry in-memory immediately for instant 0ms UI update
+      const targetIdStr = String(editingEntryId);
+      const localIdx = allEntries.findIndex(item => String(item.id) === targetIdStr || item.id == editingEntryId);
+      if (localIdx !== -1) {
+        allEntries[localIdx] = { ...allEntries[localIdx], ...updatedData };
+      }
+      window.allEntries = allEntries;
+
       closeEditModal();
-      await fetchEntries(); // Re-render the view
+      showAppNotification('Entry updated successfully.', 'success');
+
+      // Re-render views
+      renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+      calculateStatistics(allEntries.filter(isEntryForToday));
+      populateDataLists(allEntries);
+      if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
+      if (typeof renderMajor === 'function') renderMajor();
+
+      // Background sync with server
+      fetchEntries().catch(console.error);
     } catch (err) {
-      alert(`Error updating entry: ${err.message}`);
+      showAppNotification(`Error updating entry: ${err.message}`, 'error');
     }
   });
-
-  // Helper: Synchronize visibility and button states for All Entries views
-  function applyAllEntriesViewMode() {
-    const normal = document.getElementById('all-entries-normal-view');
-    const list = document.getElementById('all-entries-list-container');
-    const excel = document.getElementById('all-entries-excel-view');
-    const guestwise = document.getElementById('all-entries-guestwise-view');
-
-    const btnNormal = document.getElementById('btn-view-normal');
-    const btnSentence = document.getElementById('btn-view-sentence');
-    const btnExcel = document.getElementById('btn-view-excel');
-    const btnGuestwise = document.getElementById('btn-view-guestwise');
-
-    if (btnNormal) btnNormal.classList.toggle('active', allEntriesViewMode === 'table');
-    if (btnSentence) btnSentence.classList.toggle('active', allEntriesViewMode === 'sentence');
-    if (btnExcel) btnExcel.classList.toggle('active', allEntriesViewMode === 'excel');
-    if (btnGuestwise) btnGuestwise.classList.toggle('active', allEntriesViewMode === 'guestwise');
-
-    if (normal) normal.style.setProperty('display', (allEntriesViewMode === 'table' || allEntriesViewMode === 'custom-entries') ? 'block' : 'none', 'important');
-    if (list) list.style.setProperty('display', allEntriesViewMode === 'sentence' ? 'block' : 'none', 'important');
-    if (excel) excel.style.setProperty('display', allEntriesViewMode === 'excel' ? 'block' : 'none', 'important');
-    if (guestwise) guestwise.style.setProperty('display', allEntriesViewMode === 'guestwise' ? 'block' : 'none', 'important');
-  }
 
   // ALL ENTRIES panel view update
   async function updateAllEntriesView() {
@@ -563,9 +1121,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     }
 
-    // Render sentences
+    // Render sentences, table, and excel grid views
     const allEntriesListContainer = document.getElementById('all-entries-list-container');
     const allEntriesTableBody = document.getElementById('all-entries-table-body');
+    const allEntriesExcelView = document.getElementById('all-entries-excel-view');
     
     if (sourceEntries.length === 0) {
       if (allEntriesListContainer) {
@@ -578,28 +1137,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (allEntriesTableBody) {
         allEntriesTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:20px;">No records found.</td></tr>`;
       }
-      const allEntriesExcelView = document.getElementById('all-entries-excel-view');
       if (allEntriesExcelView) {
-        allEntriesExcelView.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No records found matching the filters.</div>`;
+        const activeDay = activeAllEntriesDay || (selectedDate ? parseInt(selectedDate.split('-')[2], 10) : 'ALL');
+        renderStyledExcelGrid([], allEntriesExcelView, activeDay === 'ALL' ? 'ALL' : 'Day ' + activeDay);
       }
-      const allEntriesGuestwiseView = document.getElementById('all-entries-guestwise-view');
-      if (allEntriesGuestwiseView) {
-        allEntriesGuestwiseView.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No records found matching the filters.</div>`;
-      }
-      const allEntriesCustomTableBody = document.getElementById('all-entries-custom-table-body');
-      if (allEntriesCustomTableBody) {
-        allEntriesCustomTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:35px; color:var(--text-muted); font-weight:700;">No records found matching the filters.</td></tr>`;
-      }
-      applyAllEntriesViewMode();
+      lucide.createIcons();
       return;
     }
 
+    // 1. Render Sentences View
     if (allEntriesListContainer) {
       allEntriesListContainer.innerHTML = `<ul class="sentence-list">` + 
-        sourceEntries.map(e => `<li class="sentence-item ${(e.type||'').toLowerCase().replace('/', '-')}">${getEntrySentence(e)}</li>`).join('') +
+        sourceEntries.map(e => `<li class="sentence-item ${(e.type||'').toLowerCase().replace('/', '-')}">${getEntrySentence(e, true)}</li>`).join('') +
         `</ul>`;
     }
 
+    // 2. Render Table View
     if (allEntriesTableBody) {
       let tableHtml = '';
       sourceEntries.forEach(entry => {
@@ -614,26 +1167,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         const cdText = escapeHTML(entry.cd || 'N/A');
 
         let actionButtons = `
-          <div style="display:flex; gap:6px;">
-            <button class="btn-edit-entry" data-id="${entry.id}" title="Edit" style="background:transparent;color:var(--accent);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:4px 8px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-              <i data-lucide="edit-2" style="width:14px;height:14px;"></i>
+          <div style="display:flex; gap:4px; align-items:center;">
+            <button class="btn-edit-entry" data-id="${entry.id}" title="Edit" style="background:rgba(59,130,246,0.18);color:#60a5fa;border:1px solid rgba(59,130,246,0.4);border-radius:5px;width:24px;height:24px;padding:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all 0.15s ease;">
+              <i data-lucide="edit-2" style="width:12px;height:12px;pointer-events:none;"></i>
             </button>
-            <button class="btn-delete-entry" data-id="${entry.id}" title="Delete" style="background:transparent;color:var(--danger,#ef4444);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:4px 8px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-              <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+            <button class="btn-delete-entry" data-id="${entry.id}" title="Delete" style="background:rgba(239,68,68,0.18);color:#f87171;border:1px solid rgba(239,68,68,0.4);border-radius:5px;width:24px;height:24px;padding:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all 0.15s ease;">
+              <i data-lucide="trash-2" style="width:12px;height:12px;pointer-events:none;"></i>
             </button>
           </div>
         `;
 
-          tableHtml += `
-            <tr>
-              <td class="checkbox-col">
-                <input type="checkbox" class="entry-checkbox" data-id="${entry.id}">
-              </td>
-              <td><strong>${displayDate}</strong></td>
+        tableHtml += `
+          <tr>
+            <td class="checkbox-col">
+              <input type="checkbox" class="entry-checkbox" data-id="${entry.id}">
+            </td>
+            <td><strong>${displayDate}</strong></td>
             <td><span style="color: #60a5fa; font-weight: bold;">${escapeHTML(entry.surv || '-')}</span></td>
             <td><span class="badge ${typeBadge.cls}">${typeBadge.label}</span></td>
             <td class="table-amount ${amtClass}">${amtFormatted}</td>
-            <td>${escapeHTML(entry.guestname)}</td>
+            <td><span class="clickable-guest-name" data-guest="${escapeHTML(entry.guestname || '')}" style="cursor:pointer; color:#60a5fa; text-decoration:underline;">${escapeHTML(entry.guestname || '—')}</span></td>
             <td>${(() => {
               const showCard = ['ISSUE','DEPOSIT'].includes(type);
               return showCard
@@ -650,34 +1203,57 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
       });
       allEntriesTableBody.innerHTML = tableHtml;
-      lucide.createIcons();
+    }
 
-      // Attach listeners
-      allEntriesTableBody.querySelectorAll('.btn-edit-entry').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = Number(btn.getAttribute('data-id'));
-          const entry = allEntries.find(e => e.id === id);
-          if (entry) editEntry(entry);
-        });
-      });
-      allEntriesTableBody.querySelectorAll('.btn-delete-entry').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const id = Number(btn.getAttribute('data-id'));
-          try {
-            const resp = await fetch(`/api/entries?id=${id}`, { method: 'DELETE' });
-            if (!resp.ok) throw new Error('Delete failed.');
-            await fetchEntries();
-          } catch (err) {
-            alert(`Error deleting entry: ${err.message}`);
-          }
+    // 3. Render Excel Spreadsheet View
+    if (allEntriesExcelView) {
+      const activeDay = activeAllEntriesDay || (selectedDate ? parseInt(selectedDate.split('-')[2], 10) : 'ALL');
+      renderStyledExcelGrid(sourceEntries, allEntriesExcelView, activeDay === 'ALL' ? 'ALL' : 'Day ' + activeDay);
+    }
+
+    lucide.createIcons();
+
+    // Attach click listeners to all guest names in All Entries (Table, Sentence, and Excel)
+    const allEntriesPanel = document.getElementById('all-entries-panel-card');
+    if (allEntriesPanel) {
+      allEntriesPanel.querySelectorAll('.clickable-guest-name').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const gName = el.getAttribute('data-guest');
+          if (!gName) return;
+          const targetDay = (allEntriesDatePicker && allEntriesDatePicker.value) ? allEntriesDatePicker.value : (selectedDate || getBusinessDate());
+          openGuestSummaryPopup(gName, sourceEntries, targetDay);
         });
       });
     }
 
-    renderAllEntriesExcelView(sourceEntries);
-    renderAllEntriesGuestwiseView(sourceEntries);
+    // Attach listeners for Edit & Delete across all containers
+    document.querySelectorAll('#all-entries-panel-card .btn-edit-entry').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idAttr = btn.getAttribute('data-id');
+        const entry = allEntries.find(e => String(e.id) === String(idAttr) || e.id == idAttr);
+        if (entry) editEntry(entry);
+      });
+    });
+    document.querySelectorAll('#all-entries-panel-card .btn-delete-entry').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idAttr = btn.getAttribute('data-id');
+        if (!(await showAppConfirm('Are you sure you want to delete this entry?'))) return;
+        try {
+          // Instant in-memory removal
+          allEntries = allEntries.filter(e => String(e.id) !== String(idAttr) && e.id != idAttr);
+          window.allEntries = allEntries;
+          if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
+          if (typeof renderEntries === 'function') renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+          showAppNotification('Entry deleted successfully.', 'success');
 
-    applyAllEntriesViewMode();
+          // Fast direct delete call
+          fetch(`/api/entries?id=${encodeURIComponent(idAttr)}`, { method: 'DELETE' }).catch(e => console.error(e));
+        } catch (err) {
+          showAppNotification(`Error deleting entry: ${err.message}`, 'error');
+        }
+      });
+    });
   }
 
   // Switch App Views
@@ -701,38 +1277,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Dynamic Wallpaper Logic with Surveillance Watermark
+  // Dynamic Wallpaper Logic
   const wallpapers = [
-    'assets/surveillance_watermark_bg.png',
-    'assets/surveillance_bg.png'
+    'assets/surveillance_bg.png',
+    'assets/surveillance_bg_green.png',
+    'assets/surveillance_bg_red.png',
+    'assets/surveillance_bg_orange.png'
   ];
 
   function applyUserWallpaper(username) {
-    if (!username) {
-      document.body.style.background = `linear-gradient(rgba(3, 7, 18, 0.70), rgba(11, 15, 25, 0.85)), url('assets/surveillance_watermark_bg.png') center/cover fixed no-repeat`;
-      return;
-    }
-    const index = Math.floor(Math.random() * wallpapers.length);
-    document.body.style.background = `linear-gradient(rgba(3, 7, 18, 0.70), rgba(11, 15, 25, 0.85)), url('${wallpapers[index]}') center/cover fixed no-repeat`;
-  }
-
-  // Inactivity auto-logout disabled per user request: user stays logged in permanently
-  function performLogout() {
-    localStorage.removeItem('surv_session');
-    localStorage.removeItem('surv_last_activity');
-    sessionStorage.removeItem('current_panel');
-    currentUser = null;
-    allEntries = [];
-    applyUserWallpaper(null);
-    updateSurvFieldState();
-    hideAllPanels();
-    if (btnAdminUsers) btnAdminUsers.style.display = 'none';
-    if (btnSupervisorLog) btnSupervisorLog.style.display = 'none';
-
-    showView('login');
-    if (loginErrorContainer) {
-      loginErrorContainer.style.display = 'none';
-    }
+    document.body.style.background = "linear-gradient(rgba(6, 11, 25, 0.35), rgba(6, 11, 25, 0.48)), url('assets/surveillance_bg.png') center/cover fixed no-repeat";
   }
 
   // Verify and load active session
@@ -744,14 +1298,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         parsedSession = JSON.parse(sessionData);
       } catch (err) {
         console.error('Failed to parse session data:', err);
-        performLogout();
+        localStorage.removeItem('surv_session');
+        showView('login');
         return;
       }
       
       if (parsedSession) {
         currentUser = parsedSession;
-        userBadgeId.textContent = currentUser.name;
-        inputSurv.value = currentUser.id;
+        userBadgeId.textContent = currentUser.name || currentUser.id;
+        inputSurv.value = currentUser.name || currentUser.id;
         
         applyUserWallpaper(currentUser.name);
         
@@ -759,10 +1314,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Restore last active panel (AFTER REFRESH SAME PAGE)
         const lastPanel = sessionStorage.getItem('current_panel') || 'home';
-        if (lastPanel === 'admin') {
-          if (isAdmin()) showAdminPanel();
-          else showHomePanel();
-        }
+        if (lastPanel === 'admin') showAdminPanel();
         else if (lastPanel === 'major') showMajorPanel();
         else if (lastPanel === 'all_entries') showAllEntriesPanel();
         else if (lastPanel === 'barred') showBarredPanel();
@@ -775,6 +1327,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetchArchiveMetadata();
         fetchEntries();
         fetchGlobalBarredList();
+        checkAndPromptFirstTimeSetup(currentUser);
       }
     } else {
       showView('login');
@@ -801,11 +1354,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (inputCD) inputCD.value = 'CD-01';
     inputType.value     = '';
     inputAmount.value   = '';
-    if (inputCashier) inputCashier.value = '';
+    if (inputCashier) inputCashier.value = '-';
     inputGuestName.value= '';
     inputCard.value     = '';
     inputOtherInfo.value= '';
-    if (currentUser) inputSurv.value = currentUser.id;
+    if (currentUser) inputSurv.value = currentUser.name || currentUser.id;
 
     // Dispatch input events to sync quick entry widgets
     if (inputCD) inputCD.dispatchEvent(new Event('input', { bubbles: true }));
@@ -845,6 +1398,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         body: JSON.stringify({ username, password })
       });
 
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
       const data = await response.json();
 
       if (!response.ok) {
@@ -854,12 +1413,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Save user to session
       currentUser = data.user;
       localStorage.setItem('surv_session', JSON.stringify(currentUser));
-      localStorage.setItem('surv_last_activity', String(Date.now()));
-      lastActivityUpdate = Date.now();
       
       // Update badge and field
-      userBadgeId.textContent = currentUser.name;
-      inputSurv.value = currentUser.id;
+      userBadgeId.textContent = currentUser.name || currentUser.id;
+      inputSurv.value = currentUser.name || currentUser.id;
       
       applyUserWallpaper(currentUser.name);
       
@@ -873,6 +1430,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       fetchArchiveMetadata();
       fetchEntries();
       fetchGlobalBarredList();
+      checkAndPromptFirstTimeSetup(currentUser);
 
       // Reset login form fields
       usernameInput.value = '';
@@ -887,7 +1445,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Logout action
   if (btnLogout) btnLogout.addEventListener('click', () => {
-    performLogout();
+    localStorage.removeItem('surv_session');
+    sessionStorage.removeItem('current_panel');
+    currentUser = null;
+    allEntries = [];
+    applyUserWallpaper(null);
+    updateSurvFieldState();
+    hideAllPanels();
+    document.body.classList.remove('is-admin-session');
+    if (btnAdminUsers) btnAdminUsers.style.setProperty('display', 'none', 'important');
+    if (btnSupervisorLog) btnSupervisorLog.style.display = 'none';
+
+    showView('login');
   });
 
   // ==========================================================================
@@ -899,17 +1468,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const response = await fetch('/api/entries');
       if (!response.ok) throw new Error('Failed to retrieve entries.');
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
       const data = await response.json();
       allEntries = data.entries || [];
+      window.allEntries = allEntries;
       if (data.currentBusinessDate) {
         currentBusinessDateStr = data.currentBusinessDate;
-        const gamingDateEl = document.getElementById('all-entries-gaming-date');
-        if (gamingDateEl) {
-          gamingDateEl.textContent = `TODAY GAMING DATE: ${currentBusinessDateStr}`;
-        }
-        if (homeGamingDateDisplay) {
-          homeGamingDateDisplay.textContent = currentBusinessDateStr;
-        }
+        currentBusinessDate = data.currentBusinessDate;
+        window.currentBusinessDateStr = data.currentBusinessDate;
+        window.currentBusinessDate = data.currentBusinessDate;
+        updateGamingDateDisplay();
         // Refresh the hidden datetime input so future entries use the correct business date
         if (inputDateTime) inputDateTime.value = getLocalTimeISOString();
       }
@@ -919,6 +1492,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       calculateStatistics(currentDayEntries);
       populateDataLists(allEntries);
       if(allEntriesPanelCard && allEntriesPanelCard.style.display !== 'none') {
+        const curDate = currentBusinessDateStr || getBusinessDate();
+        activeAllEntriesDay = Number(curDate.split('-')[2]);
+        if (gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
+        if (allEntriesDatePicker) allEntriesDatePicker.value = curDate;
+        renderDayPagination();
         updateAllEntriesView();
       }
       if(supervisorHomePanel && supervisorHomePanel.style.display !== 'none') {
@@ -945,6 +1523,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       lucide.createIcons();
     }
   }
+  window.fetchEntries = fetchEntries;
 
   // Calculate stats based on fetched entries
   function calculateStatistics(entries) {
@@ -1030,20 +1609,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // De-activate all nav buttons
     document.querySelectorAll('.btn-nav').forEach(btn => btn.classList.remove('active'));
+    toggleAdminPanel();
 
-    // Keep wrapper locked inside single screen and auto-fit 100%
+    // Keep wrapper locked inside single screen
     const wrapper = document.querySelector('.content-wrapper');
     if (wrapper) {
-      wrapper.style.maxWidth = '100%';
-      wrapper.style.width = '100%';
+      wrapper.style.maxWidth = '';
       wrapper.style.overflow = 'hidden';
       wrapper.style.height = '100%';
-      wrapper.style.flex = '1 1 0';
     }
     
-    // Lock outer viewport so no outer page scroller ever appears
-    document.documentElement.style.overflow = 'hidden';
-    document.documentElement.style.overflowY = 'hidden';
     document.body.style.overflow = 'hidden';
     document.body.style.overflowY = 'hidden';
   }
@@ -1055,17 +1630,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if(tableSearchInput) tableSearchInput.value = '';
 
     // Auto-fit 100% in one page with zero page scrolling (Telegram layout on mobile & desktop)
-    document.documentElement.style.overflow = 'hidden';
-    document.documentElement.style.overflowY = 'hidden';
     document.body.style.overflow = 'hidden';
     document.body.style.overflowY = 'hidden';
     const wrapper = document.querySelector('.content-wrapper');
     if (wrapper) {
-      wrapper.style.maxWidth = '100%';
-      wrapper.style.width = '100%';
       wrapper.style.overflow = 'hidden';
       wrapper.style.height = '100%';
-      wrapper.style.flex = '1 1 0';
     }
     const appFooter = document.querySelector('.app-footer');
     if (appFooter) appFooter.style.display = 'none';
@@ -1100,15 +1670,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     if(btnHome) btnHome.classList.add('active');
     fetchEntries();
+    focusMessageBox();
   }
 
   function showAdminPanel() {
-    if (!isAdmin()) {
-      alert('Access restricted: Only Admin can access Add Member / user management.');
+    if (!isUserAdmin()) {
+      if (window.showAppNotification) {
+        window.showAppNotification('ONLY ADMIN CAN ADD MEMBER', 'error');
+      }
       showHomePanel();
       return;
     }
-
     sessionStorage.setItem('current_panel', 'admin');
     hideAllPanels();
 
@@ -1215,18 +1787,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       allEntriesPanelCard.style.setProperty('display', 'flex', 'important');
       if(btnAllEntries) btnAllEntries.classList.add('active');
       
-      const gamingDateEl = document.getElementById('all-entries-gaming-date');
-      if (gamingDateEl) {
-        gamingDateEl.textContent = `TODAY GAMING DAY: ${currentBusinessDateStr || getBusinessDate()}`;
-      }
+      updateGamingDateDisplay();
 
-      // Always select the current business day
+      // Always auto-goto current gaming date after refresh or close & open
       const todayDate = currentBusinessDateStr || getBusinessDate();
       activeAllEntriesDay = Number(todayDate.split('-')[2]);
       
       if (gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
-      if (allEntriesDatePicker && !allEntriesDatePicker.value) {
+      if (allEntriesDatePicker) {
         allEntriesDatePicker.value = todayDate;
+      }
+      if (allEntriesSearch) {
+        allEntriesSearch.value = '';
       }
       renderDayPagination();
       updateAllEntriesView();
@@ -1271,6 +1843,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if(btnHome) btnHome.addEventListener('click', () => {
     if(typeof hideAllPanels === 'function') hideAllPanels();
     if(typeof showHomePanel === 'function') showHomePanel();
+    focusMessageBox();
   });
   function showBarredPanel() {
     sessionStorage.setItem('current_panel', 'barred');
@@ -1311,18 +1884,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (btnBarredGlobal) btnBarredGlobal.addEventListener('click', showBarredPanel);
   if(btnAdminUsers) btnAdminUsers.addEventListener('click', showAdminPanel);
+  const userProfileBadge = document.getElementById('user-profile-badge') || document.querySelector('.user-profile');
+  if(userProfileBadge) {
+    userProfileBadge.addEventListener('click', () => {
+      if (isUserAdmin()) {
+        showAdminPanel();
+      }
+    });
+  }
   if(btnMajor) btnMajor.addEventListener('click', showMajorPanel);
   if(btnAllEntries) btnAllEntries.addEventListener('click', showAllEntriesPanel);
   if(btnAllEntriesHome) btnAllEntriesHome.addEventListener('click', showHomePanel);
+  const btnCloseAdminPanel = document.getElementById('btn-close-admin-panel');
+  if(btnCloseAdminPanel) btnCloseAdminPanel.addEventListener('click', showHomePanel);
 
   // Add Entries (Log Modal) Event Listeners
-  const btnAllEntriesAddLog = document.getElementById('btn-all-entries-add-log');
-  const btnOpenAddFromCustom = document.getElementById('btn-open-add-from-custom');
-
   if (btnSupervisorLog) btnSupervisorLog.addEventListener('click', openLogModal);
   if (btnOpenLogModal) btnOpenLogModal.addEventListener('click', openLogModal);
-  if (btnAllEntriesAddLog) btnAllEntriesAddLog.addEventListener('click', openLogModal);
-  if (btnOpenAddFromCustom) btnOpenAddFromCustom.addEventListener('click', openLogModal);
   if (btnCloseLogModal) btnCloseLogModal.addEventListener('click', closeLogModal);
   if (supervisorLogModal) {
     supervisorLogModal.addEventListener('click', (e) => {
@@ -1345,6 +1923,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (res.ok) {
         const data = await res.json();
         globalBarredList = data.barred || [];
+        window.globalBarredList = globalBarredList;
       }
     } catch (e) {
       console.error('Failed to fetch global barred list:', e);
@@ -1412,11 +1991,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       let photoUrl = match ? (match.photo || match.Photo || '') : '';
 
       if (photoUrl && (photoUrl.startsWith('data:image/') || photoUrl.startsWith('http') || photoUrl.startsWith('/'))) {
-        details += `<div style="text-align:center; margin-bottom:12px;"><img src="${photoUrl}" style="max-height:160px; max-width:100%; border-radius:8px; border:2px solid #ef4444;" /></div>`;
+        details += `<div style="text-align:center; margin-bottom:8px;"><img src="${photoUrl}" style="max-height:85px; max-width:100%; object-fit:contain; border-radius:6px; border:1.5px solid rgba(239,68,68,0.6);" /></div>`;
       }
 
       details += `
-        <div style="display:flex; flex-direction:column; gap:6px; text-align:left; font-size:0.95rem;">
+        <div style="display:flex; flex-direction:column; gap:3px; text-align:left; font-size:0.78rem; line-height:1.35;">
           <div><strong style="color:#ef4444;">REASON:</strong> <span style="color:#fff;">${escapeHTML(reasonText || 'No reason specified')}</span></div>
           ${dateText ? `<div><strong style="color:#94a3b8;">DATE:</strong> <span style="color:#fff;">${escapeHTML(dateText)}</span></div>` : ''}
           ${instText ? `<div><strong style="color:#94a3b8;">INSTRUCTION:</strong> <span style="color:#fff;">${escapeHTML(instText)}</span></div>` : ''}
@@ -1431,27 +2010,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       warningModal.style.display = 'flex';
       if (window.lucide) lucide.createIcons();
 
-      function handleCloseWarning(e) {
+      function handleAcknowledge(e) {
         if (e) e.preventDefault();
         warningModal.style.display = 'none';
+        if (btnClose) btnClose.removeEventListener('click', handleAcknowledge);
         resolve(true);
       }
 
-      const closeTriggers = [
-        document.getElementById('btn-close-barred-warning'),
-        document.getElementById('btn-x-close-barred-warning'),
-        document.getElementById('btn-cancel-barred-warning')
-      ].filter(Boolean);
-
-      closeTriggers.forEach(btn => {
-        btn.onclick = handleCloseWarning;
-      });
-
-      warningModal.onclick = (e) => {
-        if (e.target === warningModal) {
-          handleCloseWarning(e);
-        }
-      };
+      if (btnClose) {
+        btnClose.onclick = handleAcknowledge;
+      } else {
+        resolve(true);
+      }
     });
   }
 
@@ -1467,6 +2037,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await fetch('/api/barred');
       const data = await res.json();
       globalBarredList = data.barred || [];
+      window.globalBarredList = globalBarredList;
     } catch (e) {
       container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--danger);font-weight:700;">Failed to load barred guests.</div>';
       return;
@@ -1481,8 +2052,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (filtered.length === 0) {
       container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No barred guests found.</div>';
-      const barredExcelView = document.getElementById('barred-excel-view');
-      if (barredExcelView) barredExcelView.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No barred guests found.</div>';
       return;
     }
 
@@ -1521,26 +2090,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      if (g.pdfData && (!g.photo || !String(g.photo).startsWith('data:image/'))) {
-        photoHtml = `
-          <div class="barred-photo-placeholder btn-view-pdf" data-pdf="${g.pdfData}" title="Click to view PDF document" style="cursor:pointer;background:rgba(56,189,248,0.12);color:#38bdf8;border:1.5px solid rgba(56,189,248,0.4);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:6px;height:100%;">
-            <i data-lucide="file-text" style="width:26px;height:26px;"></i>
-            <span style="font-size:10px;font-weight:800;color:#38bdf8;">VIEW PDF</span>
-          </div>`;
-      }
-
       cardsHtml += `
-        <div class="barred-guest-card-box" data-id="${g.id}">
+        <div class="barred-guest-card-box" data-id="${g.id}" title="Click to view/edit guest" style="cursor: pointer;">
           <div class="barred-card-header">
             <span class="barred-badge-title">BARRED GUEST</span>
-            <div class="barred-card-actions" style="display: ${barredEditMode ? 'flex' : 'none'};">
-              <button class="btn-card-action btn-card-edit" data-id="${g.id}" title="Edit Barred Guest">
-                <i data-lucide="edit-2" style="width:13px;height:13px;"></i>
-              </button>
-              <button class="btn-card-action btn-card-delete" data-id="${g.id}" title="Delete Barred Guest">
-                <i data-lucide="trash-2" style="width:13px;height:13px;"></i>
-              </button>
-            </div>
           </div>
           <div class="barred-card-body">
             <div class="barred-photo-col" data-id="${g.id}" title="Click to upload/change photo">
@@ -1568,15 +2121,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <span class="barred-field-label">PROPERTY:</span>
                 <span class="barred-field-value">${escapeHTML(String(propVal || '-'))}</span>
               </div>
-              ${g.pdfData ? `
-              <div class="barred-field-row" style="margin-top:4px;">
-                <span class="barred-field-label">DOCUMENT:</span>
-                <span class="barred-field-value">
-                  <a href="${g.pdfData}" download="${escapeHTML(nameVal || 'barred')}.pdf" target="_blank" style="color:#38bdf8;font-weight:700;display:inline-flex;align-items:center;gap:4px;text-decoration:none;">
-                    <i data-lucide="file-text" style="width:14px;height:14px;"></i> VIEW / DOWNLOAD PDF
-                  </a>
-                </span>
-              </div>` : ''}
             </div>
           </div>
         </div>
@@ -1585,61 +2129,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     cardsHtml += '</div>';
 
     container.innerHTML = cardsHtml;
-    renderBarredExcelView(filtered);
     if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
 
-    // Attach listeners for Edit
-    container.querySelectorAll('.btn-card-edit').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id');
+    // Attach listeners for Card Click (Opens Edit modal with prefilled data)
+    container.querySelectorAll('.barred-guest-card-box').forEach(card => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.barred-photo-col') || e.target.tagName === 'INPUT') return;
+        const id = card.getAttribute('data-id');
         const g = filtered.find(x => String(x.id) === String(id));
-        if(!g) return;
-        
-        editingBarredId = id;
-        document.getElementById('barred-guestname').value = g.guestname || g.Name || g['Guest Name'] || g.GUESTNAME || g.name || '';
-        document.getElementById('barred-reason').value = g.reason || g.Reason || g.REASON || '';
-        document.getElementById('barred-date').value = g.date || g.Date || g.DATE || '';
-        document.getElementById('barred-inst').value = g.inst || g.Inst || g.INST || '';
-        document.getElementById('barred-property').value = g.property || g.Property || g.PROPERTY || '';
-        document.getElementById('barred-otherinfo').value = g.otherinfo || g.Otherinfo || '';
-        
-        const photoPreview = document.getElementById('barred-photo-preview');
-        const photoPh = document.getElementById('barred-photo-placeholder');
-        if (g.photo && g.photo.startsWith('data:image/')) {
-           barredPhotoBase64 = g.photo;
-           if (photoPreview) { photoPreview.src = g.photo; photoPreview.style.display = 'block'; }
-           if (photoPh) photoPh.style.display = 'none';
-        } else {
-           barredPhotoBase64 = null;
-           if (photoPreview) { photoPreview.src = ''; photoPreview.style.display = 'none'; }
-           if (photoPh) photoPh.style.display = '';
-        }
-        
-        const barredGuestModal = document.getElementById('barred-guest-modal');
-        const modalTitle = barredGuestModal ? barredGuestModal.querySelector('h3') : null;
-        if (modalTitle) modalTitle.innerHTML = '<i data-lucide="edit" style="vertical-align: middle; margin-right: 8px;"></i>EDIT BARRED GUEST';
-        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
-        if (barredGuestModal) barredGuestModal.style.display = 'flex';
-      });
-    });
-    
-    // Attach listeners for Delete
-    container.querySelectorAll('.btn-card-delete').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const id = btn.getAttribute('data-id');
-        if (!(await customConfirm('Are you sure you want to delete this barred guest?'))) return;
-        try {
-          const r = await fetch(`/api/barred?id=${id}`, { method: 'DELETE' });
-          if (r.ok) {
-            showToast('Barred guest deleted successfully.', 'success');
-            await fetchAndRenderBarredGuests();
-            await fetchGlobalBarredList();
-          } else {
-            showToast('Failed to remove barred guest.', 'error');
-          }
-        } catch (e) {
-          showToast('Error removing barred guest.', 'error');
-        }
+        if (g) openEditBarredGuest(g);
       });
     });
 
@@ -1681,82 +2179,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Render Barred Guests in authentic Excel Spreadsheet Grid on Website
-  function renderBarredExcelView(guests) {
-    const container = document.getElementById('barred-excel-view');
-    if (!container) return;
-
-    if (!guests || guests.length === 0) {
-      container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No barred guests found.</div>`;
-      return;
-    }
-
-    let html = `
-      <div style="overflow-x: auto; max-width: 100%;">
-        <table class="excel-grid-table">
-          <thead>
-            <tr class="excel-col-letter-row">
-              <th class="excel-row-num"></th>
-              <th style="min-width:70px;">A</th>
-              <th style="min-width:150px;">B</th>
-              <th style="min-width:100px;">C</th>
-              <th style="min-width:200px;">D</th>
-              <th style="min-width:130px;">E</th>
-              <th style="min-width:130px;">F</th>
-              <th style="min-width:180px;">G</th>
-            </tr>
-            <tr>
-              <th class="excel-row-num">1</th>
-              <th class="excel-cell excel-header-cell">PHOTO</th>
-              <th class="excel-cell excel-header-cell">GUEST NAME</th>
-              <th class="excel-cell excel-header-cell">DATE</th>
-              <th class="excel-cell excel-header-cell">REASON / INCIDENT</th>
-              <th class="excel-cell excel-header-cell">INSTRUCTION</th>
-              <th class="excel-cell excel-header-cell">PROPERTY</th>
-              <th class="excel-cell excel-header-cell">OTHER INFO / DOC</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
-
-    guests.forEach((g, idx) => {
-      const rowNum = idx + 2;
-      let photoHtml = '<span style="color:#94a3b8;font-size:11px;">NO PHOTO</span>';
-      if (g.photo && (String(g.photo).startsWith('data:image/') || String(g.photo).startsWith('http'))) {
-        photoHtml = `<img src="${g.photo}" style="max-width:55px;max-height:55px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1;" alt="photo" />`;
-      } else if (g.pdfData) {
-        photoHtml = `<span style="color:#0284c7;font-weight:700;font-size:11px;"><i data-lucide="file-text" style="width:14px;height:14px;vertical-align:middle;"></i> PDF</span>`;
-      }
-
-      let docHtml = '';
-      if (g.pdfData) {
-        docHtml = ` <a href="${g.pdfData}" download="${escapeHTML(g.guestname || 'barred')}.pdf" target="_blank" style="color:#0284c7;font-weight:700;margin-left:4px;"><i data-lucide="file-text" style="width:12px;height:12px;vertical-align:middle;"></i> PDF</a>`;
-      }
-
-      html += `
-        <tr>
-          <td class="excel-row-num">${rowNum}</td>
-          <td class="excel-cell" style="text-align:center;padding:4px;">${photoHtml}</td>
-          <td class="excel-cell" style="font-weight:800;color:#0f172a;font-size:13.5px;">${escapeHTML(String(g.guestname || '-'))}</td>
-          <td class="excel-cell">${escapeHTML(String(g.date || '-'))}</td>
-          <td class="excel-cell" style="color:#b91c1c;font-weight:600;">${escapeHTML(String(g.reason || '-'))}</td>
-          <td class="excel-cell">${escapeHTML(String(g.inst || '-'))}</td>
-          <td class="excel-cell">${escapeHTML(String(g.property || '-'))}</td>
-          <td class="excel-cell">${escapeHTML(String(g.otherinfo || '-'))}${docHtml}</td>
-        </tr>
-      `;
-    });
-
-    html += `
-          </tbody>
-        </table>
-      </div>
-    `;
-
-    container.innerHTML = html;
-    if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
-  }
-
   // STAFF DIRECTORY
   async function fetchAndRenderStaff() {
     const tableHead = document.getElementById('staff-list-table-head');
@@ -1765,7 +2187,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     tableBody.innerHTML = '<tr><td colspan="100%" style="text-align:center;padding:40px;color:var(--text-muted);">Loading...</td></tr>';
 
-    staffList = [];
+    let staffList = [];
     try {
       const res = await fetch('/api/staff');
       const data = await res.json();
@@ -1833,7 +2255,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Barred Guest Panel UI Event Listeners
   const btnOpenBarredModal = document.getElementById('btn-open-barred-modal');
   const btnCloseBarredModal = document.getElementById('btn-close-barred-modal');
-  const btnCancelBarredModal = document.getElementById('btn-cancel-barred-modal');
   const barredGuestModal = document.getElementById('barred-guest-modal');
   const barredGuestForm = document.getElementById('barred-guest-form');
   const barredSearch = document.getElementById('barred-search');
@@ -1845,9 +2266,39 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnImportBarredDoc = document.getElementById('btn-import-barred-doc');
   const barredDocUpload = document.getElementById('barred-doc-upload');
   const btnDeleteAllBarred = document.getElementById('btn-delete-all-barred');
-  const btnToggleBarredEdit = document.getElementById('btn-toggle-barred-edit');
+  const btnBarredSearchToggle = document.getElementById('btn-barred-search-toggle');
+  const btnDeleteSingleBarred = document.getElementById('btn-delete-single-barred');
   let editingBarredId = null;
   let barredPhotoBase64 = null;
+
+  function openEditBarredGuest(g) {
+    if (!g) return;
+    editingBarredId = g.id;
+    document.getElementById('barred-guestname').value = g.guestname || g.Name || g['Guest Name'] || g.GUESTNAME || g.name || '';
+    document.getElementById('barred-reason').value = g.reason || g.Reason || g.REASON || '';
+    document.getElementById('barred-date').value = g.date || g.Date || g.DATE || '';
+    document.getElementById('barred-inst').value = g.inst || g.Inst || g.INST || '';
+    document.getElementById('barred-property').value = g.property || g.Property || g.PROPERTY || '';
+    document.getElementById('barred-otherinfo').value = g.otherinfo || g.Otherinfo || '';
+    
+    const photoPreview = document.getElementById('barred-photo-preview');
+    const photoPh = document.getElementById('barred-photo-placeholder');
+    if (g.photo && g.photo.startsWith('data:image/')) {
+       barredPhotoBase64 = g.photo;
+       if (photoPreview) { photoPreview.src = g.photo; photoPreview.style.display = 'block'; }
+       if (photoPh) photoPh.style.display = 'none';
+    } else {
+       barredPhotoBase64 = null;
+       if (photoPreview) { photoPreview.src = ''; photoPreview.style.display = 'none'; }
+       if (photoPh) photoPh.style.display = '';
+    }
+    
+    const modalTitle = barredGuestModal ? barredGuestModal.querySelector('h3') : null;
+    if (modalTitle) modalTitle.innerHTML = '<i data-lucide="edit" style="vertical-align: middle; margin-right: 8px;"></i>EDIT BARRED GUEST';
+    if (btnDeleteSingleBarred) btnDeleteSingleBarred.style.display = 'inline-flex';
+    if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+    if (barredGuestModal) barredGuestModal.style.display = 'flex';
+  }
 
   if (btnOpenBarredModal) {
     btnOpenBarredModal.addEventListener('click', () => {
@@ -1856,10 +2307,31 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (barredGuestForm) barredGuestForm.reset();
       if (barredPhotoPreview) { barredPhotoPreview.style.display = 'none'; barredPhotoPreview.src = ''; }
       if (barredPhotoPh) barredPhotoPh.style.display = '';
+      if (btnDeleteSingleBarred) btnDeleteSingleBarred.style.display = 'none';
       const modalTitle = barredGuestModal ? barredGuestModal.querySelector('h3') : null;
       if (modalTitle) modalTitle.innerHTML = '<i data-lucide="ban" style="vertical-align:middle;margin-right:8px;"></i>ADD BARRED GUEST';
       if (barredGuestModal) barredGuestModal.style.display = 'flex';
       lucide.createIcons();
+    });
+  }
+
+  if (btnDeleteSingleBarred) {
+    btnDeleteSingleBarred.addEventListener('click', async () => {
+      if (!editingBarredId) return;
+      if (!(await showAppConfirm('Are you sure you want to delete this barred guest?'))) return;
+      try {
+        const r = await fetch(`/api/barred?id=${encodeURIComponent(editingBarredId)}`, { method: 'DELETE' });
+        if (r.ok) {
+          showAppNotification('Barred guest removed successfully.', 'success');
+          if (barredGuestModal) barredGuestModal.style.display = 'none';
+          await fetchAndRenderBarredGuests();
+          await fetchGlobalBarredList();
+        } else {
+          showAppNotification('Failed to remove barred guest.', 'error');
+        }
+      } catch (e) {
+        showAppNotification('Error removing barred guest.', 'error');
+      }
     });
   }
 
@@ -1869,41 +2341,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  if (btnCancelBarredModal) {
-    btnCancelBarredModal.addEventListener('click', () => {
-      if (barredGuestModal) barredGuestModal.style.display = 'none';
-    });
-  }
-
-  // Close modal when clicking on backdrop
   if (barredGuestModal) {
-    window.addEventListener('click', (e) => {
+    barredGuestModal.addEventListener('click', (e) => {
       if (e.target === barredGuestModal) {
         barredGuestModal.style.display = 'none';
       }
     });
   }
 
-  // Global listener for PDF view clicks
-  document.body.addEventListener('click', (e) => {
-    const pdfBtn = e.target.closest('.btn-view-pdf');
-    if (pdfBtn && pdfBtn.dataset.pdf) {
-      const pdfWindow = window.open();
-      if (pdfWindow) {
-        pdfWindow.document.write(`<iframe src="${pdfBtn.dataset.pdf}" frameborder="0" style="border:0; top:0; left:0; bottom:0; right:0; width:100%; height:100%;" allowfullscreen></iframe>`);
-      } else {
-        const downloadLink = document.createElement('a');
-        downloadLink.href = pdfBtn.dataset.pdf;
-        downloadLink.download = 'Barred_Document.pdf';
-        downloadLink.click();
-      }
-    }
-  });
-
   if (btnCloseBarredGuests) {
     btnCloseBarredGuests.addEventListener('click', () => {
       if (barredGuestsPanel) barredGuestsPanel.style.display = 'none';
       showHomePanel();
+    });
+  }
+
+  if (btnBarredSearchToggle && barredSearch) {
+    btnBarredSearchToggle.addEventListener('click', () => {
+      if (barredSearch.style.display === 'none' || !barredSearch.style.display) {
+        barredSearch.style.display = 'inline-block';
+        btnBarredSearchToggle.classList.add('active');
+        barredSearch.focus();
+      } else {
+        if (!barredSearch.value) {
+          barredSearch.style.display = 'none';
+          btnBarredSearchToggle.classList.remove('active');
+        } else {
+          barredSearch.value = '';
+          barredSearch.style.display = 'none';
+          btnBarredSearchToggle.classList.remove('active');
+          fetchAndRenderBarredGuests();
+        }
+      }
+    });
+
+    barredSearch.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        barredSearch.value = '';
+        barredSearch.style.display = 'none';
+        btnBarredSearchToggle.classList.remove('active');
+        fetchAndRenderBarredGuests();
+      }
     });
   }
 
@@ -1969,238 +2447,67 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Helper to optimize large photos/screenshots before upload (speeds up multi-upload)
-  async function compressImageIfNeeded(file, maxDimension = 1200, quality = 0.85) {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          let width = img.width;
-          let height = img.height;
-          if (width <= maxDimension && height <= maxDimension && file.size < 500 * 1024) {
-            resolve(e.target.result);
-            return;
-          }
-          if (width > height) {
-            if (width > maxDimension) {
-              height = Math.round((height * maxDimension) / width);
-              width = maxDimension;
-            }
-          } else {
-            if (height > maxDimension) {
-              width = Math.round((width * maxDimension) / height);
-              height = maxDimension;
-            }
-          }
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', quality));
-        };
-        img.onerror = () => resolve(e.target.result);
-        img.src = e.target.result;
-      };
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(file);
-    });
-  }
-
-  // Universal File Parser: Excel (.xlsx, .xls, .csv), Images/Screenshots (.png, .jpg, .jpeg, .webp), Word (.docx), PDF (.pdf, .txt)
+  // Universal File Parser: Photo (image/*, .jpg, .png, etc.), Excel (.xlsx, .xls, .csv), Word (.docx), PDF (.pdf, .txt)
   async function parseBarredFile(file) {
     const name = file.name || '';
     const ext = name.split('.').pop().toLowerCase();
     
-    // 0. IMAGES & SCREENSHOTS (png, jpg, jpeg, webp, gif, bmp)
-    if (file.type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'].includes(ext)) {
-      const base64Img = await compressImageIfNeeded(file);
-      if (!base64Img) return [];
-      let cleanName = name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim();
-      if (/^image|^screenshot|^photo|^file|^img|^\d+$/i.test(cleanName) || cleanName.length < 2) {
-        cleanName = 'BARRED GUEST PHOTO';
-      } else {
-        cleanName = cleanName.toUpperCase();
-      }
+    // 0. PHOTO / IMAGE (.jpg, .jpeg, .png, .webp, .bmp, .gif)
+    if ((file.type && file.type.startsWith('image/')) || ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'].includes(ext)) {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Failed to read photo file'));
+        reader.readAsDataURL(file);
+      });
+      // Extract guest name from filename without extension
+      let baseName = name.replace(/\.[^/.]+$/, '').trim();
+      baseName = baseName.replace(/[_-]+/g, ' ').trim();
+      const guestname = (baseName || 'BARRED GUEST').toUpperCase();
+      const resolvedDate = (typeof currentBusinessDateStr === 'string' && currentBusinessDateStr)
+        ? currentBusinessDateStr
+        : ((typeof getBusinessDate === 'function') ? getBusinessDate() : new Date().toISOString().split('T')[0]);
+      
       return [{
-        guestname: cleanName,
-        photo: base64Img,
-        reason: 'Uploaded from Photo / Screenshot',
-        date: new Date().toISOString().slice(0, 10),
-        inst: 'CHECK PHOTO',
+        guestname: guestname,
+        reason: 'BARRED',
+        date: resolvedDate,
+        inst: '',
         property: '',
-        otherinfo: `File: ${file.name}`
+        otherinfo: '',
+        photo: dataUrl
       }];
     }
 
-    // 1. EXCEL / CSV (.xlsx, .xls, .csv)
+    // 1. EXCEL / CSV
     if (['xlsx', 'xls', 'csv'].includes(ext)) {
       const data = await file.arrayBuffer();
       const imgMap = (typeof extractExcelImages === 'function') ? await extractExcelImages(data) : {};
-      const wb = XLSX.read(data, { type: 'array' });
-      
-      // Find sheet with the most rows
-      let bestWs = null;
-      let maxLen = -1;
-      for (const sName of wb.SheetNames) {
-        const sheet = wb.Sheets[sName];
-        if (sheet && sheet['!ref']) {
-          const range = XLSX.utils.decode_range(sheet['!ref']);
-          const numRows = range.e.r - range.s.r + 1;
-          if (numRows > maxLen) {
-            maxLen = numRows;
-            bestWs = sheet;
-          }
-        }
-      }
-      if (!bestWs) bestWs = wb.Sheets[wb.SheetNames[0]];
-      
-      const rawRows = XLSX.utils.sheet_to_json(bestWs, { header: 1, raw: false, defval: '' });
-      if (!rawRows || rawRows.length === 0) {
-        throw new Error('Excel sheet appears to be empty.');
-      }
-
-      // Detect header row by scanning first 15 rows
-      let headerRowIdx = -1;
-      let colName = -1, colReason = -1, colDate = -1, colInst = -1, colProp = -1, colPhoto = -1, colOther = -1;
-
-      for (let r = 0; r < Math.min(rawRows.length, 15); r++) {
-        const row = rawRows[r].map(c => String(c || '').trim().toLowerCase());
-        let matches = 0;
-        let tempName = -1, tempReason = -1, tempDate = -1, tempInst = -1, tempProp = -1, tempPhoto = -1, tempOther = -1;
-
-        row.forEach((cell, idx) => {
-          if (!cell) return;
-          if (/^(guest\s*name|full\s*name|customer\s*name|player\s*name|member\s*name|name|guest|player|customer|person|patron|member|suspect|individual|client|who)$/i.test(cell) ||
-              (/\bname\b/i.test(cell) && !/reason|incident|hotel|property|bank|card/i.test(cell)) ||
-              (/\bguest\b/i.test(cell))) {
-            tempName = idx;
-            matches++;
-          } else if (/reason|remark|incident|offense|cause|action|status|comment|note|description|violation|matter|why|details/i.test(cell)) {
-            tempReason = idx;
-            matches++;
-          } else if (/date|time|dt|when|dated/i.test(cell)) {
-            tempDate = idx;
-            matches++;
-          } else if (/inst|order|period|duration|type|penalty|valid|instruction|action\s*taken/i.test(cell)) {
-            tempInst = idx;
-            matches++;
-          } else if (/prop|casino|loc|branch|unit|venue|hotel|premises|club|place/i.test(cell)) {
-            tempProp = idx;
-            matches++;
-          } else if (/photo|pic|image|face|img/i.test(cell)) {
-            tempPhoto = idx;
-            matches++;
-          } else if (/other|info|contact|phone|mobile|id|passport|aadhaar|card|address/i.test(cell)) {
-            tempOther = idx;
-            matches++;
-          }
-        });
-
-        if (matches >= 1 && (tempName !== -1 || matches >= 2)) {
-          headerRowIdx = r;
-          colName = tempName;
-          colReason = tempReason;
-          colDate = tempDate;
-          colInst = tempInst;
-          colProp = tempProp;
-          colPhoto = tempPhoto;
-          colOther = tempOther;
-          break;
-        }
-      }
-
-      // Fallback column positions if no header was detected
-      if (headerRowIdx === -1) {
-        headerRowIdx = 0;
-        colName = 0;
-        colReason = 1;
-        colDate = 2;
-        colProp = 3;
-        colInst = 4;
-      } else {
-        const row0 = rawRows[headerRowIdx];
-        if (colName === -1) {
-          for (let c = 0; c < row0.length; c++) {
-            if (c !== colReason && c !== colDate && c !== colInst && c !== colProp) {
-              colName = c;
-              break;
-            }
-          }
-        }
-        if (colReason === -1) {
-          for (let c = 0; c < row0.length; c++) {
-            if (c !== colName && c !== colDate && c !== colInst && c !== colProp) {
-              colReason = c;
-              break;
-            }
-          }
-        }
-      }
-
+      const wb = XLSX.read(data);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      let rows = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
+      rows = rows.filter(s => {
+        const vals = Object.values(s).map(v => String(v).toUpperCase().trim());
+        return !(vals.includes('NAME') && vals.includes('REASON'));
+      });
       const guests = [];
-      const startRow = headerRowIdx + 1;
-
-      for (let r = startRow; r < rawRows.length; r++) {
-        const row = rawRows[r];
-        if (!row || row.length === 0) continue;
-        const nonBlank = row.filter(c => String(c || '').trim() !== '');
-        if (nonBlank.length === 0) continue;
-
-        let gName = colName >= 0 && row[colName] ? String(row[colName]).trim() : '';
-        let gReason = colReason >= 0 && row[colReason] ? String(row[colReason]).trim() : '';
-        let gDate = colDate >= 0 && row[colDate] ? String(row[colDate]).trim() : '';
-        let gInst = colInst >= 0 && row[colInst] ? String(row[colInst]).trim() : '';
-        let gProp = colProp >= 0 && row[colProp] ? String(row[colProp]).trim() : '';
-        let gPhoto = colPhoto >= 0 && row[colPhoto] ? row[colPhoto] : null;
-        let gOther = colOther >= 0 && row[colOther] ? String(row[colOther]).trim() : '';
-
-        // If name wasn't in designated column, find the best non-empty text
-        if (!gName) {
-          for (let c = 0; c < row.length; c++) {
-            const val = String(row[c] || '').trim();
-            if (val && !/^\d+$/.test(val) && !/^\d{4}-\d{2}-\d{2}/.test(val) && c !== colReason) {
-              gName = val;
-              break;
-            }
-          }
+      rows.forEach(r => {
+        const g = {};
+        for (const [k, v] of Object.entries(r)) {
+          const kLow = k.toLowerCase().trim();
+          if (kLow.includes('name')) g.guestname = String(v).trim().toUpperCase();
+          else if (kLow.includes('reason')) g.reason = String(v).trim().toUpperCase();
+          else if (kLow.includes('date')) g.date = String(v).trim();
+          else if (kLow.includes('inst')) g.inst = String(v).trim().toUpperCase();
+          else if (kLow.includes('prop')) g.property = String(v).trim().toUpperCase();
+          else if (kLow.includes('photo')) g.photo = v;
+          else if (kLow.includes('other')) g.otherinfo = String(v).trim().toUpperCase();
         }
-
-        if (!gName) continue;
-
-        // Ignore accidental repeating header row
-        const upper = gName.toUpperCase();
-        if (upper === 'NAME' || upper === 'GUEST NAME' || upper === 'GUEST' || upper === 'FULL NAME') continue;
-
-        // Check for embedded photo from Excel drawings
-        if (imgMap[r]) {
-          gPhoto = imgMap[r];
+        if (r.__rowNum__ !== undefined && imgMap[r.__rowNum__]) {
+          g.photo = imgMap[r.__rowNum__];
         }
-
-        // Collect extra unmapped non-empty columns into otherinfo so NOTHING is lost
-        const extraData = [];
-        row.forEach((c, idx) => {
-          if (idx !== colName && idx !== colReason && idx !== colDate && idx !== colInst && idx !== colProp && idx !== colPhoto) {
-            const v = String(c || '').trim();
-            if (v) extraData.push(v);
-          }
-        });
-        if (extraData.length > 0 && !gOther) {
-          gOther = extraData.join(' | ');
-        }
-
-        guests.push({
-          guestname: gName,
-          reason: gReason || '-',
-          date: gDate || '',
-          inst: gInst || '',
-          property: gProp || '',
-          photo: gPhoto || null,
-          otherinfo: gOther || ''
-        });
-      }
-
+        if (g.guestname) guests.push(g);
+      });
       return guests;
     }
 
@@ -2232,15 +2539,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             for (let c = 0; c < cells.length; c++) {
               const val = cells[c].textContent.trim();
               const h = headers[c] || '';
-              if (/name|guest|player|customer|person/i.test(h)) g.guestname = val;
-              else if (/reason|remark|incident|offense|cause|action|status|comment|details/i.test(h)) g.reason = val;
-              else if (/date|time|dt/i.test(h)) g.date = val;
-              else if (/inst|order|period|type/i.test(h)) g.inst = val;
-              else if (/prop|casino|loc|venue|hotel/i.test(h)) g.property = val;
-              else if (/other|info|contact|card/i.test(h)) g.otherinfo = val;
+              if (h.includes('name')) g.guestname = val.toUpperCase();
+              else if (h.includes('reason')) g.reason = val.toUpperCase();
+              else if (h.includes('date')) g.date = val;
+              else if (h.includes('inst')) g.inst = val.toUpperCase();
+              else if (h.includes('prop')) g.property = val.toUpperCase();
+              else if (h.includes('other')) g.otherinfo = val.toUpperCase();
             }
-            if (!g.guestname && cells[0]) g.guestname = cells[0].textContent.trim();
-            if (g.guestname && g.guestname.toUpperCase() !== 'NAME') guests.push(g);
+            if (g.guestname) guests.push(g);
           }
         }
       }
@@ -2249,9 +2555,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         const paras = xmlDoc.getElementsByTagName('w:p');
         for (let i = 0; i < paras.length; i++) {
           const txt = paras[i].textContent.trim();
-          if (!txt || txt.length < 2) continue;
+          if (!txt) continue;
           const parts = txt.split(/[,;\t|]+/);
-          const g = { guestname: parts[0].trim(), reason: parts[1] ? parts[1].trim() : '-' };
+          const g = {};
+          parts.forEach(p => {
+            const idx = p.indexOf(':');
+            if (idx > -1) {
+              const k = p.substring(0, idx).trim().toLowerCase();
+              const v = p.substring(idx + 1).trim();
+              if (k.includes('name')) g.guestname = v.toUpperCase();
+              else if (k.includes('reason')) g.reason = v.toUpperCase();
+              else if (k.includes('date')) g.date = v;
+              else if (k.includes('inst')) g.inst = v.toUpperCase();
+              else if (k.includes('prop')) g.property = v.toUpperCase();
+            }
+          });
           if (g.guestname) guests.push(g);
         }
       }
@@ -2260,29 +2578,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 3. PDF (.pdf) or TEXT (.txt)
     if (ext === 'pdf' || ext === 'txt' || ext === 'doc') {
-      if (ext === 'pdf') {
-        const base64Pdf = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-
-        let cleanTitle = name.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').trim().toUpperCase();
-        if (!cleanTitle || cleanTitle.length < 2) cleanTitle = 'BARRED NOTICE DOCUMENT';
-
-        return [{
-          guestname: cleanTitle,
-          reason: 'Official Barred PDF Document',
-          date: new Date().toISOString().slice(0, 10),
-          inst: 'VIEW / DOWNLOAD PDF',
-          property: '',
-          otherinfo: `PDF Document: ${file.name}`,
-          pdfData: base64Pdf
-        }];
-      }
-
-      // Plaintext (.txt)
       const text = await file.text();
       const cleanLines = text.split(/[\r\n]+/).map(l => l.trim()).filter(l => l.length > 0);
       const guests = [];
@@ -2294,26 +2589,22 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (idx > -1) {
             const k = p.substring(0, idx).trim().toLowerCase();
             const v = p.substring(idx + 1).trim();
-            if (/name|guest|player|customer|person/i.test(k)) g.guestname = v;
-            else if (/reason|remark|incident|offense|cause/i.test(k)) g.reason = v;
-            else if (/date|time|dt/i.test(k)) g.date = v;
-            else if (/inst|order|period/i.test(k)) g.inst = v;
-            else if (/prop|casino|loc/i.test(k)) g.property = v;
+            if (k.includes('name')) g.guestname = v.toUpperCase();
+            else if (k.includes('reason')) g.reason = v.toUpperCase();
+            else if (k.includes('date')) g.date = v;
+            else if (k.includes('inst')) g.inst = v.toUpperCase();
+            else if (k.includes('prop')) g.property = v.toUpperCase();
           }
         });
-        if (!g.guestname && parts[0]) {
-          g.guestname = parts[0].trim();
-          g.reason = parts[1] ? parts[1].trim() : '-';
-        }
         if (g.guestname) guests.push(g);
       });
       return guests;
     }
 
-    throw new Error('Unsupported format. Please select an Excel (.xlsx, .xls, .csv), PDF (.pdf), or Image / Screenshot (.png, .jpg, .jpeg, .webp).');
+    throw new Error('Unsupported format. Please select Photo, Excel (.xlsx, .xls, .csv), Word (.docx), or PDF (.pdf) file.');
   }
 
-  // Single Unified Upload button listener (Photo, Excel, Word, PDF)
+  // Import button listener (Photo, PDF, Excel, Word in ONE button) - Symbol / Icon only
   if (btnImportBarredDoc && barredDocUpload) {
     btnImportBarredDoc.addEventListener('click', () => barredDocUpload.click());
     barredDocUpload.addEventListener('change', async () => {
@@ -2321,23 +2612,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (files.length === 0) return;
       try {
         btnImportBarredDoc.disabled = true;
-        btnImportBarredDoc.innerHTML = `<i data-lucide="loader" class="spin" style="width: 18px; height: 18px;"></i>`;
+        btnImportBarredDoc.innerHTML = `<i data-lucide="loader-2" class="spin" style="width: 18px; height: 18px;"></i>`;
         if (window.lucide) lucide.createIcons();
-
-        if (files.length > 1) {
-          showToast(`Processing ${files.length} photos/files...`, 'info');
-        }
 
         let allGuests = [];
         for (const file of files) {
           const parsed = await parseBarredFile(file);
-          if (parsed && parsed.length > 0) {
+          if (Array.isArray(parsed) && parsed.length > 0) {
             allGuests = allGuests.concat(parsed);
           }
         }
 
-        if (allGuests.length === 0) {
-          showToast('No barred records could be read from selected file(s).', 'error');
+        if (!allGuests || allGuests.length === 0) {
+          if (window.showAppNotification) {
+            window.showAppNotification('No valid barred guest records found in selected file(s).', 'warning');
+          } else {
+            alert('No valid barred guest records found in selected file(s).');
+          }
           return;
         }
 
@@ -2348,14 +2639,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         const result = await res.json();
         if (result.success) {
-          showToast(`Successfully uploaded ${result.count} barred guest record(s)!`, 'success');
+          if (window.showAppNotification) {
+            window.showAppNotification(`Successfully imported ${result.count} barred guest(s)!`, 'success');
+          } else {
+            alert(`Successfully imported ${result.count} barred guest(s)!`);
+          }
           await fetchAndRenderBarredGuests();
           await fetchGlobalBarredList();
         } else {
-          showToast(result.error || 'Upload failed.', 'error');
+          if (window.showAppNotification) {
+            window.showAppNotification(result.error || 'Import failed.', 'error');
+          } else {
+            alert(result.error || 'Import failed.');
+          }
         }
       } catch (err) {
-        showToast('Failed to parse file: ' + err.message, 'error');
+        if (window.showAppNotification) {
+          window.showAppNotification('Failed to parse file: ' + err.message, 'error');
+        } else {
+          alert('Failed to parse file: ' + err.message);
+        }
       } finally {
         barredDocUpload.value = '';
         btnImportBarredDoc.disabled = false;
@@ -2368,76 +2671,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Delete all barred guests
   if (btnDeleteAllBarred) {
     btnDeleteAllBarred.addEventListener('click', async () => {
-      if (!(await customConfirm('Are you sure you want to delete ALL barred guests?'))) return;
+      if (!(await showAppConfirm('Are you sure you want to delete ALL barred guests?'))) return;
       try {
         const res = await fetch('/api/barred?all=true', { method: 'DELETE' });
         const data = await res.json();
         if (res.ok) {
-          showToast('All barred guests have been deleted.', 'success');
+          showAppNotification('All barred guests deleted successfully.', 'success');
           await fetchAndRenderBarredGuests();
           await fetchGlobalBarredList();
         } else {
-          showToast(data.error || 'Failed to delete all barred guests.', 'error');
+          showAppNotification(data.error || 'Failed to delete all barred guests.', 'error');
         }
       } catch (err) {
-        showToast('Error deleting all barred guests.', 'error');
+        showAppNotification('Error deleting all barred guests.', 'error');
       }
     });
   }
 
-  // Toggle Edit mode - controls display of Edit & Delete buttons on cards
-  if (btnToggleBarredEdit) {
-    btnToggleBarredEdit.addEventListener('click', () => {
-      barredEditMode = !barredEditMode;
-      btnToggleBarredEdit.classList.toggle('active', barredEditMode);
-      if (barredEditMode) {
-        btnToggleBarredEdit.style.background = 'rgba(245, 158, 11, 0.25)';
-        btnToggleBarredEdit.style.borderColor = '#f59e0b';
-        btnToggleBarredEdit.style.color = '#f59e0b';
-      } else {
-        btnToggleBarredEdit.style.background = '';
-        btnToggleBarredEdit.style.borderColor = '';
-        btnToggleBarredEdit.style.color = '';
-      }
-      const container = document.getElementById('barred-list-container');
-      if (container) {
-        container.classList.toggle('barred-edit-active', barredEditMode);
-        container.querySelectorAll('.barred-card-actions').forEach(el => {
-          el.style.display = barredEditMode ? 'flex' : 'none';
-        });
-      }
-      showToast(barredEditMode ? 'Edit / Delete Mode: ON' : 'Edit / Delete Mode: OFF', 'info');
-    });
-  }
-
-  // View Toggle Logic for Barred Guests Panel (Cards vs Excel Workbook View)
-  const btnBarredViewCards = document.getElementById('btn-barred-view-cards');
-  const btnBarredViewExcel = document.getElementById('btn-barred-view-excel');
-  const barredExcelView = document.getElementById('barred-excel-view');
-  let barredViewMode = 'cards';
-
-  if (btnBarredViewCards) {
-    btnBarredViewCards.addEventListener('click', () => {
-      barredViewMode = 'cards';
-      btnBarredViewCards.classList.add('active');
-      if (btnBarredViewExcel) btnBarredViewExcel.classList.remove('active');
-      const container = document.getElementById('barred-list-container');
-      if (container) container.style.setProperty('display', 'block', 'important');
-      if (barredExcelView) barredExcelView.style.setProperty('display', 'none', 'important');
-    });
-  }
-
-  if (btnBarredViewExcel) {
-    btnBarredViewExcel.addEventListener('click', () => {
-      barredViewMode = 'excel';
-      btnBarredViewExcel.classList.add('active');
-      if (btnBarredViewCards) btnBarredViewCards.classList.remove('active');
-      const container = document.getElementById('barred-list-container');
-      if (container) container.style.setProperty('display', 'none', 'important');
-      if (barredExcelView) barredExcelView.style.setProperty('display', 'block', 'important');
-      fetchAndRenderBarredGuests();
-    });
-  }
 
   const btnStaffPanel = document.getElementById('btn-staff-panel');
   const staffDirectoryPanelCard = document.getElementById('staff-directory-panel-card');
@@ -2513,89 +2763,318 @@ document.addEventListener('DOMContentLoaded', async () => {
     return value.toString();
   }
 
-  // Helper: Entry to Sentence Form
-  function getEntrySentence(entry) {
+  // Helper: Entry to Sentence Form (supports clickable hyperlink for guest name)
+  function getEntrySentence(entry, isHtmlLink = false) {
+    if (!entry) return '';
     const t = (entry.type || '').toUpperCase();
-    const amt = formatKCurrency(Number(entry.amount) || 0);
-    const guest = escapeHTML(entry.guestname || 'Unknown');
-    const card = entry.card ? escapeHTML(entry.card) : '';
-    const info = entry.otherinfo ? ` (${escapeHTML(entry.otherinfo)})` : '';
+    const amt = formatKCurrency(Number(entry.amount) || 0).toUpperCase();
+    const rawGuest = (entry.guestname || 'UNKNOWN').toUpperCase();
+    const guest = isHtmlLink
+      ? `<span class="clickable-guest-name" data-guest="${escapeHTML(rawGuest)}" style="cursor:pointer; color:#38bdf8 !important; text-decoration:underline; font-weight:700;">${escapeHTML(rawGuest)}</span>`
+      : escapeHTML(rawGuest);
+    const card = entry.card ? escapeHTML(String(entry.card).toUpperCase()) : '';
+    const info = entry.otherinfo ? ` (${escapeHTML(String(entry.otherinfo).toUpperCase())})` : '';
 
-    // CASHIN/CASHOUT: include otherinfo if present
-    if (t === 'CASHIN' || t === 'C/IN')   return `${amt} CASHIN BY ${guest}${info}`;
-    if (t === 'CASHOUT' || t === 'C/OUT')  return `${amt} CASHOUT BY ${guest}${info}`;
-    // ISSUE/DEPOSIT: card + otherinfo
-    if (t === 'ISSUE')    return `${amt} ISSUE TO ${guest} FROM ${card} CARD${info}`;
-    if (t === 'DEPOSIT')  return `${amt} DEPOSIT BY ${guest} ON ${card} CARD${info}`;
-    // KEYIN/KEYOUT: otherinfo only (no card)
-    if (t === 'KEYIN')    return `${amt} KEYIN BY ${guest}${info}`;
-    if (t === 'KEYOUT')   return `${amt} KEYOUT BY ${guest}${info}`;
+    const cleanType = t.replace(/[\s\-_]/g, '');
+    if (cleanType === 'CASHIN' || cleanType === 'CIN' || t === 'C/IN')   return `${amt} CASHIN BY ${guest}${info}`;
+    if (cleanType === 'CASHOUT' || cleanType === 'COUT' || t === 'C/OUT')  return `${amt} CASHOUT BY ${guest}${info}`;
+    if (cleanType === 'ISSUE')    return `${amt} ISSUE TO ${guest}${card ? ` FROM ${card} CARD` : ''}${info}`;
+    if (cleanType === 'DEPOSIT')  return `${amt} DEPOSIT BY ${guest}${card ? ` ON ${card} CARD` : ''}${info}`;
+    if (cleanType === 'KEYIN' || t === 'KEY/IN')    return `${amt} KEYIN BY ${guest}${info}`;
+    if (cleanType === 'KEYOUT' || cleanType === 'KYOUT' || t === 'KEY/OUT' || t === 'KY/OUT')   return `${amt} KEYOUT BY ${guest}${info}`;
     
     return `${amt} ${t} BY ${guest}${info}`;
   }
+  window.getEntrySentence = getEntrySentence;
 
-  // Open Major Guest Details Modal
-  function openMajorGuestModal(guest, netScore, inOut, entries) {
-    const modal = document.getElementById('major-guest-details-modal');
-    if (!modal) return;
-    const nameEl = document.getElementById('major-modal-guest-name');
-    const statsEl = document.getElementById('major-modal-stats');
-    const listEl = document.getElementById('major-modal-entries-list');
+  // -------------------------------------------------------------
+  // GUEST NAME ALIASING, CANONICAL SELECTION & SUMMARY POPUP SYSTEM
+  // -------------------------------------------------------------
+  function formatDisplayDate(dateStr) {
+    if (!dateStr) return '';
+    const clean = String(dateStr).split('T')[0];
+    const parts = clean.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    return dateStr;
+  }
 
-    if (nameEl) nameEl.textContent = guest.toUpperCase();
+  // Check if two raw guest name strings refer to the same person
+  // e.g. GUEST, GUEST NAME, GUEST N, N GUEST, NAME G -> all match
+  function isNameMatch(n1, n2) {
+    if (!n1 || !n2) return false;
+    const s1 = String(n1).trim().toUpperCase();
+    const s2 = String(n2).trim().toUpperCase();
+    if (s1 === s2) return true;
 
-    const totalIn = inOut ? inOut.in : 0;
-    const totalOut = inOut ? inOut.out : 0;
-    let resClass = 'text-neutral';
-    let resStr = formatCurrency(Math.abs(netScore));
-    if (netScore < 0) {
-      resClass = 'text-red';
-      resStr = '-' + resStr;
-    } else if (netScore > 0) {
-      resClass = 'text-green';
-      resStr = '+' + resStr;
-    } else {
-      resStr = '₹0';
+    const words1 = s1.split(/[\s,._-]+/).filter(Boolean);
+    const words2 = s2.split(/[\s,._-]+/).filter(Boolean);
+    if (words1.length === 0 || words2.length === 0) return false;
+
+    // Full multi-letter words (length > 1) and single-letter initials (length === 1)
+    const fullWords1 = words1.filter(w => w.length > 1);
+    const fullWords2 = words2.filter(w => w.length > 1);
+    const initials1 = words1.filter(w => w.length === 1);
+    const initials2 = words2.filter(w => w.length === 1);
+
+    // Check shared full words
+    const commonWords = fullWords1.filter(w => fullWords2.includes(w));
+
+    if (commonWords.length > 0) {
+      const diff1 = fullWords1.filter(w => !commonWords.includes(w));
+      const diff2 = fullWords2.filter(w => !commonWords.includes(w));
+
+      // If both have different secondary full words (e.g. "GUEST A" vs "GUEST NAME"), they are distinct
+      if (diff1.length > 0 && diff2.length > 0) {
+        return false;
+      }
+
+      // If one has an extra word and the other has an initial, check if initial matches
+      // e.g. "GUEST N" vs "GUEST NAME": diff2 is ["NAME"], initials1 is ["G"] -> matches!
+      if (diff1.length > 0 && initials2.length > 0) {
+        const matches = diff1.some(w => initials2.includes(w[0]));
+        if (!matches) return false;
+      }
+      if (diff2.length > 0 && initials1.length > 0) {
+        const matches = diff2.some(w => initials1.includes(w[0]));
+        if (!matches) return false;
+      }
+
+      return true;
     }
 
-    if (statsEl) {
-      statsEl.innerHTML = `
-        <div style="flex: 1; text-align: center; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 10px;">
-          <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">TOTAL IN</div>
-          <div style="font-size: 1.15rem; font-weight: 800; color: #38bdf8; font-family: monospace;">${formatCurrency(totalIn)}</div>
+    // Cross-initial matching without full word overlap:
+    // e.g. "NAME G" vs "GUEST N" or "N GUEST"
+    if (fullWords1.length === 1 && initials1.length === 1 && fullWords2.length === 1 && initials2.length === 1) {
+      if (initials2.includes(fullWords1[0][0]) && initials1.includes(fullWords2[0][0])) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  // Priority scoring for canonical display name:
+  // 1: GUEST NAME (2 full words)
+  // 2: GUEST N (full word + initial at end)
+  // 3: N GUEST (initial at start + full word)
+  // 4: NAME G
+  // 5: GUEST
+  function getCanonicalNamePriority(name) {
+    if (!name) return 0;
+    const s = String(name).trim().toUpperCase();
+    const words = s.split(/[\s,._-]+/).filter(Boolean);
+    if (words.length === 0) return 0;
+
+    const fullWords = words.filter(w => w.length > 1);
+    const initials = words.filter(w => w.length === 1);
+
+    // 1st: Two or more full words ("GUEST NAME") -> tier 3000
+    if (fullWords.length >= 2) {
+      return 3000 + (fullWords.length * 100) + s.length;
+    }
+    // 2nd: Full word followed by initial ("GUEST N") -> tier 2000
+    if (fullWords.length === 1 && initials.length >= 1 && words[words.length - 1].length === 1) {
+      return 2000 + s.length;
+    }
+    // 3rd: Initial followed by full word ("N GUEST") -> tier 1800
+    if (fullWords.length === 1 && initials.length >= 1 && words[0].length === 1) {
+      return 1800 + s.length;
+    }
+    // 4th: Other single full word + initial ("NAME G") -> tier 1600
+    if (fullWords.length === 1 && initials.length >= 1) {
+      return 1600 + s.length;
+    }
+    // 5th: Single full word ("GUEST" or "NAME") -> tier 1400
+    if (fullWords.length === 1) {
+      return 1400 + s.length;
+    }
+
+    return 1000 + s.length;
+  }
+
+  // Group candidate entries linked to targetName and pick canonical name
+  function getGuestCluster(targetName, candidateEntries) {
+    if (!targetName || !Array.isArray(candidateEntries)) {
+      return { canonicalName: (targetName || '').toUpperCase(), entries: [] };
+    }
+    const target = String(targetName).trim().toUpperCase();
+
+    // Find all directly matching entries
+    let clusterEntries = candidateEntries.filter(e => {
+      const gn = (e.guestname || '').trim();
+      return isNameMatch(target, gn);
+    });
+
+    if (clusterEntries.length === 0) {
+      clusterEntries = candidateEntries.filter(e => (e.guestname || '').trim().toUpperCase() === target);
+    }
+
+    // Transitive expansion (if A matches B and B matches C)
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const e of candidateEntries) {
+        if (!clusterEntries.includes(e)) {
+          const gn = (e.guestname || '').trim();
+          if (clusterEntries.some(m => isNameMatch((m.guestname || '').trim(), gn))) {
+            clusterEntries.push(e);
+            changed = true;
+          }
+        }
+      }
+    }
+
+    // Determine canonical name based on priority among names present in cluster
+    const uniqueNames = [...new Set(clusterEntries.map(e => (e.guestname || '').trim().toUpperCase()))].filter(Boolean);
+    uniqueNames.sort((a, b) => getCanonicalNamePriority(b) - getCanonicalNamePriority(a));
+
+    const canonicalName = uniqueNames.length > 0 ? uniqueNames[0] : target;
+
+    return {
+      canonicalName,
+      entries: clusterEntries
+    };
+  }
+  window.getGuestCluster = getGuestCluster;
+
+  // Open Guest Summary Popup
+  function openGuestSummaryPopup(guestName, candidateEntries, activeDateStr) {
+    const modal = document.getElementById('guest-summary-modal');
+    if (!modal) return;
+
+    // Determine target full date string
+    let resolvedDateStr = activeDateStr || currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+    if (typeof resolvedDateStr === 'number' || (typeof resolvedDateStr === 'string' && /^\d{1,2}$/.test(resolvedDateStr.trim()))) {
+      const dayNum = parseInt(resolvedDateStr, 10);
+      const base = currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+      const ym = base.slice(0, 7);
+      resolvedDateStr = `${ym}-${String(dayNum).padStart(2, '0')}`;
+    }
+
+    // Format display date: DD-MM-YYYY
+    const displayDate = formatDisplayDate(resolvedDateStr);
+    const dateEl = document.getElementById('guest-summary-modal-date');
+    if (dateEl) dateEl.textContent = displayDate;
+
+    // Full pool of candidate entries
+    const allCandidateEntries = (Array.isArray(candidateEntries) && candidateEntries.length > 0)
+      ? candidateEntries
+      : ((typeof allEntries !== 'undefined' && Array.isArray(allEntries)) ? allEntries : (window.allEntries || []));
+
+    // Cluster matching entries
+    const cluster = getGuestCluster(guestName, allCandidateEntries);
+    let canonicalName = cluster.canonicalName || (guestName || '').toUpperCase();
+    let clusterEntries = cluster.entries || [];
+
+    if (clusterEntries.length === 0) {
+      clusterEntries = allCandidateEntries.filter(e => {
+        const gn = (e.guestname || '').trim().toUpperCase();
+        return gn === canonicalName || gn.includes(canonicalName) || canonicalName.includes(gn);
+      });
+    }
+
+    // Filter to selected business date
+    let dayEntries = clusterEntries;
+    if (resolvedDateStr) {
+      const filtered = clusterEntries.filter(e => {
+        const d = getEntryDate(e) || (parseEntryDateTime(e.datetime).date);
+        return d === resolvedDateStr;
+      });
+      dayEntries = filtered;
+    }
+
+    // Calculate In / Out / Result for selected date
+    let totalIn = 0;
+    let totalOut = 0;
+    dayEntries.forEach(e => {
+      const amt = Number(e.amount) || 0;
+      const t = e.type || '';
+      if (isTotalInType(t)) {
+        totalIn += amt;
+      } else if (isTotalOutType(t)) {
+        totalOut += amt;
+      }
+    });
+
+    const netResult = totalOut - totalIn;
+    const isNegative = netResult < 0;
+    const totalInStr = formatIndianNumber(totalIn);
+    const totalOutStr = formatIndianNumber(totalOut);
+    const resFormatted = formatIndianNumber(Math.abs(netResult));
+    // USER RULE: IF NEGATIVE THAN RED, NO COLOUR FOR OTHER (#000000 on green card)
+    const resColor = isNegative ? '#FF0000' : '#000000';
+
+    // Render Excel Style Guest Summary Card (Normal text + Bold, ZERO blur or text-shadow)
+    const cardContainer = document.getElementById('guest-summary-card-container') || document.querySelector('.guest-summary-card-box');
+    if (cardContainer) {
+      cardContainer.innerHTML = `
+        <div class="guest-summary-header-cyan" style="display: block !important; visibility: visible !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">
+          GUEST SUMMARY
         </div>
-        <div style="flex: 1; text-align: center; background: rgba(251, 146, 60, 0.08); border: 1px solid rgba(251, 146, 60, 0.2); border-radius: 8px; padding: 10px;">
-          <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">TOTAL OUT</div>
-          <div style="font-size: 1.15rem; font-weight: 800; color: #fb923c; font-family: monospace;">${formatCurrency(totalOut)}</div>
+        <div class="guest-summary-body-green" style="display: flex !important; visibility: visible !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important; filter: none !important;">
+          <div class="summary-row" style="display: flex !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+            <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 700 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">NAME :-</span>
+            <span id="guest-summary-modal-name" class="summary-val" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">${escapeHTML(canonicalName || guestName || '—')}</span>
+          </div>
+          <div class="summary-row" style="display: flex !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+            <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 700 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">TOTAL IN :-</span>
+            <span id="guest-summary-modal-in" class="summary-val" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">${totalInStr}</span>
+          </div>
+          <div class="summary-row" style="display: flex !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+            <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 700 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">TOTAL OUT :-</span>
+            <span id="guest-summary-modal-out" class="summary-val" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">${totalOutStr}</span>
+          </div>
+          <div class="summary-row summary-row-result" style="display: flex !important; visibility: visible !important; min-height: 32px !important; border-bottom: 1.5px solid #000000 !important; font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; text-shadow: none !important;">
+            <span class="summary-lbl" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; font-weight: 800 !important; color: #000000 !important; text-shadow: none !important; filter: none !important;">RESULT :-</span>
+            <span id="guest-summary-modal-result" class="summary-val summary-val-result" style="font-family: Arial, 'Segoe UI', Calibri, sans-serif !important; color: ${resColor} !important; font-weight: 800 !important; font-size: 1.05rem !important; text-shadow: none !important; filter: none !important;">${escapeHTML(resFormatted)}</span>
+          </div>
         </div>
-        <div style="flex: 1; text-align: center; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 10px;">
-          <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">RESULT</div>
-          <div class="${resClass}" style="font-size: 1.15rem; font-weight: 800; font-family: monospace;">${resStr}</div>
-        </div>
+        <div class="guest-summary-footer-yellow" style="display: block !important; visibility: visible !important; height: 20px !important; min-height: 20px !important; background: #FFFF00 !important; border-top: 1.5px solid #000000 !important;"></div>
       `;
     }
 
+    // Also directly set text and color on element references if present
+    const nameEl = document.getElementById('guest-summary-modal-name');
+    const inEl = document.getElementById('guest-summary-modal-in');
+    const outEl = document.getElementById('guest-summary-modal-out');
+    const resultEl = document.getElementById('guest-summary-modal-result');
+    if (nameEl) nameEl.textContent = canonicalName || guestName || '—';
+    if (inEl) inEl.textContent = totalInStr;
+    if (outEl) outEl.textContent = totalOutStr;
+    if (resultEl) {
+      resultEl.textContent = resFormatted;
+      resultEl.style.color = resColor;
+      resultEl.style.setProperty('color', resColor, 'important');
+    }
+
+    const countEl = document.getElementById('guest-summary-modal-count');
+    if (countEl) {
+      countEl.textContent = `${dayEntries.length} ${dayEntries.length === 1 ? 'ENTRY' : 'ENTRIES'}`;
+    }
+
+    // Sort entries chronologically
+    const sortedEntries = [...dayEntries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+
+    // Populate Entries List below
+    const listEl = document.getElementById('guest-summary-modal-entries');
     if (listEl) {
-      if (!entries || entries.length === 0) {
-        listEl.innerHTML = '<div style="color: #94a3b8; text-align: center; padding: 20px;">No entries today</div>';
+      if (sortedEntries.length === 0) {
+        listEl.innerHTML = `<div style="text-align:center; padding: 20px; color: #94a3b8; font-size: 0.9rem; font-weight: 700;">No entries found for ${escapeHTML(canonicalName)} on ${displayDate}</div>`;
       } else {
-        listEl.innerHTML = entries.map(e => {
+        listEl.innerHTML = sortedEntries.map(e => {
           const t = (e.type || '').toUpperCase();
-          const isCredit = ['CASHIN', 'C/IN', 'ISSUE', 'KEYIN'].includes(t);
-          const colorClass = isCredit ? 'text-green' : 'text-red';
+          const isCredit = isTotalInType(t);
           const typeBorder = isCredit ? '#10b981' : '#ef4444';
-          const time = e.datetime ? e.datetime.replace('T', ' ').slice(11, 16) : '';
+          const dtObj = parseEntryDateTime(e.datetime);
+          const time = dtObj.time || '—';
+          const sentence = getEntrySentence(e, false);
+
           return `
-            <div style="background: rgba(255, 255, 255, 0.03); border-left: 3px solid ${typeBorder}; border-radius: 6px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 0.95rem;">
-              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <span style="font-size: 0.8rem; color: #94a3b8; font-family: monospace;">${time}</span>
-                <span style="font-weight: 700; color: #fff;">${escapeHTML(t)}</span>
-                ${e.card ? `<span style="font-size: 0.8rem; background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; color: #cbd5e1;">${escapeHTML(e.card)}</span>` : ''}
-                ${e.otherinfo ? `<span style="font-size: 0.8rem; color: #94a3b8;">(${escapeHTML(e.otherinfo)})</span>` : ''}
-              </div>
-              <div class="${colorClass}" style="font-weight: 800; font-family: monospace; font-size: 1.05rem; white-space: nowrap; margin-left: 10px;">
-                ${formatCurrency(e.amount)}
-              </div>
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 3.5px solid ${typeBorder}; border-radius: 6px; padding: 7px 12px; display: flex; align-items: center; gap: 14px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.84rem;">
+              <span style="color: #38bdf8; font-weight: 700; min-width: 48px; flex-shrink: 0; letter-spacing: 0.5px;">${time}</span>
+              <span style="color: #f1f5f9; font-weight: 600; flex: 1; word-break: break-word;">${escapeHTML(sentence)}</span>
             </div>
           `;
         }).join('');
@@ -2603,6 +3082,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     modal.style.display = 'flex';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+  window.openGuestSummaryPopup = openGuestSummaryPopup;
+
+  function closeGuestSummaryPopup() {
+    const modal = document.getElementById('guest-summary-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  const btnCloseGuestSummary = document.getElementById('btn-close-guest-summary-modal');
+  if (btnCloseGuestSummary) {
+    btnCloseGuestSummary.addEventListener('click', closeGuestSummaryPopup);
+  }
+  const guestSummaryModalEl = document.getElementById('guest-summary-modal');
+  if (guestSummaryModalEl) {
+    guestSummaryModalEl.addEventListener('click', (e) => {
+      if (e.target === guestSummaryModalEl) closeGuestSummaryPopup();
+    });
+  }
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeGuestSummaryPopup();
+    }
+  });
+
+  // Open Major Guest Details Modal (forward to unified Guest Summary Popup)
+  function openMajorGuestModal(guest, netScore, inOut, entries) {
+    const candidateEntries = Array.isArray(entries) && entries.length > 0 ? entries : allEntries.filter(isEntryForToday);
+    openGuestSummaryPopup(guest, candidateEntries, currentBusinessDateStr || currentBusinessDate || getBusinessDate());
   }
 
   function closeMajorGuestModal() {
@@ -2657,136 +3165,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     );
   }
 
-  // =========================================================================
-  // SMART GUEST NAME NORMALIZATION & SIMILARITY MATCHER
-  // Automatically groups name variations of the same patron:
-  // e.g. MANTHAN GOSAVI <-> GOSAVI MANTHAN <-> MANTHAN G <-> G MANTHAN <-> M GOSAVI
-  // =========================================================================
-  function cleanGuestTokens(str) {
-    if (!str) return [];
-    return String(str).toUpperCase()
-      .replace(/[^A-Z0-9\s]/g, ' ')
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-  }
-
-  function matchGuestTokenPair(t1, t2) {
-    if (t1 === t2) return true;
-    if (t1.length === 1 || t2.length === 1) {
-      return t1[0] === t2[0];
-    }
-    return false;
-  }
-
-  function areGuestNamesSimilar(nameA, nameB) {
-    const tokA = cleanGuestTokens(nameA);
-    const tokB = cleanGuestTokens(nameB);
-    if (!tokA.length || !tokB.length) return false;
-
-    // Exact string match after token cleaning
-    if (tokA.join(' ') === tokB.join(' ')) return true;
-
-    // Same words in any order (e.g. MANTHAN GOSAVI vs GOSAVI MANTHAN)
-    const sortedA = [...tokA].sort().join(' ');
-    const sortedB = [...tokB].sort().join(' ');
-    if (sortedA === sortedB) return true;
-
-    // 2 tokens vs 2 tokens:
-    // e.g. MANTHAN GOSAVI vs MANTHAN G, G MANTHAN, M GOSAVI, GOSAVI M
-    if (tokA.length === 2 && tokB.length === 2) {
-      const matchDirect = matchGuestTokenPair(tokA[0], tokB[0]) && matchGuestTokenPair(tokA[1], tokB[1]);
-      const matchSwapped = matchGuestTokenPair(tokA[0], tokB[1]) && matchGuestTokenPair(tokA[1], tokB[0]);
-      if (matchDirect || matchSwapped) return true;
-    }
-
-    // 1 token vs 2 tokens: e.g. MANTHAN vs MANTHAN GOSAVI or GOSAVI vs MANTHAN GOSAVI
-    if ((tokA.length === 1 && tokB.length === 2) || (tokA.length === 2 && tokB.length === 1)) {
-      const single = tokA.length === 1 ? tokA[0] : tokB[0];
-      const double = tokA.length === 1 ? tokB : tokA;
-      if (single.length >= 3) {
-        if ((double[0].length >= 3 && single === double[0]) || (double[1].length >= 3 && single === double[1])) {
-          return true;
-        }
-      }
-    }
-
-    // 3 tokens vs 2 tokens: e.g. MANTHAN R GOSAVI vs MANTHAN GOSAVI
-    if ((tokA.length === 3 && tokB.length === 2) || (tokA.length === 2 && tokB.length === 3)) {
-      const three = tokA.length === 3 ? tokA : tokB;
-      const two = tokA.length === 3 ? tokB : tokA;
-      const matchFirstLast = (matchGuestTokenPair(three[0], two[0]) && matchGuestTokenPair(three[2], two[1])) ||
-                             (matchGuestTokenPair(three[0], two[1]) && matchGuestTokenPair(three[2], two[0]));
-      if (matchFirstLast) return true;
-    }
-
-    return false;
-  }
-
-  function getGuestNameScore(name) {
-    const tokens = cleanGuestTokens(name);
-    let score = 0;
-    tokens.forEach(t => {
-      if (t.length > 1) score += t.length * 10;
-      else score += 1;
-    });
-    return score;
-  }
-
-  // Consolidates entries into unique guest clusters (same patron under one box)
-  function clusterGuestEntries(entries) {
-    const clusters = [];
-
-    entries.forEach(e => {
-      const raw = (e.guestname || 'UNKNOWN').trim();
-      if (!raw) return;
-
-      let targetCluster = null;
-      for (const cluster of clusters) {
-        for (const existingName of cluster.names) {
-          if (areGuestNamesSimilar(raw, existingName)) {
-            targetCluster = cluster;
-            break;
-          }
-        }
-        if (targetCluster) break;
-      }
-
-      if (!targetCluster) {
-        targetCluster = {
-          name: raw.toUpperCase(),
-          names: new Set([raw.toUpperCase()]),
-          totalIn: 0,
-          totalOut: 0,
-          result: 0,
-          entries: []
-        };
-        clusters.push(targetCluster);
-      } else {
-        targetCluster.names.add(raw.toUpperCase());
-        // Pick the most complete name as the canonical display name
-        if (getGuestNameScore(raw) > getGuestNameScore(targetCluster.name)) {
-          targetCluster.name = raw.toUpperCase();
-        }
-      }
-
-      targetCluster.entries.push(e);
-      const t = (e.type || '').toUpperCase().trim();
-      const amt = Number(e.amount) || 0;
-      if (isTotalInType(t)) {
-        targetCluster.totalIn += amt;
-      } else if (isTotalOutType(t)) {
-        targetCluster.totalOut += amt;
-      }
-    });
-
-    clusters.forEach(c => {
-      c.result = c.totalOut - c.totalIn;
-    });
-
-    return clusters;
-  }
-
   // Render Major
   function renderMajor() {
     if(!majorListContainer) return;
@@ -2796,36 +3174,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Update toggle button text & icon according to active view mode
     const btnToggleMajor = document.getElementById('btn-toggle-major-view');
     if (btnToggleMajor) {
-      if (majorViewMode === 'entries_by_guest') {
-        btnToggleMajor.className = 'btn btn-primary';
-        btnToggleMajor.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
-        btnToggleMajor.style.color = '#fff';
-        btnToggleMajor.innerHTML = '<i data-lucide="layout-grid" style="width: 16px; height: 16px; color: #fff;"></i> <span id="btn-toggle-major-view-text">VIEW PATRON CARDS</span>';
-      } else {
-        btnToggleMajor.className = 'btn btn-secondary';
-        btnToggleMajor.style.background = 'rgba(167, 139, 250, 0.12)';
-        btnToggleMajor.style.color = '#c4b5fd';
-        btnToggleMajor.innerHTML = '<i data-lucide="list" style="width: 16px; height: 16px; color: #a78bfa;"></i> <span id="btn-toggle-major-view-text">VIEW EACH ENTRIES BY GUEST NAME</span>';
-      }
+      btnToggleMajor.className = 'unified-tool-btn' + (majorViewMode === 'entries_by_guest' ? ' active' : '');
+      btnToggleMajor.style.background = '';
+      btnToggleMajor.style.color = '';
+      btnToggleMajor.innerHTML = majorViewMode === 'entries_by_guest'
+        ? '<i data-lucide="layout-grid"></i>'
+        : '<i data-lucide="list"></i>';
     }
 
-    // Group strictly by Guest Name with Smart Clustering (combines MANTHAN GOSAVI, GOSAVI MANTHAN, MANTHAN G, G MANTHAN, M GOSAVI)
-    const currentEntries = allEntries.filter(isEntryForToday);
-    const guestClusters = clusterGuestEntries(currentEntries);
-    const guestMap = {};
-    guestClusters.forEach(g => {
-      guestMap[g.name] = g;
-      g.names.forEach(alias => {
-        guestMap[alias] = g;
+    // CURRENT GAMING DAY ENTRIES: SHOW ALL GUESTS (NO REPEATED GUEST)
+    const todayEntries = allEntries.filter(isEntryForToday);
+    const currentEntries = todayEntries;
+    const guestGroups = [];
+    const assignedEntryIds = new Set();
+
+    currentEntries.forEach(e => {
+      if (assignedEntryIds.has(e.id)) return;
+      const rawGuest = (e.guestname || '').trim();
+      if (!rawGuest) return;
+
+      const cluster = getGuestCluster(rawGuest, currentEntries);
+      cluster.entries.forEach(ce => assignedEntryIds.add(ce.id));
+
+      let totalIn = 0;
+      let totalOut = 0;
+      cluster.entries.forEach(ce => {
+        const amt = Number(ce.amount) || 0;
+        const t = ce.type || '';
+        if (isTotalInType(t)) totalIn += amt;
+        else if (isTotalOutType(t)) totalOut += amt;
+      });
+
+      guestGroups.push({
+        name: cluster.canonicalName,
+        entries: cluster.entries,
+        totalIn,
+        totalOut
       });
     });
 
-    // Filter guests matching search query
-    let guestList = guestClusters;
+    let guestList = guestGroups;
     if (query) {
-      guestList = guestList.filter(g => {
-        return g.name.toLowerCase().includes(query) || Array.from(g.names).some(n => n.toLowerCase().includes(query));
-      });
+      guestList = guestList.filter(g => g.name.toLowerCase().includes(query));
     }
 
     // -------------------------------------------------------------
@@ -2848,18 +3238,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       let groupsHtml = '';
       guestList.forEach(g => {
-        // Result = Total Out minus Total In
+        // Result = Total Out minus Total In (NO +/- sign: Red if minus, Fluorescent Green if positive/0)
         const netResult = g.totalOut - g.totalIn;
         const isNegative = netResult < 0;
-        const resultColorClass = isNegative ? 'text-red' : (netResult > 0 ? 'text-green' : 'text-neutral');
-        let formattedResult = formatCurrency(Math.abs(netResult));
-        if (isNegative) {
-          formattedResult = '-' + formattedResult;
-        } else if (netResult > 0) {
-          formattedResult = '+' + formattedResult;
-        } else {
-          formattedResult = '₹0';
-        }
+        const resultColorClass = isNegative ? 'text-red' : 'text-green';
+        const formattedResult = formatCurrency(Math.abs(netResult));
 
         // Sort guest entries chronologically
         const sortedEntries = [...g.entries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
@@ -2948,17 +3331,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       const netResult = totalOut - totalIn;
       const totalVolume = totalIn + totalOut;
 
-      // If result is minus, make it RED, otherwise GREEN
+      // If result is minus, make it RED, otherwise GREEN (NO +/- sign)
       const isNegative = netResult < 0;
-      const resultColorClass = isNegative ? 'text-red' : (netResult > 0 ? 'text-green' : 'text-neutral');
-      let formattedResult = formatCurrency(Math.abs(netResult));
-      if (isNegative) {
-        formattedResult = '-' + formattedResult;
-      } else if (netResult > 0) {
-        formattedResult = '+' + formattedResult;
-      } else {
-        formattedResult = '₹0';
-      }
+      const resultColorClass = isNegative ? 'text-red' : 'text-green';
+      const formattedResult = formatCurrency(Math.abs(netResult));
 
       // 4-Column Grid Card on Left (Exactly 1 box per guest name)
       leftCardsHtml += `
@@ -2979,9 +3355,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
       `;
 
-      // Check if qualifies for ABOVE TOTAL 500000
-      const isAbove500k = totalVolume >= 500000 || totalIn >= 500000 || totalOut >= 500000 || Math.abs(netResult) >= 500000;
-      if (isAbove500k) {
+      // Check if qualifies for ABOVE TOTAL 490K
+      const isAbove490k = totalVolume >= 490000 || totalIn >= 490000 || totalOut >= 490000 || Math.abs(netResult) >= 490000;
+      if (isAbove490k) {
         aboveCardsHtml += `
           <div class="mp-above-card" data-guest="${escapeHTML(g.name)}" title="Click to view details for ${escapeHTML(g.name)}">
             <div class="mp-above-name">${escapeHTML(g.name)}</div>
@@ -2998,7 +3374,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       leftCardsHtml = `
         <div class="mp-empty-state">
           <i data-lucide="user-x" style="width:36px;height:36px;opacity:0.4;margin-bottom:8px;"></i>
-          <p style="margin: 0;">${query ? 'No matching patrons found.' : 'No transactions recorded today.'}</p>
+          <p style="margin: 0;">${query ? 'No matching patrons found.' : 'No patron transactions recorded today.'}</p>
         </div>
       `;
     }
@@ -3007,7 +3383,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       aboveCardsHtml = `
         <div class="mp-above-empty">
           <i data-lucide="shield-check" style="width:32px;height:32px;opacity:0.4;margin-bottom:6px;"></i>
-          <p style="margin: 0; font-size: 0.85rem;">No patrons above 500,000</p>
+          <p style="margin: 0; font-size: 0.85rem;">No patrons above 490,000</p>
         </div>
       `;
     }
@@ -3024,11 +3400,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         <!-- Center Divider -->
         <div class="major-divider"></div>
 
-        <!-- Right: ABOVE TOTAL 500000 (with independent scrollbar if many guests) -->
+        <!-- Right: ABOVE TOTAL 490K (with independent scrollbar if many guests) -->
         <div class="major-right-section">
           <div class="major-sidebar-header">
             <i data-lucide="trending-up" style="width: 18px; height: 18px; color: #fbbf24;"></i>
-            <span>ABOVE TOTAL 500000</span>
+            <span>ABOVE TOTAL 490K</span>
           </div>
           <div class="major-sidebar-list">
             ${aboveCardsHtml}
@@ -3041,10 +3417,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     majorListContainer.querySelectorAll('.mp-grid-card, .mp-above-card').forEach(card => {
       card.addEventListener('click', () => {
         const guestName = card.getAttribute('data-guest');
-        if (guestName && guestMap[guestName]) {
-          const g = guestMap[guestName];
-          const net = g.totalOut - g.totalIn;
-          openMajorGuestModal(g.name, net, { in: g.totalIn, out: g.totalOut }, g.entries);
+        if (guestName) {
+          openGuestSummaryPopup(guestName, todayEntries, currentBusinessDateStr || currentBusinessDate || getBusinessDate());
         }
       });
     });
@@ -3061,25 +3435,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  if(majorSearch) {
-    majorSearch.addEventListener('input', renderMajor);
+  const btnMajorSearchAction = document.getElementById('btn-major-search-action');
+  if (btnMajorSearchAction && majorSearch) {
+    btnMajorSearchAction.addEventListener('click', () => {
+      if (majorSearch.style.display === 'none' || !majorSearch.style.display) {
+        majorSearch.style.display = 'inline-block';
+        btnMajorSearchAction.classList.add('active');
+        majorSearch.focus();
+      } else {
+        if (!majorSearch.value) {
+          majorSearch.style.display = 'none';
+          btnMajorSearchAction.classList.remove('active');
+        } else {
+          majorSearch.value = '';
+          majorSearch.style.display = 'none';
+          btnMajorSearchAction.classList.remove('active');
+          renderMajor();
+        }
+      }
+    });
+
     majorSearch.addEventListener('keydown', (e) => {
-      if(e.key === 'Enter') {
+      if (e.key === 'Escape') {
+        majorSearch.value = '';
+        majorSearch.style.display = 'none';
+        btnMajorSearchAction.classList.remove('active');
+        renderMajor();
+      } else if (e.key === 'Enter') {
         e.preventDefault();
         renderMajor();
       }
     });
-  }
-
-  const btnMajorSearchAction = document.getElementById('btn-major-search-action');
-  if(btnMajorSearchAction) {
-    btnMajorSearchAction.addEventListener('click', renderMajor);
+    majorSearch.addEventListener('input', renderMajor);
   }
 
   const refreshMajorBtn = document.getElementById('refreshMajor');
-  if(refreshMajorBtn) {
+  if (refreshMajorBtn) {
     refreshMajorBtn.addEventListener('click', () => {
-      if(majorSearch) majorSearch.value = '';
+      if (majorSearch) {
+        majorSearch.value = '';
+        majorSearch.style.display = 'none';
+      }
+      if (btnMajorSearchAction) btnMajorSearchAction.classList.remove('active');
       renderMajor();
     });
   }
@@ -3089,672 +3486,764 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateAllEntriesView();
   }
 
-  // Excel Export Helper using SheetJS with Smart Clustering
-  function computeGuestSummariesForExcel(entries) {
-    const guestList = clusterGuestEntries(entries);
-    guestList.sort((a, b) => b.totalIn - a.totalIn);
-    return guestList;
+  // Excel Export Helper using SheetJS / xlsx-js-style - DATE WISE 1..31 SHEETS
+  // Matching required format: Cyan headers, Ice-blue rows, Guest Summary in Col J, Auto-fit widths
+  function formatExcelSentence(entry) {
+    const t = (entry.type || '').toUpperCase();
+    const amt = formatKCurrency(Number(entry.amount) || 0).toUpperCase();
+    const guest = (entry.guestname || 'UNKNOWN').toUpperCase();
+    const card = entry.card ? String(entry.card).toUpperCase() : '';
+    const info = entry.otherinfo ? ` (${String(entry.otherinfo).toUpperCase()})` : '';
+
+    if (t === 'CASHIN' || t === 'C/IN') return `${amt} CASHIN BY ${guest}${info}`;
+    if (t === 'CASHOUT' || t === 'C/OUT') return `${amt} CASHOUT BY ${guest}${info}`;
+    if (t === 'ISSUE') return `${amt} ISSUE TO ${guest} FROM ${card} CARD${info}`;
+    if (t === 'DEPOSIT') return `${amt} DEPOSIT BY ${guest} ON ${card} CARD${info}`;
+    if (t === 'KEYIN') return `${amt} KEYIN BY ${guest}${info}`;
+    if (t === 'KEYOUT') return `${amt} KEYOUT BY ${guest}${info}`;
+    return `${amt} ${t} BY ${guest}${info}`;
   }
 
-  function buildWorksheetForExcel(entries) {
-    const aoa = [];
-    const header = [
-      'DATE & TIME',
-      'SURV ID',
-      'TYPE',
-      'AMOUNT',
-      'GUEST NAME',
-      'CARD',
-      'OTHER INFO',
-      'SENTENCE FORMAT',
-      '' // Column I holds the first summary card line at I1
+  function buildClientStyledSheet(dayEntries, sheetName = '') {
+    dayEntries = Array.isArray(dayEntries) ? dayEntries : [];
+    const headers = [
+      'DATE', 'TIME', 'TYPE', 'AMOUNT', 'GUEST NAME', 'CARD', 'OTHER INFO', 'SURV ID', 'SENTENCE ENTRIES', 'GUEST SUMMARY'
     ];
-    aoa.push(header);
 
-    const guestSummaries = computeGuestSummariesForExcel(entries);
-    const maxRows = Math.max(entries.length, guestSummaries.length * 5);
-    for (let i = 0; i < maxRows; i++) {
-      const row = new Array(9).fill('');
-      if (i < entries.length) {
-        const e = entries[i];
-        row[0] = String((e.datetime || '').replace('T', ' ')).toUpperCase();
-        row[1] = String(e.surv || '').toUpperCase();
-        row[2] = String(e.type || '').toUpperCase();
-        row[3] = Number(e.amount) || 0;
-        row[4] = String(e.guestname || '').toUpperCase();
-        row[5] = String(e.card || '').toUpperCase();
-        row[6] = String(e.otherinfo || '').toUpperCase();
-        row[7] = String(getEntrySentence(e) || '').toUpperCase();
+    const guestGroups = [];
+    const assignedEntryIds = new Set();
+    const guestFirstEntryRow = {}; // Map guest uppercase name -> first entry row in column E
+
+    dayEntries.forEach((e, idx) => {
+      const rawGuest = (e.guestname || '').trim().toUpperCase();
+      if (!rawGuest) return;
+
+      const rowNum = idx + 2; // Row 1 is header
+      if (!guestFirstEntryRow[rawGuest]) {
+        guestFirstEntryRow[rawGuest] = rowNum;
       }
-      aoa.push(row);
-    }
 
-    // Populate Guest Summary Cards starting directly at COLUMN I (cell I1) - ALL CAPITAL LETTERS
-    let cardRow = 0;
-    guestSummaries.forEach(g => {
-      const upperName = String(g.name || '').toUpperCase();
-      const inStr = Number(g.totalIn || 0).toLocaleString('en-IN');
-      const outStr = Number(g.totalOut || 0).toLocaleString('en-IN');
-      const resVal = Number(g.result || 0);
-      const resPrefix = resVal < 0 ? '-' : (resVal > 0 ? '+' : '');
-      const resStr = `${resPrefix}${Math.abs(resVal).toLocaleString('en-IN')}`;
+      if (!assignedEntryIds.has(e.id)) {
+        const cluster = getGuestCluster(rawGuest, dayEntries);
+        cluster.entries.forEach(ce => assignedEntryIds.add(ce.id));
 
-      // Row 1 of card (Cell I1, I6, I11...)
-      aoa[cardRow][8] = `GUEST NAME: ${upperName}`;
+        let totalIn = 0;
+        let totalOut = 0;
+        cluster.entries.forEach(ce => {
+          const amt = Number(ce.amount) || 0;
+          const t = ce.type || '';
+          if (isTotalInType(t)) totalIn += amt;
+          else if (isTotalOutType(t)) totalOut += amt;
+        });
 
-      // Row 2 of card (Cell I2, I7, I12...)
-      if (!aoa[cardRow + 1]) aoa[cardRow + 1] = new Array(9).fill('');
-      aoa[cardRow + 1][8] = `TOTAL IN: ${inStr}`;
+        const memberNames = [...new Set(cluster.entries.map(ce => (ce.guestname || '').trim().toUpperCase()))].filter(Boolean);
 
-      // Row 3 of card (Cell I3, I8, I13...)
-      if (!aoa[cardRow + 2]) aoa[cardRow + 2] = new Array(9).fill('');
-      aoa[cardRow + 2][8] = `TOTAL OUT: ${outStr}`;
-
-      // Row 4 of card (Cell I4, I9, I14...)
-      if (!aoa[cardRow + 3]) aoa[cardRow + 3] = new Array(9).fill('');
-      aoa[cardRow + 3][8] = `RESULT: ${resStr}`;
-
-      // Row 5 is blank separator (Cell I5, I10, I15...)
-      if (!aoa[cardRow + 4]) aoa[cardRow + 4] = new Array(9).fill('');
-
-      cardRow += 5;
+        guestGroups.push({
+          name: cluster.canonicalName,
+          totalIn,
+          totalOut,
+          memberNames
+        });
+      }
     });
 
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [
-      { wch: 18 }, // A: DATE & TIME
-      { wch: 10 }, // B: SURV ID
-      { wch: 10 }, // C: TYPE
-      { wch: 12 }, // D: AMOUNT
-      { wch: 16 }, // E: GUEST NAME
-      { wch: 12 }, // F: CARD
-      { wch: 14 }, // G: OTHER INFO
-      { wch: 28 }, // H: SENTENCE FORMAT
-      { wch: 26 }  // I: GUEST SUMMARY CARDS (starting directly at cell I1)
-    ];
+    guestGroups.sort((a, b) => a.name.localeCompare(b.name));
+
+    const summaryRows = [];
+    const guestCardRowMap = {}; // Maps guest name (canonical and aliases) to J row number in current sheet
+
+    guestGroups.forEach(g => {
+      const cardStartRow = 2 + summaryRows.length; // Row where "NAME :- <g.name>" is located in Column J
+      guestCardRowMap[g.name] = cardStartRow;
+      if (Array.isArray(g.memberNames)) {
+        g.memberNames.forEach(m => {
+          guestCardRowMap[m] = cardStartRow;
+        });
+      }
+
+      const netResult = g.totalOut - g.totalIn;
+      const isMinus = netResult < 0;
+      // NO +/- SIGN: Directly show formatted number, color-coded red for minus, fluorescent green for plus/0
+      const resFormatted = Math.abs(netResult).toLocaleString('en-IN');
+
+      summaryRows.push({
+        text: `NAME :- ${g.name}`,
+        type: 'guest_name',
+        guestName: g.name,
+        cardRow: cardStartRow,
+        returnRow: guestFirstEntryRow[g.name] || (g.memberNames && g.memberNames.map(m => guestFirstEntryRow[m]).find(Boolean))
+      });
+      summaryRows.push({
+        text: `TOTAL IN :- ${g.totalIn.toLocaleString('en-IN')}`,
+        type: 'guest_in'
+      });
+      summaryRows.push({
+        text: `TOTAL OUT :- ${g.totalOut.toLocaleString('en-IN')}`,
+        type: 'guest_out'
+      });
+      summaryRows.push({
+        text: `RESULT :- ${resFormatted}`,
+        type: 'guest_result',
+        isMinus: isMinus
+      });
+      summaryRows.push({
+        text: '',
+        type: 'separator_yellow'
+      });
+    });
+
+    const numDataRows = Math.max(dayEntries.length, summaryRows.length);
+    const totalRows = numDataRows + 1;
+
+    // Styles definition - ALL CELLS MIDDLE ALIGNED IN CENTRAL BOX
+    const headerStyle = {
+      fill: { fgColor: { rgb: '00A2E8' } },
+      font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: '000000' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: {
+        top: { style: 'thin', color: { rgb: '000000' } },
+        bottom: { style: 'thin', color: { rgb: '000000' } },
+        left: { style: 'thin', color: { rgb: '000000' } },
+        right: { style: 'thin', color: { rgb: '000000' } }
+      }
+    };
+
+    const blueDataStyle = {
+      fill: { fgColor: { rgb: 'D9E1F2' } },
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '000000' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: {
+        top: { style: 'thin', color: { rgb: '000000' } },
+        bottom: { style: 'thin', color: { rgb: '000000' } },
+        left: { style: 'thin', color: { rgb: '000000' } },
+        right: { style: 'thin', color: { rgb: '000000' } }
+      }
+    };
+
+    const summaryNameHeaderStyle = {
+      fill: { fgColor: { rgb: 'A7F3D0' } }, // Luminous Emerald Glow for Destination
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '0000FF' }, underline: true },
+      alignment: { vertical: 'center', horizontal: 'center' },
+      border: {
+        top: { style: 'medium', color: { rgb: '059669' } },
+        bottom: { style: 'thin', color: { rgb: '059669' } },
+        left: { style: 'medium', color: { rgb: '059669' } },
+        right: { style: 'medium', color: { rgb: '059669' } }
+      }
+    };
+
+    const summaryGreenStyle = {
+      fill: { fgColor: { rgb: 'D9EAD3' } },
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '000000' } },
+      alignment: { vertical: 'center', horizontal: 'center' },
+      border: {
+        top: { style: 'thin', color: { rgb: '000000' } },
+        bottom: { style: 'thin', color: { rgb: '000000' } },
+        left: { style: 'thin', color: { rgb: '000000' } },
+        right: { style: 'thin', color: { rgb: '000000' } }
+      }
+    };
+
+    const summaryRedResultStyle = {
+      fill: { fgColor: { rgb: 'D9EAD3' } },
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: 'FF0000' } },
+      alignment: { vertical: 'center', horizontal: 'center' },
+      border: {
+        top: { style: 'thin', color: { rgb: '000000' } },
+        bottom: { style: 'thin', color: { rgb: '000000' } },
+        left: { style: 'thin', color: { rgb: '000000' } },
+        right: { style: 'thin', color: { rgb: '000000' } }
+      }
+    };
+
+    const summaryGreenResultStyle = {
+      fill: { fgColor: { rgb: 'D9EAD3' } },
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '00B050' } },
+      alignment: { vertical: 'center', horizontal: 'center' },
+      border: {
+        top: { style: 'thin', color: { rgb: '000000' } },
+        bottom: { style: 'thin', color: { rgb: '000000' } },
+        left: { style: 'thin', color: { rgb: '000000' } },
+        right: { style: 'thin', color: { rgb: '000000' } }
+      }
+    };
+
+    const yellowSeparatorStyle = {
+      fill: { fgColor: { rgb: 'FFFF00' } },
+      alignment: { vertical: 'center', horizontal: 'center' },
+      border: {
+        top: { style: 'thin', color: { rgb: '000000' } },
+        bottom: { style: 'thin', color: { rgb: '000000' } },
+        left: { style: 'thin', color: { rgb: '000000' } },
+        right: { style: 'thin', color: { rgb: '000000' } }
+      }
+    };
+
+    const ws = {};
+    const colLetter = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    const colWidths = headers.map(h => h.length);
+
+    headers.forEach((h, cIdx) => {
+      ws[`${colLetter[cIdx]}1`] = {
+        t: 's',
+        v: h,
+        s: headerStyle
+      };
+    });
+
+    for (let r = 0; r < numDataRows; r++) {
+      const rowNum = r + 2;
+      const entry = dayEntries[r];
+      const summary = summaryRows[r];
+
+      let dt = '', tm = '';
+      if (entry && entry.datetime) {
+        const dtObj = parseEntryDateTime(entry.datetime);
+        dt = dtObj.dmy || '';
+        tm = dtObj.time || '';
+      }
+
+      const rowValues = [
+        entry ? dt : '',
+        entry ? tm : '',
+        entry ? (entry.type || '').toUpperCase() : '',
+        entry ? (Number(entry.amount) || 0) : '',
+        entry ? (entry.guestname || '').toUpperCase() : '',
+        entry ? (entry.card ? String(entry.card) : '') : '',
+        entry ? (entry.otherinfo || '') : '',
+        entry ? (entry.surv || '') : '',
+        entry ? formatExcelSentence(entry) : ''
+      ];
+
+      // Columns A through I - ALL MIDDLE ALIGNED IN CENTRAL BOX
+      rowValues.forEach((val, cIdx) => {
+        const cellRef = `${colLetter[cIdx]}${rowNum}`;
+        const isNum = typeof val === 'number';
+
+        // Hyperlink styling for Guest Name in Excel (Column E, cIdx === 4)
+        let cellFont = blueDataStyle.font;
+        let cellLink = null;
+        if (cIdx === 4 && val) {
+          cellFont = { name: 'Calibri', sz: 10, bold: true, color: { rgb: '0000FF' }, underline: true };
+          const rawName = String(val).trim().toUpperCase();
+          let targetCardRow = guestCardRowMap[rawName];
+          if (!targetCardRow) {
+            const matchedGroup = guestGroups.find(g => isNameMatch(g.name, rawName) || (g.memberNames && g.memberNames.some(m => isNameMatch(m, rawName))));
+            if (matchedGroup) {
+              targetCardRow = guestCardRowMap[matchedGroup.name];
+            }
+          }
+          if (targetCardRow) {
+            const linkTarget = sheetName ? `#'${sheetName}'!J${targetCardRow}` : `#J${targetCardRow}`;
+            cellLink = {
+              Target: linkTarget,
+              Tooltip: `View ${val} in Guest Summary (J${targetCardRow})`
+            };
+          }
+        }
+
+        ws[cellRef] = {
+          t: isNum ? 'n' : 's',
+          v: val,
+          s: {
+            ...blueDataStyle,
+            font: cellFont,
+            alignment: { horizontal: 'center', vertical: 'center' }
+          }
+        };
+
+        if (cellLink) {
+          ws[cellRef].l = cellLink;
+        }
+
+        const valLen = String(val).length;
+        if (valLen > colWidths[cIdx]) colWidths[cIdx] = valLen;
+      });
+
+      const jCellRef = `J${rowNum}`;
+      if (summary) {
+        let cellStyle = summaryGreenStyle;
+        if (summary.type === 'guest_name') {
+          cellStyle = summaryNameHeaderStyle;
+        } else if (summary.type === 'guest_result') {
+          cellStyle = summary.isMinus ? summaryRedResultStyle : summaryGreenResultStyle;
+        } else if (summary.type === 'separator_yellow') {
+          cellStyle = yellowSeparatorStyle;
+        }
+
+        ws[jCellRef] = {
+          t: 's',
+          v: summary.text,
+          s: cellStyle
+        };
+
+        if (summary.type === 'guest_name' && summary.returnRow) {
+          const returnTarget = sheetName ? `#'${sheetName}'!E${summary.returnRow}` : `#E${summary.returnRow}`;
+          ws[jCellRef].l = {
+            Target: returnTarget,
+            Tooltip: `Return to entry for ${summary.guestName} (E${summary.returnRow})`
+          };
+        }
+
+        const sLen = summary.text.length;
+        if (sLen > colWidths[9]) colWidths[9] = sLen;
+      } else {
+        ws[jCellRef] = {
+          t: 's',
+          v: '',
+          s: {
+            fill: { fgColor: { rgb: 'D9EAD3' } },
+            border: {
+              top: { style: 'thin', color: { rgb: '000000' } },
+              bottom: { style: 'thin', color: { rgb: '000000' } },
+              left: { style: 'thin', color: { rgb: '000000' } },
+              right: { style: 'thin', color: { rgb: '000000' } }
+            }
+          }
+        };
+      }
+    }
+
+    ws['!ref'] = `A1:J${Math.max(totalRows, 2)}`;
+    // Auto-fit column widths: max content length + 4 characters padding (minimum 11)
+    ws['!cols'] = colWidths.map(w => ({ wch: Math.max(w + 4, 11) }));
+    // Auto-fit to page in landscape print / view
+    ws['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 };
+
     return ws;
   }
 
-  function exportToExcel(entriesToExport, filename = 'Surveillance_Export', specificDate = '') {
-    if(!window.XLSX) {
+  function exportToExcelDateWise1to31(entriesList, filenamePrefix = 'Surveillance_Export') {
+    if (!window.XLSX) {
       alert("Excel library not loaded yet.");
       return;
     }
-    const wb = XLSX.utils.book_new();
 
-    // Check if exporting a particular date or multiple dates
-    const dates = new Set(entriesToExport.map(e => (e.businessDate || (e.datetime ? e.datetime.slice(0, 10) : '')).trim()).filter(Boolean));
-    
-    // When a particular date is selected or entries belong to a single day: export that day's sheet
-    if (specificDate || dates.size <= 1) {
-      const sheetName = specificDate || (dates.size === 1 ? Array.from(dates)[0] : 'Entries');
-      const ws = buildWorksheetForExcel(entriesToExport);
-      XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31));
-      const fileDate = specificDate || (dates.size === 1 ? Array.from(dates)[0] : new Date().toISOString().slice(0,10));
-      XLSX.writeFile(wb, `${filename}_${fileDate}.xlsx`);
-      return;
+    // Determine target month from date picker, currentBusinessDate, or today
+    const pickerVal = allEntriesDatePicker ? allEntriesDatePicker.value : '';
+    let targetYearMonth = pickerVal ? pickerVal.slice(0, 7) : (currentBusinessDateStr ? currentBusinessDateStr.slice(0, 7) : new Date().toISOString().slice(0, 7));
+
+    // Group entries for this month by day 1..31
+    const dayGroups = {};
+    for (let d = 1; d <= 31; d++) {
+      dayGroups[d] = [];
     }
 
-    // Multiple dates (Full Month): Group entries by day and create sheets 1 to 31 in order
-    const dayMap = {};
-    entriesToExport.forEach(e => {
-      const dt = e.businessDate || e.datetime || '';
-      let day = '';
-      if (dt.includes('-')) {
-        const parts = dt.slice(0, 10).split('-');
-        if (parts[2]) day = String(Number(parts[2]));
+    const sourceData = (Array.isArray(entriesList) && entriesList.length > 0) ? entriesList : allEntries;
+
+    sourceData.forEach(e => {
+      const eDate = getEntryDate(e);
+      if (eDate && eDate.startsWith(targetYearMonth)) {
+        const d = parseInt(eDate.split('-')[2], 10);
+        if (d >= 1 && d <= 31) {
+          dayGroups[d].push(e);
+        }
       }
-      if (!day) day = '1';
-      if (!dayMap[day]) dayMap[day] = [];
-      dayMap[day].push(e);
     });
 
+    const wb = XLSX.utils.book_new();
+
+    // Create exactly 1.......31 sheets in numerical order
     for (let d = 1; d <= 31; d++) {
       const sheetName = String(d);
-      const dayEntries = dayMap[sheetName] || [];
-      const ws = buildWorksheetForExcel(dayEntries);
+      const dayEntries = dayGroups[d] || [];
+      if (dayEntries.length > 0) {
+        dayEntries.sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+      }
+      const ws = buildClientStyledSheet(dayEntries, sheetName);
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
     }
 
-    XLSX.writeFile(wb, `${filename}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    XLSX.writeFile(wb, `${filenamePrefix}_${targetYearMonth}_DateWise_1-31.xlsx`);
   }
 
-  // View Toggle Logic for Home Screen (Sentence vs Table)
-  const btnHomeViewSentence = document.getElementById('btn-home-view-sentence');
-  const btnHomeViewTable = document.getElementById('btn-home-view-table');
-  const homeSentenceView = document.getElementById('home-entries-sentence-view');
-  const homeTableView = document.getElementById('home-entries-table-view');
-
-  if (btnHomeViewSentence && btnHomeViewTable) {
-    btnHomeViewSentence.addEventListener('click', () => {
-      btnHomeViewSentence.classList.add('active');
-      btnHomeViewTable.classList.remove('active');
-      btnHomeViewSentence.style.background = 'var(--primary)';
-      btnHomeViewSentence.style.color = '#fff';
-      btnHomeViewSentence.style.border = 'none';
-      btnHomeViewTable.style.background = 'rgba(255,255,255,0.08)';
-      btnHomeViewTable.style.color = '#94a3b8';
-      btnHomeViewTable.style.border = '1px solid rgba(255,255,255,0.15)';
-      if (homeSentenceView) homeSentenceView.style.setProperty('display', 'block', 'important');
-      if (homeTableView) homeTableView.style.setProperty('display', 'none', 'important');
-    });
-
-    btnHomeViewTable.addEventListener('click', () => {
-      btnHomeViewTable.classList.add('active');
-      btnHomeViewSentence.classList.remove('active');
-      btnHomeViewTable.style.background = 'var(--primary)';
-      btnHomeViewTable.style.color = '#fff';
-      btnHomeViewTable.style.border = 'none';
-      btnHomeViewSentence.style.background = 'rgba(255,255,255,0.08)';
-      btnHomeViewSentence.style.color = '#94a3b8';
-      btnHomeViewSentence.style.border = '1px solid rgba(255,255,255,0.15)';
-      if (homeTableView) homeTableView.style.setProperty('display', 'block', 'important');
-      if (homeSentenceView) homeSentenceView.style.setProperty('display', 'none', 'important');
-    });
+  function exportToExcel(entriesToExport, filename = 'Surveillance_Export') {
+    exportToExcelDateWise1to31(entriesToExport, filename);
   }
 
-  // View Toggle Logic for All Entries Panel (Table vs Sentence vs Excel vs Guest Wise vs Custom Entries)
+  // View Toggle Logic for All Entries Panel (TABLE, SENTENCE, EXCEL, GUESTWISE)
   const btnViewNormal = document.getElementById('btn-view-normal');
   const btnViewSentence = document.getElementById('btn-view-sentence');
   const btnViewExcel = document.getElementById('btn-view-excel');
-  const btnViewGuestwise = document.getElementById('btn-view-guestwise');
-  const btnViewCustomEntries = document.getElementById('btn-view-custom-entries');
 
-  const expandedGuestwiseNames = new Set();
+  const allEntriesNormalView = document.getElementById('all-entries-normal-view');
+  const allEntriesExcelView = document.getElementById('all-entries-excel-view');
 
-  if (btnViewNormal) {
-    btnViewNormal.addEventListener('click', (e) => {
-      e.preventDefault();
-      allEntriesViewMode = 'table';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
+  let allEntriesViewMode = 'table'; // 'table', 'sentence', 'excel'
+
+  function switchAllEntriesView(mode) {
+    allEntriesViewMode = mode;
+    [btnViewNormal, btnViewSentence, btnViewExcel].forEach(btn => {
+      if (btn) btn.classList.remove('active');
     });
+
+    if (allEntriesNormalView) allEntriesNormalView.style.setProperty('display', 'none', 'important');
+    if (allEntriesListContainer) allEntriesListContainer.style.setProperty('display', 'none', 'important');
+    if (allEntriesExcelView) allEntriesExcelView.style.setProperty('display', 'none', 'important');
+
+    if (mode === 'table') {
+      if (btnViewNormal) btnViewNormal.classList.add('active');
+      if (allEntriesNormalView) allEntriesNormalView.style.setProperty('display', 'block', 'important');
+    } else if (mode === 'sentence') {
+      if (btnViewSentence) btnViewSentence.classList.add('active');
+      if (allEntriesListContainer) allEntriesListContainer.style.setProperty('display', 'block', 'important');
+    } else if (mode === 'excel') {
+      if (btnViewExcel) btnViewExcel.classList.add('active');
+      if (allEntriesExcelView) allEntriesExcelView.style.setProperty('display', 'flex', 'important');
+    }
+
+    updateAllEntriesView();
   }
 
-  if (btnViewSentence) {
-    btnViewSentence.addEventListener('click', (e) => {
-      e.preventDefault();
-      allEntriesViewMode = 'sentence';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
+  if (btnViewNormal) btnViewNormal.addEventListener('click', () => switchAllEntriesView('table'));
+  if (btnViewSentence) btnViewSentence.addEventListener('click', () => switchAllEntriesView('sentence'));
+  if (btnViewExcel) btnViewExcel.addEventListener('click', () => switchAllEntriesView('excel'));
+
+  function exportSingleDateExcelClient(dateStr) {
+    if (!window.XLSX) return;
+    const parts = (dateStr || '').split('-');
+    const dmy = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : dateStr;
+    const dayEntries = allEntries.filter(e => {
+      const ed = getEntryDate(e);
+      return ed === dateStr;
     });
+    dayEntries.sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+    const wb = XLSX.utils.book_new();
+    const daySheetName = `Day ${parseInt(parts[2], 10) || 1}`;
+    const ws = buildClientStyledSheet(dayEntries, daySheetName);
+    XLSX.utils.book_append_sheet(wb, ws, daySheetName);
+    XLSX.writeFile(wb, `${dmy}.xlsx`);
   }
 
-  if (btnViewExcel) {
-    btnViewExcel.addEventListener('click', (e) => {
-      e.preventDefault();
-      allEntriesViewMode = 'excel';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-    });
-  }
+  // Unified Export Function: Exports Excel BOTH WAYS (Date-wise & Month-wise 1..31 Sheets)
+  async function exportBothExcelFormats(targetDateStr) {
+    const targetDate = targetDateStr || (allEntriesDatePicker ? allEntriesDatePicker.value : '') || currentBusinessDateStr || getBusinessDate();
+    const parts = targetDate.split('-');
+    const year = parts[0];
+    const month = parts[1];
+    const targetMonth = `${year}-${month}`;
+    const dmy = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : targetDate;
 
-  if (btnViewGuestwise) {
-    btnViewGuestwise.addEventListener('click', (e) => {
-      e.preventDefault();
-      allEntriesViewMode = 'guestwise';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-    });
-  }
-
-  // Delegated click listener across the document to guarantee sub-button triggers work even when clicking inner SVG / path
-  document.addEventListener('click', (e) => {
-    const guestwiseBtn = e.target.closest('#btn-view-guestwise');
-    if (guestwiseBtn) {
-      e.preventDefault();
-      allEntriesViewMode = 'guestwise';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-      return;
-    }
-    const excelBtn = e.target.closest('#btn-view-excel');
-    if (excelBtn) {
-      e.preventDefault();
-      allEntriesViewMode = 'excel';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-      return;
-    }
-    const sentenceBtn = e.target.closest('#btn-view-sentence');
-    if (sentenceBtn) {
-      e.preventDefault();
-      allEntriesViewMode = 'sentence';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-      return;
-    }
-    const normalBtn = e.target.closest('#btn-view-normal');
-    if (normalBtn) {
-      e.preventDefault();
-      allEntriesViewMode = 'table';
-      applyAllEntriesViewMode();
-      updateAllEntriesView();
-      return;
-    }
-  });
-
-  // Render All Entries in authentic Excel Spreadsheet Grid on Website
-  function renderAllEntriesExcelView(entries) {
-    const container = document.getElementById('all-entries-excel-view');
-    if (!container) return;
-
-    if (!entries || entries.length === 0) {
-      container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No records found matching the filters.</div>`;
-      return;
+    if (window.showAppNotification) {
+      window.showAppNotification(`EXPORTING EXCEL BOTH WAYS (DATE: ${dmy} & MONTHLY: 1..31 SHEETS)...`, 'info');
     }
 
-    const guestSummaries = computeGuestSummariesForExcel(entries);
-
-    // Flatten guest summary cards into row-by-row elements - ALL CAPITAL LETTERS & INDIAN RUPEE FORMAT
-    const cardRows = [];
-    guestSummaries.forEach(g => {
-      const upperName = String(g.name || '').toUpperCase();
-      const inStr = Number(g.totalIn || 0).toLocaleString('en-IN');
-      const outStr = Number(g.totalOut || 0).toLocaleString('en-IN');
-      const resVal = Number(g.result || 0);
-      const resPrefix = resVal < 0 ? '-' : (resVal > 0 ? '+' : '');
-      const resStr = `${resPrefix}${Math.abs(resVal).toLocaleString('en-IN')}`;
-      const resType = resVal < 0 ? 'res-minus' : (resVal > 0 ? 'res-plus' : 'res-zero');
-      cardRows.push({ type: 'top', text: `GUEST NAME: ${upperName}` });
-      cardRows.push({ type: 'in', text: `TOTAL IN: ${inStr}` });
-      cardRows.push({ type: 'out', text: `TOTAL OUT: ${outStr}` });
-      cardRows.push({ type: resType, text: `RESULT: ${resStr}` });
-      cardRows.push({ type: 'blank', text: '' });
-    });
-
-    let html = `
-      <div style="overflow-x: auto; max-width: 100%;">
-        <table class="excel-grid-table">
-          <thead>
-            <tr class="excel-col-letter-row">
-              <th class="excel-row-num"></th>
-              <th style="min-width:140px;">A</th>
-              <th style="min-width:90px;">B</th>
-              <th style="min-width:90px;">C</th>
-              <th style="min-width:100px;">D</th>
-              <th style="min-width:130px;">E</th>
-              <th style="min-width:90px;">F</th>
-              <th style="min-width:120px;">G</th>
-              <th style="min-width:200px;">H</th>
-              <th style="min-width:220px;">I</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
-
-    // Row 1: Excel Header Row (A to H yellow, Column I card top) - ALL CAPITAL LETTERS
-    const card0 = cardRows[0] || { type: 'blank', text: '' };
-    html += `
-      <tr>
-        <td class="excel-row-num">1</td>
-        <td class="excel-cell excel-header-cell">DATE & TIME</td>
-        <td class="excel-cell excel-header-cell">SURV ID</td>
-        <td class="excel-cell excel-header-cell">TYPE</td>
-        <td class="excel-cell excel-header-cell">AMOUNT</td>
-        <td class="excel-cell excel-header-cell">GUEST NAME</td>
-        <td class="excel-cell excel-header-cell">CARD</td>
-        <td class="excel-cell excel-header-cell">OTHER INFO</td>
-        <td class="excel-cell excel-header-cell">SENTENCE FORMAT</td>
-        <td class="excel-cell excel-guest-card-cell excel-card-top">${escapeHTML(card0.text)}</td>
-      </tr>
-    `;
-
-    // Subsequent data rows
-    const maxRows = Math.max(entries.length, cardRows.length - 1);
-    for (let i = 0; i < maxRows; i++) {
-      const rowNum = i + 2;
-      const e = entries[i] || null;
-      const card = cardRows[i + 1] || null;
-
-      let cardClass = 'excel-cell excel-guest-card-cell';
-      let cardText = '';
-      if (card) {
-        if (card.type === 'top') cardClass += ' excel-card-top';
-        else if (card.type === 'in') cardClass += ' excel-card-in';
-        else if (card.type === 'out') cardClass += ' excel-card-out';
-        else if (card.type === 'res-plus') cardClass += ' excel-card-result excel-card-result-plus';
-        else if (card.type === 'res-minus') cardClass += ' excel-card-result excel-card-result-minus';
-        else if (card.type === 'res-zero' || card.type === 'res') cardClass += ' excel-card-result excel-card-result-zero';
-        else if (card.type === 'blank') cardClass = 'excel-cell excel-card-blank';
-        cardText = escapeHTML(card.text);
+    // 1. Export Date-Wise Excel (saved to Month Folder on server & downloaded locally)
+    try {
+      const respDate = await fetch(`/api/export-date?date=${encodeURIComponent(targetDate)}`);
+      if (respDate.ok) {
+        const blob = await respDate.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${dmy}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
       } else {
-        cardClass = 'excel-cell excel-card-blank';
+        exportSingleDateExcelClient(targetDate);
       }
-
-      html += `
-        <tr>
-          <td class="excel-row-num">${rowNum}</td>
-          <td class="excel-cell">${e ? escapeHTML(String((e.datetime || '').replace('T', ' ')).toUpperCase()) : ''}</td>
-          <td class="excel-cell" style="font-weight:600;">${e ? escapeHTML(String(e.surv || '').toUpperCase()) : ''}</td>
-          <td class="excel-cell" style="font-weight:600;">${e ? escapeHTML(String(e.type || '').toUpperCase()) : ''}</td>
-          <td class="excel-cell" style="text-align:right;font-weight:700;">${e ? Number(e.amount || 0).toLocaleString('en-IN') : ''}</td>
-          <td class="excel-cell" style="font-weight:700;">${e ? escapeHTML(String(e.guestname || '').toUpperCase()) : ''}</td>
-          <td class="excel-cell">${e ? escapeHTML(String(e.card || '').toUpperCase()) : ''}</td>
-          <td class="excel-cell">${e ? escapeHTML(String(e.otherinfo || '').toUpperCase()) : ''}</td>
-          <td class="excel-cell" style="color:#0369a1;font-weight:700;">${e ? escapeHTML(String(getEntrySentence(e)).toUpperCase()) : ''}</td>
-          <td class="${cardClass}">${cardText}</td>
-        </tr>
-      `;
+    } catch (e) {
+      console.error('Date export error, using fallback:', e);
+      exportSingleDateExcelClient(targetDate);
     }
 
-    html += `
-          </tbody>
-        </table>
-      </div>
-    `;
+    // Brief delay to ensure browser handles multiple downloads smoothly
+    await new Promise(r => setTimeout(r, 600));
 
-    container.innerHTML = html;
-  }
-
-  // Render All Entries by Guest Wise View
-  function renderAllEntriesGuestwiseView(entries) {
-    const container = document.getElementById('all-entries-guestwise-view');
-    if (!container) return;
-
-    if (!entries || entries.length === 0) {
-      container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-weight:700;">No records found matching the filters.</div>`;
-      return;
-    }
-
-    // Group entries into clustered unique guests (combines name variations like MANTHAN GOSAVI, GOSAVI MANTHAN, MANTHAN G, etc.)
-    const guestList = clusterGuestEntries(entries);
-    guestList.forEach(g => {
-      g.entries.sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
-    });
-    // Sort guests alphabetically by name
-    guestList.sort((a, b) => a.name.localeCompare(b.name));
-
-    // Top Header with Expand/Collapse All
-    let html = `
-      <div class="guestwise-top-bar">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <i data-lucide="users" style="width: 19px; height: 19px; color: #a78bfa;"></i>
-          <span style="font-weight: 800; font-size: 0.95rem; color: #ffffff; letter-spacing: 0.5px;">ENTRIES BY GUEST WISE</span>
-          <span style="font-size: 0.78rem; background: rgba(167, 139, 250, 0.2); color: #c4b5fd; padding: 2px 10px; border-radius: 12px; font-weight: 700;">
-            ${guestList.length} ${guestList.length === 1 ? 'Guest' : 'Guests'}
-          </span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <button type="button" id="btn-guestwise-toggle-all" class="btn-guestwise-action">
-            Expand All
-          </button>
-        </div>
-      </div>
-    `;
-
-    // Render Guest Cards
-    guestList.forEach(g => {
-      const isNegative = g.result < 0;
-      const resultColorClass = isNegative ? 'text-red' : (g.result > 0 ? 'text-green' : 'text-neutral');
-      let formattedResult = formatCurrency(Math.abs(g.result));
-      if (isNegative) {
-        formattedResult = '-' + formattedResult;
-      } else if (g.result > 0) {
-        formattedResult = '+' + formattedResult;
+    // 2. Export Monthly Excel (1..31 Sheets workbook in Month Folder & downloaded locally)
+    try {
+      const respMonth = await fetch(`/api/export-excel?month=${encodeURIComponent(targetMonth)}`);
+      if (respMonth.ok) {
+        const blob = await respMonth.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const monthNames = [
+          'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+          'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
+        ];
+        const mIdx = parseInt(month, 10) - 1;
+        const mName = monthNames[mIdx] || `MONTH_${month}`;
+        a.download = `${mName}_${year}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
       } else {
-        formattedResult = '₹0';
+        exportToExcelDateWise1to31(allEntries, 'Surveillance_Export');
       }
+    } catch (e) {
+      console.error('Month export error, using fallback:', e);
+      exportToExcelDateWise1to31(allEntries, 'Surveillance_Export');
+    }
 
-      const isOpen = expandedGuestwiseNames.has(g.name);
-      const openClass = isOpen ? ' is-open' : '';
-      const bodyDisplay = isOpen ? 'display: flex;' : 'display: none;';
-
-      // Build Sentence Rows for this guest
-      const sentencesHtml = g.entries.map(e => {
-        const t = (e.type || '').toUpperCase();
-        const isCredit = isTotalInType(t);
-        const borderCol = isCredit ? '#10b981' : '#ef4444';
-        const amtColor = isCredit ? '#10b981' : '#ef4444';
-        const time = e.datetime ? e.datetime.replace('T', ' ').slice(11, 16) : '';
-        const sentence = getEntrySentence(e);
-
-        return `
-          <div class="guestwise-sentence-item" style="border-left-color: ${borderCol};">
-            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex: 1;">
-              ${time ? `<span style="font-size: 0.8rem; color: #94a3b8; font-family: monospace; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px;">${escapeHTML(time)}</span>` : ''}
-              <span style="font-weight: 700; color: #f8fafc; font-size: 0.95rem; line-height: 1.4;">${sentence}</span>
-            </div>
-            <div style="font-weight: 800; font-family: monospace; font-size: 1.05rem; color: ${amtColor}; white-space: nowrap; margin-left: 10px;">
-              ${formatCurrency(e.amount)}
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      html += `
-        <div class="guestwise-card${openClass}" data-guest="${escapeHTML(g.name)}">
-          <!-- Clickable Header: Displays GUEST NAME -->
-          <div class="guestwise-header" title="Click to view all entries and result for ${escapeHTML(g.name)}">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(167, 139, 250, 0.15); display: flex; align-items: center; justify-content: center; color: #a78bfa; flex-shrink: 0;">
-                <i data-lucide="user" style="width: 18px; height: 18px;"></i>
-              </div>
-              <div>
-                <div class="guestwise-name">${escapeHTML(g.name)}</div>
-                <div style="font-size: 0.78rem; color: #94a3b8; font-weight: 600;">
-                  ${g.entries.length} ${g.entries.length === 1 ? 'TRANSACTION' : 'TRANSACTIONS'}
-                </div>
-              </div>
-            </div>
-
-            <div style="display: flex; align-items: center; gap: 16px;">
-              <div style="text-align: right;">
-                <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">RESULT: </span>
-                <strong class="${resultColorClass}" style="font-family: monospace; font-size: 1.05rem; margin-left: 4px;">${formattedResult}</strong>
-              </div>
-              <i data-lucide="chevron-down" class="guestwise-chevron" style="width: 20px; height: 20px; color: #94a3b8;"></i>
-            </div>
-          </div>
-
-          <!-- Expanded Body: Displays Result Stats & All Entries in Sentence Form -->
-          <div class="guestwise-body" style="${bodyDisplay}">
-            <!-- Result and Totals Summary Strip -->
-            <div class="guestwise-summary-strip">
-              <div class="guestwise-stat-box" style="background: rgba(56, 189, 248, 0.08); border-color: rgba(56, 189, 248, 0.25);">
-                <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">TOTAL IN</div>
-                <div style="font-size: 1.15rem; font-weight: 800; color: #38bdf8; font-family: monospace;">${formatCurrency(g.totalIn)}</div>
-              </div>
-              <div class="guestwise-stat-box" style="background: rgba(251, 146, 60, 0.08); border-color: rgba(251, 146, 60, 0.25);">
-                <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">TOTAL OUT</div>
-                <div style="font-size: 1.15rem; font-weight: 800; color: #fb923c; font-family: monospace;">${formatCurrency(g.totalOut)}</div>
-              </div>
-              <div class="guestwise-stat-box" style="background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.15);">
-                <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">RESULT</div>
-                <div class="${resultColorClass}" style="font-size: 1.15rem; font-weight: 800; font-family: monospace;">${formattedResult}</div>
-              </div>
-            </div>
-
-            <!-- Sentence Form List Header -->
-            <div style="font-size: 0.78rem; color: #a78bfa; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px;">
-              TRANSACTIONS IN SENTENCE FORM:
-            </div>
-
-            <!-- List of All Entries for this guest in Sentence Form -->
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-              ${sentencesHtml}
-            </div>
-          </div>
-        </div>
-      `;
-    });
-
-    container.innerHTML = html;
-    if (window.lucide) lucide.createIcons();
-
-    // Attach click handlers to headers
-    container.querySelectorAll('.guestwise-header').forEach(header => {
-      header.addEventListener('click', () => {
-        const card = header.closest('.guestwise-card');
-        if (!card) return;
-        const gName = card.getAttribute('data-guest');
-        const body = card.querySelector('.guestwise-body');
-        const isCurrentlyOpen = card.classList.contains('is-open');
-
-        if (isCurrentlyOpen) {
-          card.classList.remove('is-open');
-          if (body) body.style.display = 'none';
-          expandedGuestwiseNames.delete(gName);
-        } else {
-          card.classList.add('is-open');
-          if (body) body.style.display = 'flex';
-          expandedGuestwiseNames.add(gName);
-        }
-
-        // Update toggle all button text if present
-        const toggleAllBtn = container.querySelector('#btn-guestwise-toggle-all');
-        if (toggleAllBtn) {
-          const allCards = container.querySelectorAll('.guestwise-card');
-          const allOpen = Array.from(allCards).every(c => c.classList.contains('is-open'));
-          toggleAllBtn.textContent = allOpen ? 'Collapse All' : 'Expand All';
-        }
-      });
-    });
-
-    // Attach Toggle All click handler
-    const btnToggleAll = container.querySelector('#btn-guestwise-toggle-all');
-    if (btnToggleAll) {
-      const allCards = container.querySelectorAll('.guestwise-card');
-      const allOpen = allCards.length > 0 && Array.from(allCards).every(c => c.classList.contains('is-open'));
-      btnToggleAll.textContent = allOpen ? 'Collapse All' : 'Expand All';
-
-      btnToggleAll.addEventListener('click', () => {
-        const currentlyAllOpen = Array.from(container.querySelectorAll('.guestwise-card')).every(c => c.classList.contains('is-open'));
-        container.querySelectorAll('.guestwise-card').forEach(c => {
-          const gName = c.getAttribute('data-guest');
-          const b = c.querySelector('.guestwise-body');
-          if (currentlyAllOpen) {
-            c.classList.remove('is-open');
-            if (b) b.style.display = 'none';
-            expandedGuestwiseNames.delete(gName);
-          } else {
-            c.classList.add('is-open');
-            if (b) b.style.display = 'flex';
-            expandedGuestwiseNames.add(gName);
-          }
-        });
-        btnToggleAll.textContent = currentlyAllOpen ? 'Expand All' : 'Collapse All';
-      });
+    if (window.showAppNotification) {
+      const monthNames = [
+        'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+        'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
+      ];
+      const mIdx = parseInt(month, 10) - 1;
+      const mName = monthNames[mIdx] || `MONTH_${month}`;
+      window.showAppNotification(`SUCCESSFULLY EXPORTED: ${dmy}.XLSX (DATE_WISE) & ${mName}_${year}.XLSX (MONTHLY_WORKBOOK)!`, 'success');
     }
   }
 
-  // Render All Entries Custom Table View:
-  // Shows ONLY: TIME, CD, CASHIER, TYPE, AMOUNT, GUEST NAME, CARD, OTHER INFO
-  function renderAllEntriesCustomView(entries) {
-    const tableBody = document.getElementById('all-entries-custom-table-body');
-    if (!tableBody) return;
-
-    if (!entries || entries.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:35px; color:var(--text-muted); font-weight:700;">No records found matching the filters.</td></tr>`;
-      return;
-    }
-
-    let rowsHtml = '';
-    entries.forEach(entry => {
-      // 1. TIME: Extract clean HH:MM:SS or HH:MM from datetime
-      let timeStr = '-';
-      if (entry.datetime) {
-        if (entry.datetime.includes('T')) {
-          const tPart = entry.datetime.split('T')[1].split('.')[0];
-          timeStr = tPart.slice(0, 8);
-        } else if (entry.datetime.includes(' ')) {
-          timeStr = entry.datetime.split(' ')[1].slice(0, 8);
-        } else {
-          timeStr = entry.datetime;
-        }
-      }
-
-      // 2. CD: Entry CD or '-'
-      const cdStr = escapeHTML(entry.cd || '-');
-
-      // 3. CASHIER: Entry Cashier or '-'
-      const cashierStr = escapeHTML(entry.cashier || '-');
-
-      // 4. TYPE: Badge with appropriate styling
-      const rawType = (entry.type || '').toUpperCase();
-      let typeBadge = { cls: 'badge-synced', label: rawType || '-' };
-      if (['CASHIN', 'C/IN', 'ISSUE', 'KEYIN', 'BUY IN'].includes(rawType)) {
-        typeBadge = { cls: 'badge-credit', label: rawType };
-      } else if (['CASHOUT', 'C/OUT', 'DEPOSIT', 'KEYOUT', 'WIN'].includes(rawType)) {
-        typeBadge = { cls: 'badge-debit', label: rawType };
-      }
-
-      // 5. AMOUNT: Result styling (Plus Green, Minus Red, Zero Neutral)
-      const numAmt = Number(entry.amount) || 0;
-      const isCredit = ['CASHIN', 'C/IN', 'ISSUE', 'KEYIN', 'BUY IN'].includes(rawType);
-      const isDebit = ['CASHOUT', 'C/OUT', 'DEPOSIT', 'KEYOUT', 'WIN'].includes(rawType);
-      const amtFormatted = formatCurrency(Math.abs(numAmt));
-      let amtColorClass = 'text-neutral';
-      let signPrefix = '';
-      if (isCredit) {
-        amtColorClass = 'text-green';
-        signPrefix = '+';
-      } else if (isDebit || numAmt < 0) {
-        amtColorClass = 'text-red';
-        signPrefix = '-';
-      }
-
-      // 6. GUEST NAME: Clean uppercase guest name
-      const guestNameStr = escapeHTML(entry.guestname || '-');
-
-      // 7. CARD: Card number or '-'
-      const cardStr = entry.card ? `<code style="background:rgba(255,255,255,0.06); padding:2px 6px; border-radius:4px; color:#cbd5e1;">${escapeHTML(entry.card)}</code>` : '<span style="color:var(--text-muted)">—</span>';
-
-      // 8. OTHER INFO: Clean other info with tooltip
-      const otherInfoStr = entry.otherinfo ? escapeHTML(entry.otherinfo) : '<span style="color:var(--text-muted)">—</span>';
-
-      rowsHtml += `
-        <tr>
-          <td><strong style="font-family: monospace; font-size: 0.9rem; color: #cbd5e1;">${timeStr}</strong></td>
-          <td><span style="color: #38bdf8; font-weight: 700; font-size: 0.88rem;">${cdStr}</span></td>
-          <td><span style="color: #fbbf24; font-weight: 700; font-size: 0.88rem;">${cashierStr}</span></td>
-          <td><span class="badge ${typeBadge.cls}">${typeBadge.label}</span></td>
-          <td class="table-amount ${amtColorClass}" style="font-weight: 800; font-size: 0.92rem;">${signPrefix}${amtFormatted}</td>
-          <td><strong style="color: #ffffff; font-weight: 700; font-size: 0.9rem;">${guestNameStr}</strong></td>
-          <td>${cardStr}</td>
-          <td title="${escapeHTML(entry.otherinfo || '')}">
-            <div style="max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-              ${otherInfoStr}
-            </div>
-          </td>
-        </tr>
-      `;
-    });
-
-    tableBody.innerHTML = rowsHtml;
-    lucide.createIcons();
-  }
-
-  if(btnExportAll) {
+  // ONLY ONE EXPORT BUTTON: Exports BOTH WAYS automatically
+  if (btnExportAll) {
     btnExportAll.addEventListener('click', async () => {
-      const dateVal = allEntriesDatePicker ? allEntriesDatePicker.value : '';
-      const query = allEntriesSearch.value.toLowerCase().trim();
+      await exportBothExcelFormats();
+    });
+  }
 
-      let sourceEntries = allEntries;
+  // 1. Focus cursor directly to message box
+  function focusMessageBox() {
+    const quickInput = document.getElementById('officer-quick-input');
+    if (quickInput) {
+      setTimeout(() => {
+        quickInput.focus();
+        quickInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 60);
+    }
+  }
 
-      if (dateVal) {
-        sourceEntries = sourceEntries.filter(entry => {
-          const entryDate = entry.businessDate || (entry.datetime ? getBusinessDate(entry.datetime) : '');
-          return entryDate === dateVal;
-        });
+  // 2. Gaming Date & Time live badge: DD-MM-YYYY HH:MM:SS format
+  function updateGamingDateDisplay() {
+    const gamingDateEl = document.getElementById('all-entries-gaming-date');
+    const homeLiveDatetimeEl = document.getElementById('home-live-datetime');
+    const dateStr = currentBusinessDateStr || getBusinessDate();
+    let formattedDate = dateStr;
+    if (dateStr && dateStr.includes('-')) {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+    }
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    
+    if (gamingDateEl) {
+      gamingDateEl.textContent = `${formattedDate} ${hh}:${mm}:${ss} HRS`;
+    }
+    if (homeLiveDatetimeEl) {
+      homeLiveDatetimeEl.textContent = `${formattedDate} ${hh}:${mm}:${ss} HRS`;
+    }
+  }
+  setInterval(updateGamingDateDisplay, 1000);
+  updateGamingDateDisplay();
+
+  // 3. Search action button in All Entries toolbar (SEARCH ICON ONLY - NO NEED BOX)
+  const btnAllEntriesSearchAction = document.getElementById('btn-all-entries-search-action');
+  const allEntriesSearchInput = document.getElementById('all-entries-search');
+  if (btnAllEntriesSearchAction && allEntriesSearchInput) {
+    btnAllEntriesSearchAction.addEventListener('click', () => {
+      if (allEntriesSearchInput.style.display === 'none' || !allEntriesSearchInput.style.display) {
+        allEntriesSearchInput.style.display = 'inline-block';
+        btnAllEntriesSearchAction.classList.add('active');
+        allEntriesSearchInput.focus();
+      } else {
+        if (!allEntriesSearchInput.value) {
+          allEntriesSearchInput.style.display = 'none';
+          btnAllEntriesSearchAction.classList.remove('active');
+        } else {
+          allEntriesSearchInput.value = '';
+          allEntriesSearchInput.style.display = 'none';
+          btnAllEntriesSearchAction.classList.remove('active');
+          updateAllEntriesView();
+        }
+      }
+    });
+    allEntriesSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        allEntriesSearchInput.value = '';
+        allEntriesSearchInput.style.display = 'none';
+        btnAllEntriesSearchAction.classList.remove('active');
+        updateAllEntriesView();
+      }
+    });
+  }
+
+  // 3b. Home Screen Toolbar View Modes: TABLE, SENTENCE, EXCEL & Date & Search Toggle
+  let homeViewMode = 'table'; // 'table', 'sentence', 'excel'
+  let homeSelectedDate = '';
+
+  const btnHomeViewTable = document.getElementById('btn-home-view-table');
+  const btnHomeViewSentence = document.getElementById('btn-home-view-sentence');
+  const btnHomeViewExcel = document.getElementById('btn-home-view-excel');
+  const homeTableView = document.getElementById('home-table-view');
+  const homeSentenceView = document.getElementById('home-sentence-view');
+  const homeExcelView = document.getElementById('home-excel-view');
+  const homeDatePicker = document.getElementById('home-datepicker');
+  const btnHomeSearchToggle = document.getElementById('btn-home-search-toggle');
+
+  function switchHomeView(mode) {
+    homeViewMode = mode;
+    [btnHomeViewTable, btnHomeViewSentence, btnHomeViewExcel].forEach(btn => {
+      if (btn) btn.classList.remove('active');
+    });
+    if (homeTableView) homeTableView.style.display = 'none';
+    if (homeSentenceView) homeSentenceView.style.display = 'none';
+    if (homeExcelView) homeExcelView.style.display = 'none';
+
+    if (mode === 'table') {
+      if (btnHomeViewTable) btnHomeViewTable.classList.add('active');
+      if (homeTableView) homeTableView.style.display = 'block';
+    } else if (mode === 'sentence') {
+      if (btnHomeViewSentence) btnHomeViewSentence.classList.add('active');
+      if (homeSentenceView) homeSentenceView.style.display = 'block';
+    } else if (mode === 'excel') {
+      if (btnHomeViewExcel) btnHomeViewExcel.classList.add('active');
+      if (homeExcelView) homeExcelView.style.display = 'flex';
+    }
+    renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+  }
+
+  if (btnHomeViewTable) btnHomeViewTable.addEventListener('click', () => switchHomeView('table'));
+  if (btnHomeViewSentence) btnHomeViewSentence.addEventListener('click', () => switchHomeView('sentence'));
+  if (btnHomeViewExcel) btnHomeViewExcel.addEventListener('click', () => switchHomeView('excel'));
+
+  if (homeDatePicker) {
+    homeDatePicker.addEventListener('change', () => {
+      homeSelectedDate = homeDatePicker.value;
+      renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+    });
+  }
+
+  if (btnHomeSearchToggle && tableSearchInput) {
+    btnHomeSearchToggle.addEventListener('click', () => {
+      if (tableSearchInput.style.display === 'none' || !tableSearchInput.style.display) {
+        tableSearchInput.style.display = 'inline-block';
+        btnHomeSearchToggle.classList.add('active');
+        tableSearchInput.focus();
+      } else {
+        tableSearchInput.style.display = 'none';
+        tableSearchInput.value = '';
+        btnHomeSearchToggle.classList.remove('active');
+        renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+      }
+    });
+    tableSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        tableSearchInput.value = '';
+        tableSearchInput.style.display = 'none';
+        btnHomeSearchToggle.classList.remove('active');
+        renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+      }
+    });
+  }
+
+  // 4. Calculate next gaming date YYYY-MM-DD
+  function getNextGamingDate(baseDateStr) {
+    const curStr = baseDateStr || currentBusinessDateStr || getBusinessDate();
+    let dObj;
+    if (curStr && curStr.includes('-')) {
+      const [y, m, d] = curStr.split('-').map(Number);
+      dObj = new Date(y, m - 1, d);
+    } else {
+      dObj = new Date();
+    }
+    dObj.setDate(dObj.getDate() + 1);
+    const ny = dObj.getFullYear();
+    const nm = String(dObj.getMonth() + 1).padStart(2, '0');
+    const nd = String(dObj.getDate()).padStart(2, '0');
+    return `${ny}-${nm}-${nd}`;
+  }
+
+  // 5. New Day sub button on Home Page - symbol only
+  const btnNewDay = document.getElementById('btn-new-day');
+  const newDayModal = document.getElementById('new-day-modal');
+  const btnCancelNewDay = document.getElementById('btn-cancel-new-day');
+  const btnConfirmNewDay = document.getElementById('btn-confirm-new-day');
+  const newDayDateInput = document.getElementById('new-day-date-input');
+  const newDayModalDesc = document.getElementById('new-day-modal-desc');
+
+  if (btnNewDay) {
+    btnNewDay.addEventListener('click', () => {
+      const nextDate = getNextGamingDate();
+      const curDate = currentBusinessDateStr || getBusinessDate();
+      let curFormatted = curDate;
+      if (curDate && curDate.includes('-')) {
+        const p = curDate.split('-');
+        if (p.length === 3) curFormatted = `${p[2]}-${p[1]}-${p[0]}`;
+      }
+      const curDayNum = parseInt(curDate.split('-')[2], 10);
+
+      if (newDayDateInput) newDayDateInput.value = nextDate;
+      if (newDayModalDesc) {
+        newDayModalDesc.textContent = `Ending gaming date ${curFormatted}. Active entries will be archived, saved to Sheet ${curDayNum} in Excel, and exported locally.`;
+      }
+      if (newDayModal) {
+        newDayModal.style.setProperty('display', 'flex', 'important');
+      }
+      if (window.lucide) lucide.createIcons();
+    });
+  }
+
+  if (btnCancelNewDay) {
+    btnCancelNewDay.addEventListener('click', () => {
+      if (newDayModal) newDayModal.style.setProperty('display', 'none', 'important');
+    });
+  }
+
+  if (btnConfirmNewDay) {
+    btnConfirmNewDay.addEventListener('click', async () => {
+      const newDateVal = newDayDateInput ? newDayDateInput.value : '';
+      if (!newDateVal) {
+        alert('Please choose a valid next date.');
+        return;
       }
 
-      if (query) {
-        sourceEntries = sourceEntries.filter(entry => {
-          const nameMatch = entry.guestname && entry.guestname.toLowerCase().includes(query);
-          const cashierMatch = entry.cashier && entry.cashier.toLowerCase().includes(query);
-          const typeMatch = entry.type && entry.type.toLowerCase().includes(query);
-          const survMatch = entry.surv && entry.surv.toLowerCase().includes(query);
-          const cdMatch = entry.cd && entry.cd.toLowerCase().includes(query);
-          const cardMatch = entry.card && entry.card.toLowerCase().includes(query);
-          const otherInfoMatch = entry.otherinfo && entry.otherinfo.toLowerCase().includes(query);
-          const amountMatch = entry.amount && String(entry.amount).includes(query);
+      const oldDate = currentBusinessDateStr || getBusinessDate();
+      const oldDayNum = parseInt(oldDate.split('-')[2], 10);
 
-          return nameMatch || cashierMatch || typeMatch || survMatch || cdMatch || cardMatch || otherInfoMatch || amountMatch;
-        });
+      // Export previous day entries in Excel BOTH WAYS (Date-wise in Month folder & Month-wise 31 sheets)
+      try {
+        await exportBothExcelFormats(oldDate);
+      } catch (eErr) {
+        console.error('Error during Excel export on New Day:', eErr);
       }
 
-      exportToExcel(sourceEntries, 'Surveillance_Export', dateVal);
+      // Call server /api/newday to archive old entries and advance business date
+      try {
+        const resp = await fetch('/api/newday', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newDate: newDateVal })
+        });
+        const result = await resp.json();
+
+        currentBusinessDateStr = newDateVal;
+        currentBusinessDate = newDateVal;
+        if (newDayModal) newDayModal.style.setProperty('display', 'none', 'important');
+
+        // Re-fetch entries: active list is now clean for the new day
+        await fetchEntries();
+
+        // Update gaming date display
+        updateGamingDateDisplay();
+
+        // Navigate to Home panel and directly focus cursor to message box
+        showHomePanel();
+        focusMessageBox();
+
+        let oldDateFmt = oldDate;
+        if (oldDate.includes('-')) {
+          const p = oldDate.split('-');
+          oldDateFmt = `${p[2]}-${p[1]}-${p[0]}`;
+        }
+        let newDateFmt = newDateVal;
+        if (newDateVal.includes('-')) {
+          const p = newDateVal.split('-');
+          newDateFmt = `${p[2]}-${p[1]}-${p[0]}`;
+        }
+
+        alert(`NEW DAY STARTED!\nGAMING DATE: ${newDateFmt}\nPREVIOUS ENTRIES FROM ${oldDateFmt} EXPORTED BOTH WAYS (DATE-WISE & MONTH-WISE IN MONTH FOLDER).`);
+      } catch (err) {
+        alert('Error starting new day: ' + err.message);
+      }
     });
   }
 
@@ -3769,13 +4258,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     if(!adminSendList) return;
     adminSendList.innerHTML = '';
     
-    // Recalculate major entries using smart guest clustering
-    const todayEntries = allEntries.filter(isEntryForToday);
-    const guestClusters = clusterGuestEntries(todayEntries);
+    // Recalculate major entries
+    const guestTotals = {};
 
-    guestClusters.forEach(gObj => {
-      const g = gObj.name;
-      const result = gObj.result;
+    allEntries.forEach(e => {
+      if(!isEntryForToday(e)) return;
+      const g = (e.guestname || 'Unknown').trim();
+      const t = (e.type || '').toUpperCase();
+      let amt = Number(e.amount) || 0;
+      
+      if(guestTotals[g] === undefined) { guestTotals[g] = 0; }
+      
+      // Calculate RESULT = OUT - IN
+      if (['CASHOUT', 'DEPOSIT', 'KEYOUT'].includes(t)) {
+        guestTotals[g] += amt;
+      } else if (['CASHIN', 'ISSUE', 'KEYIN'].includes(t)) {
+        guestTotals[g] -= amt;
+      }
+    });
+
+    for (const [g, result] of Object.entries(guestTotals)) {
       if (Math.abs(result) > 49000) {
         let resultStr = formatCurrency(Math.abs(result));
         if (result < 0) {
@@ -3804,7 +4306,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         row.appendChild(delBtn);
         adminSendList.appendChild(row);
       }
-    });
+    }
     lucide.createIcons();
   }
 
@@ -3829,83 +4331,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Collect all known cashier names from entries, defaults and staff
-  function getAllKnownCashiers() {
-    const defaultCashiers = ['C-1', 'C-2', 'C-3', 'C-4'];
-    const fromEntries = (allEntries || [])
-      .map(e => (e.cashier || '').trim())
-      .filter(c => c && c !== '-' && !c.includes('—'));
-
-    let fromStaff = [];
-    try {
-      if (typeof staffList !== 'undefined' && Array.isArray(staffList)) {
-        fromStaff = staffList.map(s => (s.name || s.username || '').trim()).filter(Boolean);
-      }
-    } catch (e) {}
-
-    const map = new Map();
-    [...defaultCashiers, ...fromEntries, ...fromStaff].forEach(name => {
-      const trimmed = name.trim();
-      const upper = trimmed.toUpperCase();
-      if (upper && !map.has(upper)) {
-        map.set(upper, trimmed);
-      }
-    });
-    return Array.from(map.values());
-  }
-
-  // Render cashier dynamic suggestions below input as user types
-  function renderCashierSuggestions(query = '') {
-    const grid = document.getElementById('cashier-options-grid');
-    if (!grid) return;
-    const q = (query || '').trim().toUpperCase();
-    const all = getAllKnownCashiers();
-
-    let matches = all;
-    if (q) {
-      matches = all.filter(c => c.toUpperCase().includes(q));
-      matches.sort((a, b) => {
-        const aStarts = a.toUpperCase().startsWith(q) ? 0 : 1;
-        const bStarts = b.toUpperCase().startsWith(q) ? 0 : 1;
-        if (aStarts !== bStarts) return aStarts - bStarts;
-        return a.localeCompare(b);
-      });
-    }
-
-    if (matches.length === 0) {
-      grid.innerHTML = `<div style="padding: 7px 10px; font-size: 0.72rem; color: var(--text-muted); font-style: italic;">No match "${escapeHTML(q)}" (Press Enter to keep)</div>`;
-      return;
-    }
-
-    grid.innerHTML = matches.slice(0, 12).map(c => {
-      let displayHtml = escapeHTML(c);
-      if (q) {
-        const idx = c.toUpperCase().indexOf(q);
-        if (idx !== -1) {
-          const pre = c.slice(0, idx);
-          const matched = c.slice(idx, idx + q.length);
-          const post = c.slice(idx + q.length);
-          displayHtml = `${escapeHTML(pre)}<span style="color:#38bdf8; font-weight:800; text-decoration:underline;">${escapeHTML(matched)}</span>${escapeHTML(post)}`;
-        }
-      }
-      return `<div class="inline-option-item" data-value="${escapeHTML(c)}">${displayHtml}</div>`;
-    }).join('');
-  }
-
-  // Populate datalists for Card, OtherInfo, and GuestName from existing entries (canonical guest names first)
+  // Populate datalists for Card, OtherInfo, and GuestName from existing entries (most recently used first)
   function populateDataLists(entries) {
+    const guests = [];
     const cards = [];
     const others = [];
 
-    // Clustered canonical guest names
-    const guestClusters = clusterGuestEntries(entries);
-    const guests = guestClusters.map(c => c.name);
-
     // entries is sorted newest first, so iterating collects most recent unique values first
     entries.forEach(e => {
+      const guestVal = (e.guestname || '').trim();
       const cardVal = (e.card || '').trim();
       const otherinfoVal = (e.otherinfo || '').trim();
 
+      if (guestVal && !guests.includes(guestVal)) guests.push(guestVal);
       if (cardVal && !cards.includes(cardVal)) cards.push(cardVal);
       if (otherinfoVal && !others.includes(otherinfoVal)) others.push(otherinfoVal);
     });
@@ -3923,15 +4361,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       otherInfoList.innerHTML = others.map(v => `<div class="inline-option-item">${escapeHTML(v)}</div>`).join('');
     }
 
-    renderCashierSuggestions(inputCashier ? inputCashier.value : '');
   }
 
   // Handle click on any inline-option-item to populate the corresponding input
   document.addEventListener('click', (e) => {
-    const item = e.target.classList.contains('inline-option-item') ? e.target : e.target.closest('.inline-option-item');
-    if (item) {
-      const value = item.getAttribute('data-value') || item.textContent.trim();
-      const formGroup = item.closest('.form-group');
+    if (e.target.classList.contains('inline-option-item')) {
+      const value = e.target.getAttribute('data-value') || e.target.textContent;
+      const formGroup = e.target.closest('.form-group');
       if (formGroup) {
         const input = formGroup.querySelector('input[type="text"]');
         if (input) {
@@ -3944,13 +4380,246 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // Reusable styled spreadsheet grid renderer (Column A..J, Cyan headers, Ice-blue rows, Guest summary)
+  function renderStyledExcelGrid(entries, containerEl, titlePill = 'HOME') {
+    if (!containerEl) return;
+    let totalAmt = 0;
+    (entries || []).forEach(e => { totalAmt += (Number(e.amount) || 0); });
+
+    const safeEntries = Array.isArray(entries) ? entries : [];
+    const guestGroups = [];
+    const assignedEntryIds = new Set();
+
+    safeEntries.forEach(e => {
+      if (assignedEntryIds.has(e.id)) return;
+      const rawGuest = (e.guestname || '').trim();
+      if (!rawGuest) return;
+
+      const cluster = getGuestCluster(rawGuest, safeEntries);
+      cluster.entries.forEach(ce => assignedEntryIds.add(ce.id));
+
+      let totalIn = 0;
+      let totalOut = 0;
+      cluster.entries.forEach(ce => {
+        const amt = Number(ce.amount) || 0;
+        const t = ce.type || '';
+        if (isTotalInType(t)) totalIn += amt;
+        else if (isTotalOutType(t)) totalOut += amt;
+      });
+
+      guestGroups.push({
+        name: cluster.canonicalName,
+        totalIn,
+        totalOut
+      });
+    });
+
+    guestGroups.sort((a, b) => a.name.localeCompare(b.name));
+
+    const summaryRows = [];
+    guestGroups.forEach(g => {
+      const netResult = g.totalOut - g.totalIn;
+      const isMinus = netResult < 0;
+      // NO +/- SIGN: Directly show formatted number, color-coded red for minus, fluorescent green for plus/0
+      const resFormatted = Math.abs(netResult).toLocaleString('en-IN');
+
+      summaryRows.push({
+        guestName: g.name,
+        html: `<td class="cell-guest-info guest-summary-cell" data-summary-guest="${escapeHTML(g.name)}" data-summary-part="header" style="text-align:center; vertical-align:middle;">NAME :- <a href="javascript:void(0)" class="clickable-guest-summary-name" data-guest="${escapeHTML(g.name)}" style="color: #0000FF !important; cursor: pointer; text-decoration: underline; font-weight: 800;">${escapeHTML(g.name)}</a></td>`
+      });
+      summaryRows.push({
+        guestName: g.name,
+        html: `<td class="cell-guest-info guest-summary-cell" data-summary-guest="${escapeHTML(g.name)}" data-summary-part="in" style="text-align:center; vertical-align:middle;">TOTAL IN :- ${g.totalIn.toLocaleString('en-IN')}</td>`
+      });
+      summaryRows.push({
+        guestName: g.name,
+        html: `<td class="cell-guest-info guest-summary-cell" data-summary-guest="${escapeHTML(g.name)}" data-summary-part="out" style="text-align:center; vertical-align:middle;">TOTAL OUT :- ${g.totalOut.toLocaleString('en-IN')}</td>`
+      });
+      summaryRows.push({
+        guestName: g.name,
+        html: `<td class="${isMinus ? 'cell-guest-result-minus' : 'cell-guest-result-plus'} guest-summary-cell" data-summary-guest="${escapeHTML(g.name)}" data-summary-part="result" style="text-align:center; vertical-align:middle; font-weight:800; color: ${isMinus ? '#FF0000' : '#00B050'} !important;">RESULT :- ${resFormatted}</td>`
+      });
+      summaryRows.push({
+        guestName: null,
+        html: `<td class="cell-guest-separator"></td>`
+      });
+    });
+
+    const maxRows = Math.max((entries || []).length, summaryRows.length);
+    let excelRowsHtml = '';
+
+    for (let r = 0; r < maxRows; r++) {
+      const entry = (entries || [])[r];
+      const summary = summaryRows[r];
+
+      let dt = '—', tm = '—';
+      if (entry && entry.datetime) {
+        const dtObj = parseEntryDateTime(entry.datetime);
+        dt = dtObj.dmy || '—';
+        tm = dtObj.time || '—';
+      }
+
+      const type = entry ? (entry.type || '').toUpperCase() : '';
+      const amt = entry ? (Number(entry.amount) || 0).toLocaleString('en-IN') : '';
+      const guest = entry ? (entry.guestname || '').toUpperCase() : '';
+      const card = entry && entry.card ? String(entry.card) : '';
+      const otherinfo = entry && entry.otherinfo ? entry.otherinfo : '';
+      const surv = entry && entry.surv ? entry.surv : '';
+      const sentence = entry ? getEntrySentence(entry) : '';
+
+      let canonicalGuest = guest;
+      if (entry && guest) {
+        const cluster = getGuestCluster(guest, safeEntries);
+        if (cluster && cluster.canonicalName) canonicalGuest = cluster.canonicalName;
+      }
+
+      const colJHtml = summary ? summary.html : `<td class="cell-guest-info" style="text-align:center; vertical-align:middle;"></td>`;
+
+      excelRowsHtml += `
+        <tr class="excel-data-row" data-row-guest="${escapeHTML(canonicalGuest)}">
+          <td class="excel-row-num col-idx" style="text-align:center; vertical-align:middle; font-weight:800;">${r + 1}</td>
+          <td class="cell-blue col-date" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? dt : ''}</td>
+          <td class="cell-blue col-time" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? tm : ''}</td>
+          <td class="cell-blue col-type" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(type) : ''}</td>
+          <td class="cell-blue col-amount" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? amt : ''}</td>
+          <td class="cell-blue col-guest" data-guest="${escapeHTML(canonicalGuest)}" style="text-align:center; vertical-align:middle; font-weight:800;">${entry && guest ? `<a href="javascript:void(0)" class="clickable-guest-name" data-guest="${escapeHTML(canonicalGuest)}" style="color: #0000FF !important; cursor:pointer; text-decoration:underline; font-weight:800;">${escapeHTML(guest)}</a>` : ''}</td>
+          <td class="cell-blue col-card" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(card) : ''}</td>
+          <td class="cell-blue col-other" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(otherinfo) : ''}</td>
+          <td class="cell-blue col-surv" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(surv) : ''}</td>
+          <td class="cell-blue col-sentence" style="text-align:center; vertical-align:middle; font-weight:800;">${entry ? escapeHTML(sentence) : ''}</td>
+          ${colJHtml}
+        </tr>
+      `;
+    }
+
+    const tableHtml = `
+      <div class="excel-table-wrapper">
+        <table class="excel-table">
+          <thead>
+            <tr>
+              <th class="excel-row-num col-idx">#</th>
+              <th class="col-cyan col-date">DATE</th>
+              <th class="col-cyan col-time">TIME</th>
+              <th class="col-cyan col-type">TYPE</th>
+              <th class="col-cyan col-amount">AMOUNT</th>
+              <th class="col-cyan col-guest">GUEST NAME</th>
+              <th class="col-cyan col-card">CARD</th>
+              <th class="col-cyan col-other">OTHER INFO</th>
+              <th class="col-cyan col-surv">SURV ID</th>
+              <th class="col-cyan col-sentence">SENTENCE ENTRIES</th>
+              <th class="col-cyan col-summary">GUEST SUMMARY</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${excelRowsHtml}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    containerEl.innerHTML = tableHtml;
+
+    // Selected Guest Glow & Smooth Scroll Controller
+    function selectAndGlowGuest(targetGuestName, fromSource) {
+      if (!targetGuestName) return;
+      const cleanTarget = targetGuestName.trim().toUpperCase();
+
+      // Clear previous active glows
+      containerEl.querySelectorAll('.guest-cell-selected-glow').forEach(el => el.classList.remove('guest-cell-selected-glow'));
+      containerEl.querySelectorAll('.guest-row-selected-glow').forEach(el => el.classList.remove('guest-row-selected-glow'));
+      containerEl.querySelectorAll('.guest-summary-card-glow').forEach(el => el.classList.remove('guest-summary-card-glow', 'card-header-glow', 'card-footer-glow'));
+
+      // 1. Highlight all matching data rows and Column E guest cells
+      const matchingRows = [];
+      const matchingGuestCells = [];
+      containerEl.querySelectorAll('tr[data-row-guest]').forEach(tr => {
+        const rowGuest = (tr.getAttribute('data-row-guest') || '').trim().toUpperCase();
+        if (rowGuest && (rowGuest === cleanTarget || isNameMatch(rowGuest, cleanTarget))) {
+          tr.classList.add('guest-row-selected-glow');
+          matchingRows.push(tr);
+          const gCell = tr.querySelector('.col-guest');
+          if (gCell) {
+            gCell.classList.add('guest-cell-selected-glow');
+            matchingGuestCells.push(gCell);
+          }
+        }
+      });
+
+      // 2. Highlight matching summary card in Column J
+      const summaryCells = [];
+      containerEl.querySelectorAll('td[data-summary-guest]').forEach(td => {
+        const sg = (td.getAttribute('data-summary-guest') || '').trim().toUpperCase();
+        if (sg && (sg === cleanTarget || isNameMatch(sg, cleanTarget))) {
+          td.classList.add('guest-summary-card-glow');
+          const part = td.getAttribute('data-summary-part');
+          if (part === 'header') td.classList.add('card-header-glow');
+          if (part === 'result') td.classList.add('card-footer-glow');
+          summaryCells.push(td);
+        }
+      });
+
+      // 3. Smooth scroll to destination
+      if (fromSource === 'data' && summaryCells.length > 0) {
+        summaryCells[0].scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      } else if (fromSource === 'summary' && matchingRows.length > 0) {
+        matchingRows[0].scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      }
+    }
+
+    // Attach click listeners to guest names in Column E -> Jump & Glow in Column J Summary
+    containerEl.querySelectorAll('.clickable-guest-name').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const gName = link.getAttribute('data-guest');
+        if (!gName) return;
+        selectAndGlowGuest(gName, 'data');
+      });
+      // Double click opens the detailed guest modal
+      link.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const gName = link.getAttribute('data-guest');
+        if (!gName) return;
+        const activeDate = homeSelectedDate || (allEntriesDatePicker ? allEntriesDatePicker.value : null) || currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+        openGuestSummaryPopup(gName, safeEntries, activeDate);
+      });
+    });
+
+    // Attach click listeners to guest summary headers in Column J -> Jump & Glow back to Column E Data Row
+    containerEl.querySelectorAll('.clickable-guest-summary-name').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const gName = link.getAttribute('data-guest');
+        if (!gName) return;
+        selectAndGlowGuest(gName, 'summary');
+      });
+      // Double click opens the detailed guest modal
+      link.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const gName = link.getAttribute('data-guest');
+        if (!gName) return;
+        const activeDate = homeSelectedDate || (allEntriesDatePicker ? allEntriesDatePicker.value : null) || currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+        openGuestSummaryPopup(gName, safeEntries, activeDate);
+      });
+    });
+  }
+
   // Render entry rows in table
   function renderEntries(entries, options = {}) {
     try {
       const { limit, isArchive } = options;
       
-      // Filter to today's business session (includes physical-date fallback for timing-bug entries)
-      let processedEntries = Array.isArray(entries) ? entries.filter(isEntryForToday) : [];
+      // Filter to today's business session or homeSelectedDate
+      let processedEntries = Array.isArray(entries) ? entries.filter(e => {
+        if (homeSelectedDate) {
+          const eDate = getEntryDate(e);
+          return eDate === homeSelectedDate;
+        }
+        return isEntryForToday(e);
+      }) : [];
 
       // Sort by latest first
       processedEntries.sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
@@ -3959,32 +4628,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (!isArchive) {
         if (recordCountBadge) {
-          recordCountBadge.textContent = `${displayEntries.length} ${displayEntries.length === 1 ? 'Record' : 'Records'}`;
+          // COUNT ONLY: REMOVED RECORD NAME
+          recordCountBadge.textContent = `${displayEntries.length}`;
         }
       }
 
-      const homeSentenceList = document.getElementById('home-sentence-list');
-
       if (displayEntries.length === 0) {
-        if (logsTableBody) {
-          logsTableBody.innerHTML = `
-            <tr>
-              <td colspan="10" class="no-records-row">
-                <div class="empty-state">
-                  <i data-lucide="inbox"></i>
-                  <p>No records found for today matching the filter.</p>
-                </div>
-              </td>
-            </tr>
+        logsTableBody.innerHTML = `
+          <tr>
+            <td colspan="10" class="no-records-row">
+              <div class="empty-state">
+                <i data-lucide="inbox"></i>
+                <p>No records found matching the filter.</p>
+              </div>
+            </td>
+          </tr>
+        `;
+        if (homeSentenceView) {
+          homeSentenceView.innerHTML = `
+            <div class="empty-state">
+              <i data-lucide="inbox"></i>
+              <p>No records found matching the filter.</p>
+            </div>
           `;
         }
-        if (homeSentenceList) {
-          homeSentenceList.innerHTML = `
-            <li class="empty-state" style="padding: 30px; text-align: center; color: var(--text-muted); list-style: none;">
-              <i data-lucide="inbox" style="width: 32px; height: 32px; margin-bottom: 8px;"></i>
-              <p style="margin-top: 8px; font-size: 1.05rem;">No records found for today. Enter a log below and click SEND.</p>
-            </li>
-          `;
+        if (homeExcelView) {
+          renderStyledExcelGrid([], homeExcelView, homeSelectedDate ? `Date: ${homeSelectedDate}` : 'TODAY');
         }
         lucide.createIcons();
         return;
@@ -3999,66 +4668,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     let html = '';
-    let sentenceHtml = '';
-
     displayEntries.forEach(entry => {
       const displayDate = entry.datetime ? entry.datetime.replace('T', ' ') : 'N/A';
-      const timeStr = entry.datetime
-        ? (entry.datetime.includes('T') ? entry.datetime.split('T')[1].slice(0, 5) : entry.datetime.slice(-5))
-        : '—';
       const cdText = escapeHTML(entry.cd || '—');
       const typeBadge = getTypeBadge(entry.type);
       const amtClass = CREDIT_TYPES.includes((entry.type || '').toUpperCase()) ? 'text-green' : 'text-red';
       const amtFormatted = formatCurrency(Number(entry.amount) || 0);
-      const sentence = getEntrySentence(entry);
-      const typeKey = (entry.type || '').toLowerCase().replace('/', '-');
-
       const actionButtons = isArchive
         ? '<span class="archive-note">Archive read-only</span>'
         : `
-            <div style="display:flex;gap:6px;">
-              <button class="btn-edit-entry" data-id="${entry.id}" title="Edit this entry"
-                style="background:var(--accent-blue,#3b82f6);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:4px;">
-                <i data-lucide="edit-2" style="width:13px;height:13px;"></i> Edit
+            <div style="display:flex;gap:4px;align-items:center;">
+              <button class="btn-edit-entry" data-id="${entry.id}" title="Edit"
+                style="background:rgba(59,130,246,0.18);color:#60a5fa;border:1px solid rgba(59,130,246,0.4);border-radius:5px;width:24px;height:24px;padding:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all 0.15s ease;">
+                <i data-lucide="edit-2" style="width:12px;height:12px;pointer-events:none;"></i>
               </button>
-              <button class="btn-delete-entry" data-id="${entry.id}" title="Delete this entry"
-                style="background:var(--danger,#ef4444);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:4px;">
-                <i data-lucide="trash-2" style="width:13px;height:13px;"></i> Del
-              </button>
-            </div>
-          `;
-
-      const homeSentenceActions = isArchive
-        ? ''
-        : `
-            <div class="home-sentence-actions">
-              <button type="button" class="btn-edit-entry" data-id="${entry.id}" title="Edit this entry">
-                <i data-lucide="edit-2" style="width:12px;height:12px;"></i> <span>Edit</span>
-              </button>
-              <button type="button" class="btn-delete-entry" data-id="${entry.id}" title="Delete this entry">
-                <i data-lucide="trash-2" style="width:12px;height:12px;"></i> <span>Del</span>
+              <button class="btn-delete-entry" data-id="${entry.id}" title="Delete"
+                style="background:rgba(239,68,68,0.18);color:#f87171;border:1px solid rgba(239,68,68,0.4);border-radius:5px;width:24px;height:24px;padding:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all 0.15s ease;">
+                <i data-lucide="trash-2" style="width:12px;height:12px;pointer-events:none;"></i>
               </button>
             </div>
           `;
 
-      // Home sentence card item (Direct sentence form with increased readable size)
-      sentenceHtml += `
-        <li class="home-sentence-card ${typeKey}">
-          <div class="home-sentence-left">
-            <span class="home-sentence-time-badge">${timeStr}</span>
-          </div>
-          <div class="home-sentence-text">${sentence}</div>
-          ${homeSentenceActions}
-        </li>
-      `;
-
-      // Traditional Table Row
       html += `
         <tr>
           <td><strong>${displayDate}</strong></td>
           <td><span class="badge ${typeBadge.cls}">${typeBadge.label}</span></td>
           <td class="table-amount ${amtClass}">${amtFormatted}</td>
-          <td>${escapeHTML(entry.guestname)}</td>
+          <td><span class="clickable-guest-name" data-guest="${escapeHTML(entry.guestname || '')}" style="cursor:pointer; color:#60a5fa; text-decoration:underline;">${escapeHTML(entry.guestname || '—')}</span></td>
           <td>${(() => {
             const rowType = (entry.type||'').toUpperCase();
             const showCard = ['ISSUE','DEPOSIT'].includes(rowType);
@@ -4078,39 +4714,78 @@ document.addEventListener('DOMContentLoaded', async () => {
       `;
     });
 
-    if (logsTableBody) logsTableBody.innerHTML = html;
-    if (homeSentenceList) homeSentenceList.innerHTML = sentenceHtml;
+    logsTableBody.innerHTML = html;
+
+    // Render Home Sentence View
+    if (homeSentenceView) {
+      if (displayEntries.length === 0) {
+        homeSentenceView.innerHTML = `
+          <div class="empty-state">
+            <i data-lucide="inbox"></i>
+            <p>No records found matching the filter.</p>
+          </div>
+        `;
+      } else {
+        homeSentenceView.innerHTML = `<ul class="sentence-list">` + 
+          displayEntries.map(e => `<li class="sentence-item ${(e.type||'').toLowerCase().replace('/', '-')}">${getEntrySentence(e, true)}</li>`).join('') +
+          `</ul>`;
+      }
+    }
+
+    // Render Home Excel View
+    if (homeExcelView) {
+      renderStyledExcelGrid(displayEntries, homeExcelView, homeSelectedDate ? `Date: ${homeSelectedDate}` : 'TODAY');
+    }
+
     lucide.createIcons();
 
-    // Helper to attach Edit and Delete listeners to any container
-    const attachEntryListeners = (container) => {
-      if (!container) return;
-      container.querySelectorAll('.btn-edit-entry')?.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = Number(btn.getAttribute('data-id'));
-          const entry = allEntries.find(e => e.id === id);
-          if (entry) editEntry(entry);
+    // Attach Clickable Guest Name listeners to open Guest Summary Popup (Table & Sentence view)
+    const homeArea = document.getElementById('home-display-area');
+    if (homeArea) {
+      homeArea.querySelectorAll('.clickable-guest-name')?.forEach(span => {
+        span.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const gName = span.getAttribute('data-guest');
+          if (!gName) return;
+          const dayFilter = homeSelectedDate || currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+          const candidateEntries = allEntries.filter(entry => {
+            const eDate = getEntryDate(entry);
+            return eDate === dayFilter;
+          });
+          openGuestSummaryPopup(gName, candidateEntries, dayFilter);
         });
       });
-      container.querySelectorAll('.btn-delete-entry')?.forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const id = Number(btn.getAttribute('data-id'));
-          if (!(await customConfirm('Are you sure you want to delete this entry?'))) return;
-          try {
-            const resp = await fetch(`/api/entries?id=${id}`, { method: 'DELETE' });
-            const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || 'Delete failed.');
-            showToast('Entry deleted successfully.', 'success');
-            await fetchEntries();
-          } catch (err) {
-            showToast(`Error deleting entry: ${err.message}`, 'error');
-          }
-        });
-      });
-    };
+    }
 
-    attachEntryListeners(logsTableBody);
-    attachEntryListeners(homeSentenceList);
+    // Attach Edit listeners
+    logsTableBody.querySelectorAll('.btn-edit-entry')?.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idAttr = btn.getAttribute('data-id');
+        const entry = allEntries.find(e => String(e.id) === String(idAttr) || e.id == idAttr);
+        if (entry) editEntry(entry);
+      });
+    });
+
+    // Attach Delete listeners
+    logsTableBody.querySelectorAll('.btn-delete-entry')?.forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idAttr = btn.getAttribute('data-id');
+        if (!(await showAppConfirm('Are you sure you want to delete this entry?'))) return;
+        try {
+          // Instant in-memory removal
+          allEntries = allEntries.filter(e => String(e.id) !== String(idAttr) && e.id != idAttr);
+          window.allEntries = allEntries;
+          if (typeof renderEntries === 'function') renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+          if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
+          showAppNotification('Entry deleted successfully.', 'success');
+
+          // Fast direct delete call
+          fetch(`/api/entries?id=${encodeURIComponent(idAttr)}`, { method: 'DELETE' }).catch(e => console.error(e));
+        } catch (err) {
+          showAppNotification(`Error deleting entry: ${err.message}`, 'error');
+        }
+      });
+    });
 
     } catch (err) {
       console.error("renderEntries Error: ", err);
@@ -4160,9 +4835,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     btnSave.classList.add('loading');
 
+    const now = Date.now();
     const entryPayload = {
+      id: editingEntryId !== null ? editingEntryId : now,
       datetime,
-      businessDate: currentBusinessDateStr || getBusinessDate(),
       cd: cd || 'CD-01',
       cashier: cashier || '-',
       type,
@@ -4170,89 +4846,52 @@ document.addEventListener('DOMContentLoaded', async () => {
       guestname,
       card,
       otherinfo,
-      surv
+      surv,
+      businessDate: currentBusinessDateStr || currentBusinessDate || getBusinessDate(),
+      archived: false,
+      modifiedAt: now
     };
 
+    // If new entry, optimistically update UI instantly with 0ms waiting
+    if (editingEntryId === null) {
+      allEntries.unshift(entryPayload);
+      window.allEntries = allEntries;
+      renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+      calculateStatistics(allEntries.filter(isEntryForToday));
+      populateDataLists(allEntries);
+      if (typeof renderMajor === 'function') renderMajor();
+      if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
+      resetFormInputs();
+      closeLogModal();
+    }
+
     try {
-      let response;
       if (editingEntryId !== null) {
         // UPDATE existing entry
-        response = await fetch(`/api/entries?id=${editingEntryId}`, {
+        const response = await fetch(`/api/entries?id=${editingEntryId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...entryPayload, id: editingEntryId })
         });
+        const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
+      const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to save entry.');
+        resetFormInputs();
+        closeLogModal();
+        await fetchEntries();
       } else {
-        // CREATE new entry
-        response = await fetch('/api/entries', {
+        // CREATE new entry in background (Already optimistically rendered)
+        fetch('/api/entries', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(entryPayload)
-        });
+        }).catch(err => console.error('Save entry background error:', err));
       }
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to save entry.');
-
-      // Save quick entry concurrently if there is text and skipQuickSave is false
-      if (!skipQuickSave) {
-        let activeQuickInput = null;
-        let activeQuickFeedback = null;
-
-        const offPanel = document.getElementById('officer-quick-entry-panel');
-        if (offPanel && window.getComputedStyle(offPanel).display !== 'none') {
-          activeQuickInput = document.getElementById('officer-quick-input');
-          activeQuickFeedback = document.getElementById('officer-quick-feedback');
-        }
-
-        if (activeQuickInput && activeQuickInput.value.trim() && activeQuickFeedback) {
-          const raw = activeQuickInput.value.trim();
-          const parsed = parseQuickSentence(raw);
-          if (parsed) {
-            const cdFinal = cd || parsed.cd || 'CD-01';
-            const quickPayload = {
-              datetime: getLocalTimeISOString(),
-              businessDate: currentBusinessDateStr || getBusinessDate(),
-              cd: cdFinal,
-              cashier: cashier || '',
-              type: parsed.type,
-              amount: parsed.amount,
-              guestname: parsed.guestname,
-              card: parsed.card,
-              otherinfo: parsed.otherinfo,
-              surv: surv
-            };
-            try {
-              activeQuickFeedback.textContent = 'Saving quick entry...';
-              activeQuickFeedback.style.color = '#a78bfa';
-              const resp = await fetch('/api/entries', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(quickPayload)
-              });
-              const qdata = await resp.json();
-              if (resp.ok) {
-                activeQuickInput.value = '';
-                activeQuickFeedback.textContent = `✓ Saved: ${parsed.amount.toLocaleString('en-IN')} ${parsed.type} – ${parsed.guestname}`;
-                activeQuickFeedback.style.color = '#86efac';
-              } else {
-                activeQuickFeedback.textContent = `✗ Quick entry: ${qdata.error || 'Save failed'}`;
-                activeQuickFeedback.style.color = '#fca5a5';
-              }
-            } catch (err) {
-              activeQuickFeedback.textContent = `✗ Quick entry: ${err.message}`;
-              activeQuickFeedback.style.color = '#fca5a5';
-            }
-          } else {
-            activeQuickFeedback.textContent = '⚠ Quick entry cannot parse — check format.';
-            activeQuickFeedback.style.color = '#fca5a5';
-          }
-        }
-      }
-
-      resetFormInputs();
-      closeLogModal();
-      await fetchEntries();
     } catch (err) {
       console.error(err);
       alert(`Error saving entry: ${err.message}`);
@@ -4277,58 +4916,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Live dynamic suggestions for Cashier as the user types
-  if (inputCashier) {
-    inputCashier.addEventListener('input', (e) => {
-      renderCashierSuggestions(e.target.value);
-    });
-    inputCashier.addEventListener('focus', () => {
-      renderCashierSuggestions(inputCashier.value);
-    });
-  }
-
-  // Live dynamic suggestions for Guest Name as the user types
-  if (inputGuestName) {
-    inputGuestName.addEventListener('input', (e) => {
-      const q = e.target.value.trim().toUpperCase();
-      const guestnameList = document.getElementById('guestname-options-grid');
-      if (!guestnameList) return;
-      const guestClusters = clusterGuestEntries(allEntries);
-      const allGuests = guestClusters.map(c => c.name);
-      let matches = allGuests;
-      if (q) {
-        matches = allGuests.filter(g => g.toUpperCase().includes(q));
-      }
-      if (matches.length === 0) {
-        guestnameList.innerHTML = `<div style="padding: 7px 10px; font-size: 0.72rem; color: var(--text-muted); font-style: italic;">New guest: "${escapeHTML(q)}"</div>`;
-      } else {
-        guestnameList.innerHTML = matches.slice(0, 12).map(v => {
-          let displayHtml = escapeHTML(v);
-          if (q) {
-            const idx = v.toUpperCase().indexOf(q);
-            if (idx !== -1) {
-              const pre = v.slice(0, idx);
-              const matched = v.slice(idx, idx + q.length);
-              const post = v.slice(idx + q.length);
-              displayHtml = `${escapeHTML(pre)}<span style="color:#38bdf8; font-weight:800; text-decoration:underline;">${escapeHTML(matched)}</span>${escapeHTML(post)}`;
-            }
-          }
-          return `<div class="inline-option-item" data-value="${escapeHTML(v)}">${displayHtml}</div>`;
-        }).join('');
-      }
-    });
-    inputGuestName.addEventListener('focus', () => {
-      if (allEntries && allEntries.length > 0) {
-        const guestClusters = clusterGuestEntries(allEntries);
-        const allGuests = guestClusters.map(c => c.name);
-        const guestnameList = document.getElementById('guestname-options-grid');
-        if (guestnameList && !inputGuestName.value.trim()) {
-          guestnameList.innerHTML = allGuests.slice(0, 12).map(v => `<div class="inline-option-item" data-value="${escapeHTML(v)}">${escapeHTML(v)}</div>`).join('');
-        }
-      }
-    });
-  }
-
   // ==========================================================================
   // QUICK TEXT ENTRY – shared parsers + reusable widget mount
   // ==========================================================================
@@ -4352,19 +4939,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     return str;
   }
 
+  // ── Multi-entry splitter: handles newlines, semicolons, and comma-separated entries
+  function splitMultiEntries(raw) {
+    if (!raw) return [];
+    const chunks = raw.split(/[\r\n;]+/).map(l => l.trim()).filter(l => l.length > 0);
+    const finalLines = [];
+    chunks.forEach(chunk => {
+      // Split comma separated entries if next part begins with amount (e.g. "50k cashin by a, 20k cashout by b")
+      if (chunk.includes(',')) {
+        const subParts = chunk.split(/,\s*(?=(?:(?:\d+[\.\)\-:]\s*|[-*•]\s*)?\d+(?:[,\.]\d+)?\s*[KL]?\s+[A-Za-z]))/);
+        if (subParts.length > 1) {
+          subParts.forEach(sp => {
+            if (sp.trim()) finalLines.push(sp.trim());
+          });
+          return;
+        }
+      }
+      finalLines.push(chunk);
+    });
+    return finalLines;
+  }
+
   // ── Sentence parser: returns { type, cd, amount, guestname, card, otherinfo } or null
   function parseQuickSentence(raw) {
-    let t = raw.trim().toUpperCase();
+    if (!raw || typeof raw !== 'string') return null;
+    let t = raw.trim();
 
-    // Universal bracket extraction: anything in brackets (...) or ' 9...)' is otherinfo!
+    // 1. Strip leading numbering or bullet points: e.g. "1.", "1)", "1-", "1:", "-", "*", "•"
+    t = t.replace(/^\s*(?:[\d]+[\.\)\-:]\s*|[-*•]\s*)/, '').trim();
+    if (!t) return null;
+
+    // 2. Extract bracketed / parenthesized other info
     let bracketInfo = '';
-    // 1. Check for standard parentheses (...)
     let bMatch = t.match(/\(([^)]*)\)/);
     if (bMatch) {
       bracketInfo = cleanOtherInfo(bMatch[1]);
       t = t.replace(/\([^)]*\)/, ' ').replace(/\s+/g, ' ').trim();
     } else {
-      // 2. Check for Shift+9 typo e.g. " 9JC)"
       bMatch = t.match(/(?:\s+|^)9([^)]+)\)/);
       if (bMatch) {
         bracketInfo = cleanOtherInfo(bMatch[1]);
@@ -4372,21 +4983,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
-    const amtMatch = t.match(/^(\d+(?:\.\d+)?\s*[KL]?)\s+(.+)$/);
+    t = t.toUpperCase();
+
+    // 3. Extract Amount (e.g. 50K, 1.5L, 50000, 1,00,000)
+    const amtMatch = t.match(/^(\d+(?:[,\.]\d+)?\s*[KL]?)\s+(.+)$/i);
     if (!amtMatch) return null;
 
     const a = parseQuickAmt(amtMatch[1]);
-    if (!a) return null;
-    const rest = amtMatch[2].trim();
+    if (!a || a <= 0) return null;
+    let rest = amtMatch[2].trim();
 
-    // CASHIN / C/IN / C\IN  →  <amt> CASHIN [BY] <guest>
-    let m = rest.match(/^(?:CASHIN|C[\/\\]IN)(?:\s+BY)?\s+(.+)$/);
+    // 4. CASHIN / C/IN / C-IN / CIN / CASH IN
+    let m = rest.match(/^(?:CASHIN|C[\/\\]IN|C-IN|CIN|CASH\s+IN|CASH-IN)(?:\s+BY)?\s+(.+)$/i);
     if (m) {
       return { type: 'CASHIN', cd: 'CD-01', amount: a, guestname: m[1].trim(), card: '', otherinfo: bracketInfo };
     }
 
-    // CASHOUT / C/OUT / C\OUT  →  <amt> CASHOUT [BY] <guest>
-    m = rest.match(/^(?:CASHOUT|C[\/\\]OUT)(?:\s+BY)?\s+(.+)$/);
+    // 5. CASHOUT / C/OUT / C-OUT / COUT / CASH OUT
+    m = rest.match(/^(?:CASHOUT|C[\/\\]OUT|C-OUT|COUT|CASH\s+OUT|CASH-OUT)(?:\s+BY)?\s+(.+)$/i);
     if (m) {
       return { type: 'CASHOUT', cd: 'CD-01', amount: a, guestname: m[1].trim(), card: '', otherinfo: bracketInfo };
     }
@@ -4397,7 +5011,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       let card = '';
       let otherinfo = bracketInfo;
 
-      const cardMatch = sub.match(/^(.*?)\s+CARD(?:\s+(.*))?$/);
+      const cardMatch = sub.match(/^(.*?)\s+CARD(?:\s+(.*))?$/i);
       if (cardMatch) {
         const beforeCard = cardMatch[1].trim();
         const afterCard = cardMatch[2] ? cardMatch[2].trim() : '';
@@ -4405,7 +5019,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           otherinfo = cleanOtherInfo(afterCard);
         }
 
-        const connMatch = beforeCard.match(/^(.*?)\s+(?:FROM|C[\/\\]O|ON)\s+(.+)$/);
+        const connMatch = beforeCard.match(/^(.*?)\s+(?:FROM|C[\/\\]O|ON)\s+(.+)$/i);
         if (connMatch) {
           guestname = connMatch[1].trim();
           card = connMatch[2].trim();
@@ -4423,38 +5037,43 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       // Fallback if no 'CARD' keyword
-      const connNoCard = sub.match(/^(.*?)\s+(?:FROM|C[\/\\]O|ON)\s+(.+)$/);
+      const connNoCard = sub.match(/^(.*?)\s+(?:FROM|C[\/\\]O|ON)\s+(.+)$/i);
       if (connNoCard) {
         guestname = connNoCard[1].trim();
         card = connNoCard[2].trim();
         return { guestname, card, otherinfo };
       }
 
+      // If no card keyword, guestname is entire sub
+      if (sub.trim()) {
+        return { guestname: sub.trim(), card: '', otherinfo };
+      }
+
       return null;
     }
 
-    // ISSUE  →  <amt> ISSUE [TO] <guest> [FROM|C/O|C\O|ON] <card> CARD [info]
-    m = rest.match(/^ISSUE(?:\s+TO)?\s+(.+)$/);
+    // 6. ISSUE
+    m = rest.match(/^(?:ISSUE)(?:\s+TO)?\s+(.+)$/i);
     if (m) {
       const res = parseCardAndGuest(m[1].trim());
       if (res) return { type: 'ISSUE', cd: 'CD-01', amount: a, guestname: res.guestname, card: res.card, otherinfo: res.otherinfo };
     }
 
-    // DEPOSIT  →  <amt> DEPOSIT [BY] <guest> [FROM|C/O|C\O|ON] <card> CARD [info]
-    m = rest.match(/^DEPOSIT(?:\s+BY)?\s+(.+)$/);
+    // 7. DEPOSIT / DEP
+    m = rest.match(/^(?:DEPOSIT|DEP)(?:\s+BY)?\s+(.+)$/i);
     if (m) {
       const res = parseCardAndGuest(m[1].trim());
       if (res) return { type: 'DEPOSIT', cd: 'CD-01', amount: a, guestname: res.guestname, card: res.card, otherinfo: res.otherinfo };
     }
 
-    // KEYIN  →  <amt> KEYIN [BY] <guest>
-    m = rest.match(/^KEYIN(?:\s+BY)?\s+(.+)$/);
+    // 8. KEYIN / KEY IN / KEY-IN
+    m = rest.match(/^(?:KEYIN|KEY\s+IN|KEY-IN)(?:\s+BY)?\s+(.+)$/i);
     if (m) {
       return { type: 'KEYIN', cd: 'CD-01', amount: a, guestname: m[1].trim(), card: '', otherinfo: bracketInfo };
     }
 
-    // KEYOUT  →  <amt> KEYOUT [BY] <guest>
-    m = rest.match(/^KEYOUT(?:\s+BY)?\s+(.+)$/);
+    // 9. KEYOUT / KEY OUT / KEY-OUT
+    m = rest.match(/^(?:KEYOUT|KEY\s+OUT|KEY-OUT)(?:\s+BY)?\s+(.+)$/i);
     if (m) {
       return { type: 'KEYOUT', cd: 'CD-01', amount: a, guestname: m[1].trim(), card: '', otherinfo: bracketInfo };
     }
@@ -4594,8 +5213,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
+      // Check if input is a question for the Offline AI Assistant
+      const trimmedRaw = (raw || '').trim();
+      if (trimmedRaw.startsWith('?') || /^ai\b/i.test(trimmedRaw) || /^(who is|what is|how much|total in|total out|result of|summary of|details of)\b/i.test(trimmedRaw)) {
+        const aiQ = trimmedRaw.replace(/^(\?|ai\s*)/i, '').trim();
+        qInput.value = '';
+        setFb('');
+        openAiAssistantModal(aiQ || 'OVERALL RESULT');
+        return;
+      }
+
       // MULTI-ENTRY PARSER: Allow typing/pasting as many entries at once as desired
-      const lines = raw.split(/[\r\n;]+/).map(l => l.trim()).filter(l => l.length > 0);
+      const lines = splitMultiEntries(raw);
       if (lines.length === 0) return;
 
       const parsedEntries = [];
@@ -4623,7 +5252,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Check if any parsed quick entry is for a barred guest
       for (const item of parsedEntries) {
         if (item.guestname) {
-          const match = await ensureCheckBarredGuest(item.guestname);
+          const match = checkClientBarredGuest(item.guestname);
           if (match) {
             await showBarredWarningPopup(match, item.guestname);
           }
@@ -4632,59 +5261,74 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const cdFinal = cdVal || 'CD-01';
       const cashierFinal = cashierVal || '-';
-      const survVal = (currentUser ? currentUser.id : 'ADMIN').toUpperCase();
+      const survVal = (currentUser ? (currentUser.name || currentUser.id) : 'ADMIN').toUpperCase();
+      const now = Date.now();
+      const isoNow = getLocalTimeISOString();
+      const curBDate = currentBusinessDateStr || currentBusinessDate || getBusinessDate();
 
-      setFb(parsedEntries.length === 1 ? 'Saving…' : `Saving ${parsedEntries.length} entries…`, '#a78bfa');
-      qSaveBtn.disabled = true;
+      const payloads = parsedEntries.map((item, idx) => {
+        const itemCd = (item.cd && item.cd !== 'C' && item.cd !== 'D') ? item.cd : cdFinal;
+        return {
+          id: now + idx,
+          datetime: isoNow,
+          cd: itemCd,
+          cashier: cashierFinal,
+          type: item.type,
+          amount: item.amount,
+          guestname: item.guestname,
+          card: item.card || '',
+          otherinfo: item.otherinfo || '',
+          surv: survVal,
+          businessDate: curBDate,
+          archived: false,
+          modifiedAt: now + idx
+        };
+      });
 
-      try {
-        let savedCount = 0;
-        for (const item of parsedEntries) {
-          const itemCd = (item.cd && item.cd !== 'C' && item.cd !== 'D') ? item.cd : cdFinal;
-          const payload = {
-            datetime : getLocalTimeISOString(),
-            cd       : itemCd,
-            cashier  : cashierFinal,
-            type     : item.type,
-            amount   : item.amount,
-            guestname: item.guestname,
-            card     : item.card,
-            otherinfo: item.otherinfo,
-            surv     : survVal
-          };
-          const resp = await fetch('/api/entries', {
-            method : 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body   : JSON.stringify(payload)
-          });
-          const data = await resp.json();
-          if (!resp.ok) throw new Error(data.error || 'Save failed');
-          savedCount++;
-        }
+      // ─── INSTANTANEOUS ACTIONS ON ENTER (ZERO WAITING / SUDDENLY CLEARS & UPDATES) ───
+      qInput.value = '';
+      qInput.style.height = '';
+      qInput.focus();
 
-        if (savedCount === 1) {
-          const p = parsedEntries[0];
-          setFb(`✓ ${p.amount.toLocaleString('en-IN')} ${p.type} – ${p.guestname}${p.otherinfo ? ' ('+p.otherinfo+')' : ''}`, '#86efac');
-        } else {
-          setFb(`✓ Successfully saved ${savedCount} entries!`, '#86efac');
-        }
+      if (qCashier) qCashier.value = '';
+      if (inputCashier) inputCashier.value = '';
 
-        qInput.value = '';
-        qInput.style.height = ''; // Reset auto-resize
-
-        // AFTER SAVED CLEAR CD AND CASHIER in both forms
-        if (qCashier) qCashier.value = '';
-        if (qCDSelect) qCDSelect.value = 'CD-01';
-        if (inputCashier) inputCashier.value = '';
-        if (inputCD) inputCD.value = 'CD-01';
-
-        qInput.focus();
-        await fetchEntries();
-      } catch (err) {
-        setFb(`✗ ${err.message}`, '#fca5a5');
-      } finally {
-        qSaveBtn.disabled = false;
+      if (parsedEntries.length === 1) {
+        const p = parsedEntries[0];
+        setFb(`✓ ${p.amount.toLocaleString('en-IN')} ${p.type} – ${p.guestname}${p.otherinfo ? ' ('+p.otherinfo+')' : ''}`, '#86efac');
+      } else {
+        setFb(`✓ Successfully added ${parsedEntries.length} entries!`, '#86efac');
       }
+
+      // Optimistic table update in 0ms: entries appear suddenly on screen
+      for (let i = payloads.length - 1; i >= 0; i--) {
+        allEntries.unshift(payloads[i]);
+      }
+      window.allEntries = allEntries;
+      renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
+      calculateStatistics(allEntries.filter(isEntryForToday));
+      populateDataLists(allEntries);
+      if (typeof renderMajor === 'function') renderMajor();
+      if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
+
+      // High-speed single batch background save (non-blocking)
+      fetch('/api/entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloads.length === 1 ? payloads[0] : payloads)
+      }).then(async res => {
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          console.error('Error saving entries:', errData);
+          const errMsg = errData.error || 'Server error';
+          setFb(`✗ Error saving: ${errMsg}`, '#fca5a5');
+          showAppNotification(`Error saving entry: ${errMsg}`, 'error');
+        }
+      }).catch(err => {
+        console.error('Error saving entries:', err);
+        setFb(`✗ Error saving: ${err.message}`, '#fca5a5');
+        showAppNotification(`Error saving entry: ${err.message}`, 'error');
+      });
     }
 
     if (qSaveBtn) qSaveBtn.addEventListener('click', doSave);
@@ -4707,7 +5351,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       const raw = qInput.value.trim();
       if (!raw) { setFb(''); return; }
 
-      const lines = raw.split(/[\r\n;]+/).map(l => l.trim()).filter(l => l.length > 0);
+      if (raw.startsWith('?') || /^ai\b/i.test(raw) || /^(who is|what is|how much|total in|total out|result of|summary of|details of)\b/i.test(raw)) {
+        setFb('✨ Ask Offline AI Assistant (Press Enter or click SEND)', '#c084fc');
+        return;
+      }
+
+      const lines = splitMultiEntries(raw);
       if (lines.length > 1) {
         let valid = 0;
         lines.forEach(l => { if (parseQuickSentence(l)) valid++; });
@@ -4761,177 +5410,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // ==========================================================================
-  // SYMBOL-ONLY SEARCH BUTTONS (TOGGLE & EXPAND)
-  // "FOR SEARCH BUTTON USE ONLY SYMBOL"
-  // ==========================================================================
-  function setupSearchSymbolToggle(btnId, wrapId, inputId) {
-    const btn = document.getElementById(btnId);
-    const wrap = document.getElementById(wrapId);
-    const input = document.getElementById(inputId);
-    if (!btn || !wrap || !input) return;
-
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOpen = wrap.classList.contains('open');
-      if (isOpen) {
-        if (input.value.trim() !== '') {
-          input.value = '';
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-        wrap.classList.remove('open');
-      } else {
-        wrap.classList.add('open');
-        setTimeout(() => input.focus(), 60);
-      }
-    });
-
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        input.value = '';
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        wrap.classList.remove('open');
-        btn.focus();
-      }
-    });
-
-    document.addEventListener('click', (e) => {
-      if (!wrap.contains(e.target) && input.value.trim() === '') {
-        wrap.classList.remove('open');
-      }
-    });
-  }
-
-  setupSearchSymbolToggle('btn-toggle-home-search', 'home-search-wrap', 'table-search');
-  setupSearchSymbolToggle('btn-major-search-action', 'major-search-wrap', 'major-search');
-  setupSearchSymbolToggle('btn-toggle-barred-search', 'barred-search-wrap', 'barred-search');
-  setupSearchSymbolToggle('btn-toggle-all-search', 'all-entries-search-wrap', 'all-entries-search');
-
   // Manual Refresh Button
   if (btnRefresh) {
     btnRefresh.addEventListener('click', () => {
       tableSearchInput.value = '';
       fetchEntries();
-    });
-  }
-
-  // ==========================================================================
-  // START NEW GAMING DAY (CHANGE DATE)
-  // ==========================================================================
-  if (btnStartNewDay) {
-    btnStartNewDay.addEventListener('click', () => {
-      const current = currentBusinessDateStr || getBusinessDate();
-      if (modalCurrentDateDisplay) {
-        modalCurrentDateDisplay.textContent = current || 'Not Set';
-      }
-
-      // Pre-fill with next day
-      if (newDayDateInput) {
-        if (current && current.includes('-')) {
-          const parts = current.split('-').map(Number);
-          const nextDate = new Date(parts[0], parts[1] - 1, parts[2] + 1);
-          const ny = nextDate.getFullYear();
-          const nm = String(nextDate.getMonth() + 1).padStart(2, '0');
-          const nd = String(nextDate.getDate()).padStart(2, '0');
-          newDayDateInput.value = `${ny}-${nm}-${nd}`;
-        } else {
-          newDayDateInput.value = getLocalTimeISOString().split('T')[0];
-        }
-      }
-
-      if (newDayModal) {
-        newDayModal.style.display = 'flex';
-        if (window.lucide) lucide.createIcons();
-      }
-    });
-  }
-
-  // Cancel / NO button -> continue same gaming day
-  if (btnCancelNewDay) {
-    btnCancelNewDay.addEventListener('click', () => {
-      if (newDayModal) {
-        newDayModal.style.display = 'none';
-      }
-    });
-  }
-
-  // Confirm / YES button -> start new gaming day
-  if (btnConfirmNewDay) {
-    btnConfirmNewDay.addEventListener('click', async () => {
-      const newDate = newDayDateInput ? newDayDateInput.value : '';
-      if (!newDate) {
-        alert('Please select a valid new gaming date.');
-        return;
-      }
-
-      const origText = btnConfirmNewDay.innerHTML;
-      btnConfirmNewDay.disabled = true;
-      btnConfirmNewDay.innerHTML = '<span>Starting...</span>';
-
-      try {
-        const response = await fetch('/api/newday', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ newDate })
-        });
-        const result = await response.json();
-        if (!response.ok) {
-          throw new Error(result.error || 'Failed to start new gaming day.');
-        }
-
-        // Advance current business date
-        currentBusinessDateStr = result.newDate || newDate;
-        if (homeGamingDateDisplay) {
-          homeGamingDateDisplay.textContent = currentBusinessDateStr;
-        }
-        const allGamingDateEl = document.getElementById('all-entries-gaming-date');
-        if (allGamingDateEl) {
-          allGamingDateEl.textContent = `TODAY GAMING DATE: ${currentBusinessDateStr}`;
-        }
-
-        // Update active day for All Entries navigation
-        const dayNum = Number(currentBusinessDateStr.split('-')[2]);
-        if (!isNaN(dayNum)) {
-          activeAllEntriesDay = dayNum;
-          if (gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
-        }
-        if (allEntriesDatePicker) {
-          allEntriesDatePicker.value = currentBusinessDateStr;
-        }
-
-        // Update datetime input
-        if (inputDateTime) {
-          inputDateTime.value = getLocalTimeISOString();
-        }
-
-        // Close modal
-        if (newDayModal) {
-          newDayModal.style.display = 'none';
-        }
-
-        // Re-fetch all entries from backend (previous ones will now be archived)
-        await fetchEntries();
-
-        // Sync day pagination UI
-        renderDayPagination();
-
-        alert(`New Gaming Day started: ${currentBusinessDateStr}\nPrevious entries have been archived.`);
-      } catch (err) {
-        console.error('Error starting new gaming day:', err);
-        alert(`Failed to start new gaming day: ${err.message}`);
-      } finally {
-        btnConfirmNewDay.disabled = false;
-        btnConfirmNewDay.innerHTML = origText;
-        if (window.lucide) lucide.createIcons();
-      }
-    });
-  }
-
-  if (newDayModal) {
-    newDayModal.addEventListener('click', (e) => {
-      if (e.target === newDayModal) {
-        newDayModal.style.display = 'none';
-      }
     });
   }
 
@@ -4963,7 +5446,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       const startFetch = Date.now();
       const response = await fetch('/api/status');
       if (response.ok) {
-        const data = await response.json();
+        const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
+      const data = await response.json();
         if (data.serverTime) {
           const rtt = Date.now() - startFetch;
           timeOffset = data.serverTime + (rtt / 2) - Date.now();
@@ -4978,24 +5467,51 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }, 30000);
 
-  // Toggle the Admin Users button visibility based on active user (Admin only)
+  // Helper to check if current user is admin (Supervisors and Officers are STRICTLY non-admin)
+  function isUserAdmin() {
+    if (!currentUser) return false;
+    const role = (currentUser.role || '').toLowerCase();
+    if (role === 'supervisor' || role === 'officer') return false;
+    const id = (currentUser.id || '').toLowerCase();
+    const name = (currentUser.name || '').toLowerCase();
+    return role === 'admin' || id === 'admin' || name === 'admin';
+  }
+
+  // Toggle the Admin Users button visibility based on active user - ONLY ADMIN CAN ADD MEMBER
   function toggleAdminPanel() {
+    const admin = isUserAdmin();
+    if (admin) {
+      document.body.classList.add('is-admin-session');
+    } else {
+      document.body.classList.remove('is-admin-session');
+    }
     if (btnAdminUsers) {
-      if (isAdmin()) {
-        btnAdminUsers.style.setProperty('display', 'flex', 'important');
+      btnAdminUsers.style.setProperty('display', admin ? 'flex' : 'none', 'important');
+    }
+    const userProfileEl = document.getElementById('user-profile-badge') || document.querySelector('.user-profile');
+    if (userProfileEl) {
+      const name = (currentUser && currentUser.name) ? currentUser.name.toUpperCase() : 'ADMIN';
+      userProfileEl.title = admin ? `${name} (ADMIN)` : name;
+      if (admin) {
+        userProfileEl.classList.add('is-admin');
       } else {
-        btnAdminUsers.style.setProperty('display', 'none', 'important');
+        userProfileEl.classList.remove('is-admin');
       }
     }
   }
 
   // Admin Account Management: Fetch all accounts
   async function fetchUsers() {
-    if (!isAdmin()) return;
     try {
       const response = await fetch('/api/users?requester=admin');
       if (!response.ok) {
         throw new Error('Failed to retrieve user accounts.');
+      }
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
       }
       const data = await response.json();
       renderUsers(data.users || []);
@@ -5019,6 +5535,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const isSelf = user.username === 'admin';
       const roleUpper = (user.role || 'officer').toUpperCase();
       const roleColor = user.role === 'supervisor' ? '#c084fc' : '#60a5fa';
+      const nameDisplay = user.name ? escapeHTML(user.name) : '<span style="color:#f59e0b; font-weight:600; font-size:0.82rem;">(Pending 1st Login)</span>';
 
       html += `
         <li class="admin-user-card" data-user="${escapeHTML(user.username)}">
@@ -5029,8 +5546,12 @@ document.addEventListener('DOMContentLoaded', async () => {
               <span class="user-role-pill" style="color: ${roleColor}; border-color: ${roleColor};">${roleUpper}</span>
             </div>
             <div class="user-card-row">
+              <span class="user-card-label">USER NAME:</span>
+              <span class="user-card-value" style="color: #ffffff; font-weight: 800;">${nameDisplay}</span>
+            </div>
+            <div class="user-card-row">
               <span class="user-card-label">PASSWORD:</span>
-              <span class="user-card-value user-pass-val">${escapeHTML(user.password)}</span>
+              <span class="user-card-value user-pass-val" style="color: #fbbf24 !important; font-family: monospace; font-size: 0.95rem; letter-spacing: 0.5px;">${escapeHTML(user.password || '')}</span>
             </div>
           </div>
           <div class="user-card-right">
@@ -5038,7 +5559,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
               <span>DELETE</span>
             </button>
-            <button type="button" class="btn-user-action btn-edit-user" data-user="${escapeHTML(user.username)}" data-pass="${escapeHTML(user.password)}" data-role="${escapeHTML(user.role || 'officer')}" title="Edit Member">
+            <button type="button" class="btn-user-action btn-edit-user" data-user="${escapeHTML(user.username)}" data-name="${escapeHTML(user.name || '')}" data-pass="${escapeHTML(user.password || '')}" data-role="${escapeHTML(user.role || 'officer')}" title="Edit Member">
               <i data-lucide="edit-2" style="width: 14px; height: 14px;"></i>
               <span>EDIT</span>
             </button>
@@ -5056,17 +5577,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         const usernameToDelete = btn.getAttribute('data-user');
         if (usernameToDelete === 'admin') return;
 
+        if (!confirm(`Are you sure you want to delete member "${usernameToDelete}"?`)) {
+          return;
+        }
+
         try {
           const response = await fetch(`/api/users?adminUser=admin&username=${encodeURIComponent(usernameToDelete)}`, {
             method: 'DELETE'
           });
-          const data = await response.json();
+          const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
+      const data = await response.json();
 
           if (!response.ok) {
             throw new Error(data.error || 'Failed to delete user.');
           }
 
           fetchUsers();
+          if (window.showAppNotification) {
+            window.showAppNotification(`Member ${usernameToDelete} deleted.`, 'success');
+          }
         } catch (err) {
           alert(`Error deleting user: ${err.message}`);
         }
@@ -5077,9 +5611,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     list.querySelectorAll('.btn-edit-user').forEach(btn => {
       btn.addEventListener('click', () => {
         const username = btn.getAttribute('data-user');
-        const pass = btn.getAttribute('data-pass');
+        const name = btn.getAttribute('data-name') || '';
+        const pass = btn.getAttribute('data-pass') || '';
         const role = btn.getAttribute('data-role') || 'officer';
-        openEditMemberModal(username, pass, role);
+        openEditMemberModal(username, name, pass, role);
       });
     });
   }
@@ -5107,17 +5642,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnCloseEditMember = document.getElementById('btn-close-edit-member');
   const btnCancelEditMember = document.getElementById('btn-cancel-edit-member');
   const editMemberForm = document.getElementById('edit-member-form');
+  const editMemberOrigId = document.getElementById('edit-member-orig-id');
   const editMemberId = document.getElementById('edit-member-id');
+  const editMemberName = document.getElementById('edit-member-name');
   const editMemberPass = document.getElementById('edit-member-pass');
   const editMemberRole = document.getElementById('edit-member-role');
   const editRoleOfficer = document.getElementById('edit-role-officer');
   const editRoleSupervisor = document.getElementById('edit-role-supervisor');
 
-  function openEditMemberModal(username, password, role) {
+  function openEditMemberModal(username, name, password, role) {
     if (!editMemberModal) return;
+    if (editMemberOrigId) editMemberOrigId.value = username;
     if (editMemberId) editMemberId.value = username;
-    if (editMemberPass) editMemberPass.value = password;
-    if (editMemberRole) editMemberRole.value = role;
+    if (editMemberName) editMemberName.value = name || '';
+    if (editMemberPass) editMemberPass.value = password || '';
+    if (editMemberRole) editMemberRole.value = role || 'officer';
 
     if (role === 'supervisor') {
       if (editRoleSupervisor) editRoleSupervisor.classList.add('active');
@@ -5159,11 +5698,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (editMemberForm) {
     editMemberForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const username = editMemberId.value.trim();
+      const origUsername = (editMemberOrigId ? editMemberOrigId.value : editMemberId.value).trim();
+      const newUsername = editMemberId.value.trim();
+      const name = editMemberName ? editMemberName.value.trim().toUpperCase() : '';
       const password = editMemberPass.value;
       const role = editMemberRole ? editMemberRole.value : 'officer';
 
-      if (!username || !password) return;
+      if (!isUserAdmin()) {
+        if (window.showAppNotification) window.showAppNotification('ONLY ADMIN CAN EDIT MEMBER', 'error');
+        return;
+      }
+
+      if (!newUsername || !password) return;
 
       try {
         const response = await fetch('/api/users', {
@@ -5171,19 +5717,30 @@ document.addEventListener('DOMContentLoaded', async () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             adminUser: 'admin',
-            username,
+            origUsername,
+            newUsername,
+            name,
             password,
             role
           })
         });
 
-        const data = await response.json();
+        const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
+      const data = await response.json();
         if (!response.ok) {
           throw new Error(data.error || 'Failed to update user.');
         }
 
         closeEditMemberModal();
         fetchUsers();
+        if (window.showAppNotification) {
+          window.showAppNotification(`User ${newUsername} updated successfully!`, 'success');
+        }
       } catch (err) {
         alert(`Error updating user: ${err.message}`);
       }
@@ -5193,21 +5750,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Submit handler for adding new user account
   const addUserForm = document.getElementById('add-user-form');
   const newUsernameInput = document.getElementById('new-user-id');
+  const newNameInput = document.getElementById('new-user-name');
   const newPasswordInput = document.getElementById('new-user-pass');
 
   if (addUserForm) {
     addUserForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!isAdmin()) {
-        alert('Unauthorized: Only Admin can add members.');
-        return;
-      }
-      const username = newUsernameInput.value.trim().toLowerCase();
-      const password = newPasswordInput.value;
+      const username = newUsernameInput.value.trim();
+      const name = newNameInput ? newNameInput.value.trim().toUpperCase() : '';
+      const password = newPasswordInput ? newPasswordInput.value.trim() : '';
       const roleElement = document.getElementById('new-user-role');
       const role = roleElement ? roleElement.value : 'officer';
 
-      if (!username || !password) return;
+      if (!isUserAdmin()) {
+        if (window.showAppNotification) window.showAppNotification('ONLY ADMIN CAN ADD MEMBER', 'error');
+        return;
+      }
+
+      if (!username) return;
 
       try {
         const response = await fetch('/api/users', {
@@ -5216,26 +5776,160 @@ document.addEventListener('DOMContentLoaded', async () => {
           body: JSON.stringify({
             adminUser: 'admin',
             newUsername: username,
+            newName: name,
             newPassword: password,
             newRole: role
           })
         });
 
-        const data = await response.json();
+        const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
+      const data = await response.json();
 
         if (!response.ok) {
           throw new Error(data.error || 'Failed to add user account.');
         }
 
         newUsernameInput.value = '';
-        newPasswordInput.value = '';
+        if (newNameInput) newNameInput.value = '';
+        if (newPasswordInput) newPasswordInput.value = '';
         fetchUsers();
+        if (window.showAppNotification) {
+          window.showAppNotification(`User ${username} added successfully!`, 'success');
+        }
       } catch (err) {
         alert(`Error adding user: ${err.message}`);
       }
     });
   }
 
+  // First-Time Login Profile Setup Modal Logic
+  const firstTimeSetupModal = document.getElementById('first-time-setup-modal');
+  const firstTimeSetupForm = document.getElementById('first-time-setup-form');
+  const setupFullName = document.getElementById('setup-full-name');
+  const setupNewPass = document.getElementById('setup-new-password');
+  const setupConfirmPass = document.getElementById('setup-confirm-password');
+  const setupErrorMsg = document.getElementById('setup-error-msg');
+
+  function checkAndPromptFirstTimeSetup(user) {
+    if (!user || user.id === 'admin') return;
+    if (user.firstLogin || !user.name || user.name.trim() === '' || user.name.toUpperCase() === user.id.toUpperCase()) {
+      openFirstTimeSetupModal(user);
+    }
+  }
+
+  function openFirstTimeSetupModal(user) {
+    if (!firstTimeSetupModal) return;
+    if (setupFullName) {
+      setupFullName.value = (user.name && user.name.toUpperCase() !== user.id.toUpperCase()) ? user.name : '';
+      setupFullName.placeholder = 'USER NAME';
+    }
+    if (setupNewPass) {
+      setupNewPass.value = '';
+      setupNewPass.placeholder = 'PASSWORD';
+    }
+    if (setupConfirmPass) {
+      setupConfirmPass.value = '';
+      setupConfirmPass.placeholder = 'CONFIRM PASSWORD';
+    }
+    if (setupErrorMsg) {
+      setupErrorMsg.textContent = '';
+      setupErrorMsg.style.display = 'none';
+    }
+    firstTimeSetupModal.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+    setTimeout(() => {
+      if (setupFullName) setupFullName.focus();
+    }, 200);
+  }
+
+  if (firstTimeSetupForm) {
+    firstTimeSetupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fullName = (setupFullName ? setupFullName.value : '').trim().toUpperCase();
+      const newPass = setupNewPass ? setupNewPass.value : '';
+      const confirmPass = setupConfirmPass ? setupConfirmPass.value : '';
+
+      if (!fullName) {
+        if (setupErrorMsg) {
+          setupErrorMsg.textContent = 'Please enter your User Name.';
+          setupErrorMsg.style.display = 'block';
+        }
+        return;
+      }
+
+      if (!newPass) {
+        if (setupErrorMsg) {
+          setupErrorMsg.textContent = 'Please enter your new password.';
+          setupErrorMsg.style.display = 'block';
+        }
+        return;
+      }
+
+      if (newPass !== confirmPass) {
+        if (setupErrorMsg) {
+          setupErrorMsg.textContent = 'Passwords do not match. Please re-enter.';
+          setupErrorMsg.style.display = 'block';
+        }
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/user/first-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: currentUser.id,
+            newName: fullName,
+            newPassword: newPass
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to complete setup.');
+        }
+
+        currentUser.name = fullName;
+        currentUser.firstLogin = false;
+        localStorage.setItem('surv_session', JSON.stringify(currentUser));
+
+        if (userBadgeId) userBadgeId.textContent = fullName;
+        if (inputSurv) inputSurv.value = fullName;
+        applyUserWallpaper(fullName);
+
+        firstTimeSetupModal.style.display = 'none';
+
+        if (window.showAppNotification) {
+          window.showAppNotification(`Welcome, ${fullName}! Profile setup complete.`, 'success');
+        }
+      } catch (err) {
+        if (setupErrorMsg) {
+          setupErrorMsg.textContent = err.message || 'Setup error. Please try again.';
+          setupErrorMsg.style.display = 'block';
+        }
+      }
+    });
+  }
+
+  const btnCancelFirstSetup = document.getElementById('btn-cancel-first-setup');
+  if (btnCancelFirstSetup) {
+    btnCancelFirstSetup.addEventListener('click', () => {
+      if (firstTimeSetupModal) firstTimeSetupModal.style.display = 'none';
+      if (btnLogout) {
+        btnLogout.click();
+      } else {
+        localStorage.removeItem('surv_session');
+        sessionStorage.removeItem('current_panel');
+        currentUser = null;
+        showView('login');
+      }
+    });
+  }
   // Helper: Secure HTML escape to avoid XSS
   function escapeHTML(str) {
     if (!str) return '';
@@ -5303,31 +5997,50 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if (btnDeleteSelected) {
- if (btnDeleteSelected) btnDeleteSelected.addEventListener('click', async () => {
+    btnDeleteSelected.addEventListener('click', async () => {
       const selectedBoxes = document.querySelectorAll('.entry-checkbox:checked');
       if (selectedBoxes.length === 0) return;
-      // Deletion confirmation removed by request
-      
+
       const idsToDelete = Array.from(selectedBoxes).map(cb => Number(cb.getAttribute('data-id')));
-      
+      const isAllSelected = (selectAllEntries && selectAllEntries.checked) && (idsToDelete.length >= (allEntries.length * 0.95));
+
       try {
         btnDeleteSelected.disabled = true;
         btnDeleteSelected.innerHTML = `<i data-lucide="loader" class="spin"></i> Deleting...`;
-        lucide.createIcons();
-        
-        await Promise.all(idsToDelete.map(id => fetch(`/api/entries?id=${id}`, { method: 'DELETE' })));
-        
-        await fetchEntries(); // Re-render table
-        
-        // Reset select all
+        if (window.lucide) lucide.createIcons();
+
+        // 1. Instant in-memory deletion for zero-latency UI response
+        const deleteSet = new Set(idsToDelete);
+        allEntries = isAllSelected ? [] : allEntries.filter(e => !deleteSet.has(Number(e.id)));
+
+        // Instant UI re-render
+        if (typeof updateAllEntriesView === 'function') updateAllEntriesView();
+        if (typeof renderEntries === 'function') renderEntries(allEntries, { limit: CURRENT_ENTRY_LIMIT, isArchive: false });
         if (selectAllEntries) selectAllEntries.checked = false;
         updateBulkActionButtonsVisibility();
+
+        // 2. High-speed single bulk HTTP request to server
+        const payload = isAllSelected ? { all: true } : { ids: idsToDelete };
+        const resp = await fetch('/api/entries/batch-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!resp.ok) {
+          const errData = await resp.json().catch(() => ({}));
+          throw new Error(errData.error || 'Bulk delete failed.');
+        }
+
+        showAppNotification(`${idsToDelete.length} ENTRIES DELETED QUICKLY`, 'success');
       } catch (err) {
-        alert('Error during bulk delete: ' + err.message);
+        console.error('Bulk delete error:', err);
+        showAppNotification('Error deleting entries: ' + err.message, 'error');
+        await fetchEntries(); // Re-fetch as safety fallback
       } finally {
         btnDeleteSelected.disabled = false;
-        btnDeleteSelected.innerHTML = `<i data-lucide="trash-2"></i> Delete Selected`;
-        lucide.createIcons();
+        btnDeleteSelected.innerHTML = `<i data-lucide="trash-2"></i>`;
+        if (window.lucide) lucide.createIcons();
       }
     });
   }
@@ -5517,19 +6230,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     lucide.createIcons();
   }
 
-  // Warning Modal Close Button Listeners
+  // Warning Modal Close Button Listener
+  const btnCloseBarredWarning = document.getElementById('btn-close-barred-warning');
   const barredWarningModal = document.getElementById('barred-warning-modal');
-  if (barredWarningModal) {
-    const closeBarredElements = barredWarningModal.querySelectorAll('#btn-close-barred-warning, #btn-x-close-barred-warning, #btn-cancel-barred-warning, .modal-close-btn');
-    closeBarredElements.forEach(btn => {
-      btn.addEventListener('click', () => {
-        barredWarningModal.style.display = 'none';
-      });
-    });
-    barredWarningModal.addEventListener('click', (e) => {
-      if (e.target === barredWarningModal) {
-        barredWarningModal.style.display = 'none';
-      }
+  if (btnCloseBarredWarning && barredWarningModal) {
+ if (btnCloseBarredWarning) btnCloseBarredWarning.addEventListener('click', () => {
+      barredWarningModal.style.display = 'none';
     });
   }
 
@@ -5545,27 +6251,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'date-changed' && data.newDate) {
-          console.log('[SSE] Business date changed to:', data.newDate);
+
+        if (data.type === 'date-rollover') {
+          console.log('[SSE] Received date-rollover to:', data.newDate);
           currentBusinessDateStr = data.newDate;
-          if (homeGamingDateDisplay) {
-            homeGamingDateDisplay.textContent = currentBusinessDateStr;
-          }
-          const allGamingDateEl = document.getElementById('all-entries-gaming-date');
-          if (allGamingDateEl) {
-            allGamingDateEl.textContent = `TODAY GAMING DATE: ${currentBusinessDateStr}`;
-          }
-          const dayNum = Number(currentBusinessDateStr.split('-')[2]);
-          if (!isNaN(dayNum)) {
-            activeAllEntriesDay = dayNum;
-            if (gotoDayInput) gotoDayInput.value = activeAllEntriesDay;
-          }
-          if (allEntriesDatePicker) {
-            allEntriesDatePicker.value = currentBusinessDateStr;
-          }
-          fetchEntries().then(() => {
-            renderDayPagination();
-          });
+          currentBusinessDate = data.newDate;
+          updateGamingDateDisplay();
+          fetchEntries();
+          showAppNotification('New Gaming Day started: ' + formatDisplayDate(data.newDate), 'info');
+          return;
+        }
+
+        if (data.type === 'entry-updated' || data.type === 'entry-created' || data.type === 'entry-deleted') {
+          console.log('[SSE] Live entry event received:', data.type);
+          fetchEntries().catch(() => {});
+          return;
         }
 
         if (data.type === 'barred-match') {
@@ -5591,11 +6291,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                   const val = String(data.content[key] || '');
                   if (kLow.includes('photo') || kLow.includes('image')) {
                      if (val.startsWith('data:image/') || val.startsWith('http')) {
-                        details += `<div style="margin-bottom:4px;"><strong style="color:#a78bfa;">${key}:</strong><br/><img src="${val}" style="max-width: 150px; border-radius: 4px; margin-top: 4px;" /></div>`;
+                        details += `<div style="text-align:center; margin-bottom:6px;"><img src="${val}" style="max-height:85px; max-width:100%; object-fit:contain; border-radius:6px; border:1.5px solid rgba(239,68,68,0.6);" /></div>`;
                         continue;
                      }
                   }
-                  details += `<div style="margin-bottom:4px;"><strong style="color:#a78bfa;">${key}:</strong> ${val}</div>`;
+                  details += `<div style="font-size:0.78rem; line-height:1.35; margin-bottom:2px;"><strong style="color:#ef4444;">${key.toUpperCase()}:</strong> <span style="color:#fff;">${val}</span></div>`;
 
                 }
               }
@@ -5732,78 +6432,1226 @@ document.addEventListener('DOMContentLoaded', () => {
       reader.readAsDataURL(file);
     });
   }
-
   // ==========================================================================
-  // MOBILE & DESKTOP AUTO-FIT ENGINE: AUTO-DETECT SCREEN SIZE & REAL-TIME AUTO-FIT
+  // OFFLINE SURVEILLANCE AI ASSISTANT QUERY ENGINE
   // ==========================================================================
-  function applyAutoFit() {
-    const vv = window.visualViewport;
-    const h = vv ? Math.round(vv.height) : window.innerHeight;
-    const w = vv ? Math.round(vv.width) : window.innerWidth;
-    const docEl = document.documentElement;
-    const body = document.body;
+  const aiAssistantModal = document.getElementById('ai-assistant-modal');
+  const btnOpenAiAssistant = document.getElementById('btn-open-ai-assistant');
+  const btnCloseAiModal = document.getElementById('btn-close-ai-modal');
+  const aiDatePicker = document.getElementById('ai-date-picker');
+  const aiSelectedDateBadge = document.getElementById('ai-selected-date-badge');
+  const aiChatMessages = document.getElementById('ai-chat-messages');
+  const aiQueryInput = document.getElementById('ai-query-input');
+  const btnAiSend = document.getElementById('btn-ai-send');
+  const btnAiClear = document.getElementById('btn-ai-clear');
 
-    // Dynamically set CSS variables on :root so all containers fit 100% in viewport
-    docEl.style.setProperty('--app-height', `${h}px`);
-    docEl.style.setProperty('--app-width', `${w}px`);
-    docEl.style.setProperty('--vh', `${h * 0.01}px`);
+  function openAiAssistantModal(initialQuery = '') {
+    if (!aiAssistantModal) return;
+    aiAssistantModal.style.setProperty('display', 'flex', 'important');
+    const allEntriesDatePicker = document.getElementById('all-entries-date-picker');
+    const activeDashboardDate = (allEntriesDatePicker && allEntriesDatePicker.value)
+      ? allEntriesDatePicker.value
+      : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+    if (aiDatePicker && (!aiDatePicker.value || !initialQuery)) {
+      aiDatePicker.value = activeDashboardDate;
+    }
+    const curDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+    if (aiSelectedDateBadge) {
+      aiSelectedDateBadge.textContent = formatDisplayDate(curDate);
+    }
+    
+    if (initialQuery) {
+      if (aiQueryInput) aiQueryInput.value = initialQuery;
+      executeAiQuery(initialQuery);
+    } else {
+      resetAiAssistant();
+      setTimeout(() => {
+        if (aiQueryInput) aiQueryInput.focus();
+      }, 100);
+    }
+    if (window.lucide) lucide.createIcons();
+  }
 
-    // Screen classification classes for responsive styling
-    body.classList.toggle('screen-mobile', w <= 768);
-    body.classList.toggle('screen-small', w <= 500);
-    body.classList.toggle('screen-extra-small', w <= 380);
-    body.classList.toggle('screen-short', h <= 650);
-    body.classList.toggle('screen-landscape', w > h && h <= 550);
+  function resetAiAssistant() {
+    if (aiQueryInput) aiQueryInput.value = '';
+    const chipsBar = aiAssistantModal ? aiAssistantModal.querySelector('.ai-chips-bar') : null;
+    if (chipsBar) {
+      chipsBar.style.removeProperty('display');
+    }
+    if (aiChatMessages) {
+      aiChatMessages.innerHTML = '';
+      renderAiWelcome();
+      aiChatMessages.scrollTop = 0;
+    }
+    if (window.lucide) lucide.createIcons();
+  }
 
-    // Keep legacy compact classes
-    body.classList.toggle('compact-view', w <= 650);
-    body.classList.toggle('ultra-compact-view', w <= 420);
+  function closeAiAssistantModal() {
+    if (aiAssistantModal) {
+      aiAssistantModal.style.setProperty('display', 'none', 'important');
+    }
+    resetAiAssistant();
+  }
 
-    // Ensure content wrapper fills exactly 100% available space with 0 document overflow
-    const wrapper = document.querySelector('.content-wrapper');
-    if (wrapper) {
-      wrapper.style.setProperty('width', '100%', 'important');
-      wrapper.style.setProperty('max-width', '100%', 'important');
-      wrapper.style.setProperty('height', 'auto', 'important');
-      wrapper.style.setProperty('min-height', '0', 'important');
-      wrapper.style.setProperty('flex', '1 1 0', 'important');
-      wrapper.style.setProperty('overflow', 'hidden', 'important');
+  function renderAiWelcome() {
+    if (!aiChatMessages) return;
+    const curDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+    const dispDate = formatDisplayDate(curDate);
+    aiChatMessages.innerHTML = `
+      <div class="ai-msg-row assistant">
+        <div class="ai-assistant-card" style="border-color: rgba(168, 85, 247, 0.45);">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title">🤖 SURVEILLANCE AI ASSISTANT (OFFLINE)</span>
+            <span style="font-size: 0.72rem; color: #a855f7; font-weight: 800; background: rgba(168, 85, 247, 0.15); padding: 2px 8px; border-radius: 4px;">100% LOCAL & OFFLINE</span>
+          </div>
+          <p style="color: #cbd5e1; font-size: 0.88rem; margin: 0; line-height: 1.5; font-weight: 700;">
+            HELLO! I AM YOUR OFFLINE AI ASSISTANT. ACTIVE GAMING DATE: <span style="color: #38bdf8; font-family: monospace;">${dispDate}</span>.
+          </p>
+          <div style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; line-height: 1.4;">
+            YOU CAN ASK ME ANY QUESTION ABOUT:
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0;">
+            <span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 0.74rem; color: #38bdf8; font-weight: 800;">👤 GUEST DETAILS</span>
+            <span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 0.74rem; color: #34d399; font-weight: 800;">💰 TOTAL IN</span>
+            <span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 0.74rem; color: #f87171; font-weight: 800;">💸 TOTAL OUT</span>
+            <span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 0.74rem; color: #fbbf24; font-weight: 800;">⚖️ RESULT</span>
+            <span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 0.74rem; color: #c084fc; font-weight: 800;">📋 ALL ENTRIES</span>
+            <span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 0.74rem; color: #60a5fa; font-weight: 800;">📅 GAMING DATE SELECT</span>
+          </div>
+          <span style="color: #64748b; font-size: 0.74rem; font-weight: 700;">CLICK ANY QUICK ACTION BUTTON ABOVE OR TYPE A QUESTION BELOW!</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function appendAiMessage(role, htmlContent) {
+    if (!aiChatMessages) return;
+    const row = document.createElement('div');
+    row.className = `ai-msg-row ${role}`;
+    if (role === 'user') {
+      row.innerHTML = `<div class="ai-user-bubble">${htmlContent}</div>`;
+    } else {
+      row.innerHTML = htmlContent;
+    }
+    aiChatMessages.appendChild(row);
+    aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
+
+    // Attach listeners on any interactive buttons inside assistant response
+    row.querySelectorAll('.ai-open-guest-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const gName = btn.getAttribute('data-guest');
+        const activeDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+        if (gName) {
+          const openFn = typeof openGuestSummaryPopup === 'function' ? openGuestSummaryPopup : window.openGuestSummaryPopup;
+          const candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+            ? allEntries
+            : (window.allEntries || []);
+          if (openFn) openFn(gName, candidateList, activeDate);
+        }
+      });
+    });
+    row.querySelectorAll('.ai-ask-suggest-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const q = btn.getAttribute('data-query');
+        if (q) executeAiQuery(q);
+      });
+    });
+  }
+
+  window.executeAiQuery = executeAiQuery;
+  async function executeAiQuery(rawQuery) {
+    if (!rawQuery || !rawQuery.trim()) return;
+    const query = rawQuery.trim();
+    if (aiQueryInput) aiQueryInput.value = '';
+
+    // HIDE UNNECESSARY THINGS WHEN SHOWING RESULT:
+    // 1. Hide the quick action chips bar to maximize result area
+    const chipsBar = aiAssistantModal ? aiAssistantModal.querySelector('.ai-chips-bar') : null;
+    if (chipsBar) {
+      chipsBar.style.setProperty('display', 'none', 'important');
     }
 
-    if (window.lucide) {
+    // 2. Clear out the welcome card and previous queries so ONLY the search result is displayed
+    if (aiChatMessages) {
+      aiChatMessages.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:center; padding: 40px 20px; gap: 12px; color: #a855f7;">
+          <div class="spinner" style="width: 24px; height: 24px; border-width: 2.5px; border-color: #c084fc; border-top-color: transparent;"></div>
+          <span style="font-size: 0.9rem; font-weight: 800; letter-spacing: 0.8px; color: #cbd5e1;">SEARCHING SURVEILLANCE RECORDS...</span>
+        </div>
+      `;
+    }
+
+    let candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+      ? allEntries
+      : ((typeof window !== 'undefined' && Array.isArray(window.allEntries)) ? window.allEntries : []);
+
+    if (candidateList.length === 0 && typeof fetchEntries === 'function') {
       try {
-        lucide.createIcons();
-      } catch (e) {}
+        await fetchEntries();
+        candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+          ? allEntries
+          : ((typeof window !== 'undefined' && Array.isArray(window.allEntries)) ? window.allEntries : []);
+      } catch (e) {
+        console.warn('AI fetch fallback error:', e);
+      }
     }
+
+    let targetDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+
+    // Check for explicit date mentioned in query
+    const dateMatch = query.match(/\b(\d{2})[-/](\d{2})[-/](\d{4})\b/);
+    if (dateMatch) {
+      targetDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
+      if (aiDatePicker) aiDatePicker.value = targetDate;
+    } else {
+      const isoDateMatch = query.match(/\b(\d{4})[-/](\d{2})[-/](\d{2})\b/);
+      if (isoDateMatch) {
+        targetDate = isoDateMatch[0].replace(/\//g, '-');
+        if (aiDatePicker) aiDatePicker.value = targetDate;
+      } else if (/\byesterday\b/i.test(query)) {
+        const d = new Date(targetDate);
+        d.setDate(d.getDate() - 1);
+        targetDate = d.toISOString().split('T')[0];
+        if (aiDatePicker) aiDatePicker.value = targetDate;
+      } else if (/\btoday\b/i.test(query)) {
+        targetDate = currentBusinessDateStr || currentBusinessDate || getBusinessDate();
+        if (aiDatePicker) aiDatePicker.value = targetDate;
+      }
+    }
+
+    const dispDate = formatDisplayDate(targetDate);
+    if (aiSelectedDateBadge) {
+      aiSelectedDateBadge.textContent = dispDate;
+    }
+
+    // Filter candidate entries for target date
+    const dateEntries = candidateList.filter(e => {
+      const eDate = getEntryDate(e);
+      return eDate === targetDate;
+    });
+
+    const answerHtml = processOfflineAiQuestion(query, targetDate, dispDate, dateEntries, candidateList);
+
+    // ONLY DISPLAY THE RESULT CARD DIRECTLY (No extra headers, no reset bar)
+    if (aiChatMessages) {
+      aiChatMessages.innerHTML = '';
+      const resultCard = document.createElement('div');
+      resultCard.className = 'ai-msg-row assistant ai-result-only-view';
+      resultCard.style.width = '100%';
+      resultCard.innerHTML = answerHtml;
+      aiChatMessages.appendChild(resultCard);
+      aiChatMessages.scrollTop = 0;
+
+      // Re-attach listeners for interactive buttons inside the result card
+      resultCard.querySelectorAll('.ai-open-guest-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+        const gName = btn.getAttribute('data-guest');
+        const activeDate = aiDatePicker ? aiDatePicker.value : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+        if (gName) {
+            const openFn = typeof openGuestSummaryPopup === 'function' ? openGuestSummaryPopup : window.openGuestSummaryPopup;
+            const candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+              ? allEntries
+              : (window.allEntries || []);
+            if (openFn) openFn(gName, candidateList, activeDate);
+          }
+        });
+      });
+      resultCard.querySelectorAll('.ai-ask-suggest-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const q = btn.getAttribute('data-query');
+          if (q) executeAiQuery(q);
+        });
+      });
+      resultCard.querySelectorAll('.ai-btn-show-date-all').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const d = btn.getAttribute('data-date');
+          if (typeof window.aiShowDateAllEntries === 'function') {
+            window.aiShowDateAllEntries(d);
+          } else if (typeof executeAiQuery === 'function') {
+            executeAiQuery('ALL ENTRIES');
+          }
+        });
+      });
+    }
+
+    if (window.lucide) lucide.createIcons();
   }
 
-  // Initial call on page load
-  applyAutoFit();
+  function processOfflineAiQuestion(query, targetDate, dispDate, dateEntries, fullEntriesList) {
+    const qLower = query.toLowerCase().trim();
+    const candidateList = (Array.isArray(fullEntriesList) && fullEntriesList.length > 0)
+      ? fullEntriesList
+      : ((typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+          ? allEntries
+          : (window.allEntries || []));
+    const barredList = (typeof globalBarredList !== 'undefined' && Array.isArray(globalBarredList) && globalBarredList.length > 0)
+      ? globalBarredList
+      : (window.globalBarredList || []);
+    const clusterFn = (typeof getGuestCluster === 'function')
+      ? getGuestCluster
+      : (window.getGuestCluster || function(t, c) { return { canonicalName: (t||'').toUpperCase(), entries: [] }; });
 
-  // Multi-event listeners: window resize, orientationchange, visualViewport changes, pageshow
-  let autoFitResizeTimer = null;
-  function triggerAutoFit() {
-    requestAnimationFrame(applyAutoFit);
-    if (autoFitResizeTimer) clearTimeout(autoFitResizeTimer);
-    autoFitResizeTimer = setTimeout(applyAutoFit, 50);
+    // 0. Detect if query is targeted at a specific guest (No hardcoded names)
+    let detectedGuest = null;
+    const allUniqueGuests = Array.from(new Set(candidateList.map(e => (e.guestname || '').trim()).filter(Boolean)));
+    // Sort longer names first so fuller names match first
+    allUniqueGuests.sort((a, b) => b.length - a.length);
+
+    // Pure general overall commands should not match guest names
+    const isGeneralQuery = /^(overall\s*total\s*in|total\s*in\s*overall|total\s*in\s*today|today.*total\s*in|how\s*much.*in$|total\s*drop|total\s*cashin|^total\s*in$|overall\s*total\s*out|total\s*out\s*overall|total\s*out\s*today|today.*total\s*out|how\s*much.*out$|total\s*cashout|total\s*paid|^total\s*out$|overall\s*result|gaming\s*result|today\s*result|net\s*result|overall\s*performance|^result$|all\s*entries|how\s*many\s*entries|entries\s*count|all\s*records|^entries$|selected\s*date|that\s*day|day\s*entries|show\s*entries|date|sent[ae]nce.*|.*sent[ae]nce.*|perticular\s*day|particular\s*day|top\s*guests?|top\s*patrons?|major\s*patrons?|major\s*guests?|biggest\s*players?)$/i.test(qLower) || /^\d{2}[-/]\d{2}[-/]\d{4}$/.test(qLower) || /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(qLower);
+
+    if (!isGeneralQuery) {
+      for (const g of allUniqueGuests) {
+        if (g.length >= 2 && qLower.includes(g.toLowerCase())) {
+          detectedGuest = g;
+          break;
+        }
+      }
+
+      if (!detectedGuest) {
+        const cleanWords = qLower
+          .replace(/total\s*in|total\s*out|result|entries|entry|detail|details|info|guest|patron|how\s*much|what\s*is|tell\s*me\s*about|summary\s*of|show|for|of|on|at|selected|that\s*day|day|date|sent[ae]nce\s*form|sent[ae]nce|perticular|particular|\?/g, '')
+          .trim();
+        if (cleanWords.length >= 2) {
+          for (const g of allUniqueGuests) {
+            if (g.toLowerCase().includes(cleanWords) || cleanWords.includes(g.toLowerCase())) {
+              detectedGuest = g;
+              break;
+            }
+          }
+          if (!detectedGuest && !/^(total|result|entries|in|out|drop|paid|today|yesterday|date|day|sentence|sentences|form)$/i.test(cleanWords)) {
+            detectedGuest = cleanWords.toUpperCase();
+          }
+        }
+      }
+    }
+
+    // 1. Overall Total In (Cashin / Drop)
+    if (!detectedGuest && /overall\s*total\s*in|total\s*in\s*overall|total\s*in\s*today|today.*total\s*in|how\s*much.*in$|total\s*drop|total\s*cashin|^total\s*in$/i.test(qLower)) {
+      let totalIn = 0;
+      let countIn = 0;
+      const guestSums = {};
+
+      dateEntries.forEach(e => {
+        const amt = Number(e.amount) || 0;
+        if (isTotalInType(e.type)) {
+          totalIn += amt;
+          countIn++;
+          const g = (e.guestname || 'UNKNOWN').trim().toUpperCase();
+          guestSums[g] = (guestSums[g] || 0) + amt;
+        }
+      });
+
+      const topGuests = Object.entries(guestSums)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+
+      return `
+        <div class="ai-assistant-card">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title">💰 OVERALL TOTAL IN (CASHIN / DROP)</span>
+            <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">📅 ${dispDate}</span>
+          </div>
+          <div style="text-align: center; padding: 12px; background: rgba(0, 0, 0, 0.4); border-radius: 8px; border: 1.5px solid rgba(56, 189, 248, 0.4);">
+            <div style="font-size: 0.8rem; color: #94a3b8; font-weight: 800;">TOTAL CASH INFLOW</div>
+            <div style="font-size: 1.8rem; font-weight: 900; color: #38bdf8; font-family: 'JetBrains Mono', monospace; margin: 4px 0;">₹${formatIndianNumber(totalIn)}</div>
+            <div style="font-size: 0.78rem; color: #cbd5e1; font-weight: 700;">${countIn} CASHIN TRANSACTIONS ACROSS ${Object.keys(guestSums).length} GUESTS</div>
+          </div>
+          ${topGuests.length > 0 ? `
+            <div style="font-size: 0.78rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">TOP CASHIN GUESTS ON THIS DATE:</div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              ${topGuests.map(([name, sum], idx) => `
+                <div class="ai-entry-row" style="cursor: pointer;" onclick="(typeof window.aiQueryGuest === 'function' ? window.aiQueryGuest('${escapeHTML(name)}') : null)">
+                  <span style="font-weight: 800; color: #ffffff;">#${idx + 1} ${escapeHTML(name)}</span>
+                  <span style="font-weight: 900; color: #38bdf8;">₹${formatIndianNumber(sum)}</span>
+                </div>
+              `).join('')}
+            </div>
+          ` : '<div style="color: #94a3b8; font-size: 0.82rem; text-align: center;">NO CASHIN ENTRIES RECORDED FOR THIS DATE.</div>'}
+        </div>
+      `;
+    }
+
+    // 2. Overall Total Out (Cashout / Paid)
+    if (!detectedGuest && /overall\s*total\s*out|total\s*out\s*overall|total\s*out\s*today|today.*total\s*out|how\s*much.*out$|total\s*cashout|total\s*paid|^total\s*out$/i.test(qLower)) {
+      let totalOut = 0;
+      let countOut = 0;
+      const guestSums = {};
+
+      dateEntries.forEach(e => {
+        const amt = Number(e.amount) || 0;
+        if (isTotalOutType(e.type)) {
+          totalOut += amt;
+          countOut++;
+          const g = (e.guestname || 'UNKNOWN').trim().toUpperCase();
+          guestSums[g] = (guestSums[g] || 0) + amt;
+        }
+      });
+
+      const topGuests = Object.entries(guestSums)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+
+      return `
+        <div class="ai-assistant-card">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title">💸 OVERALL TOTAL OUT (CASHOUT / PAID)</span>
+            <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">📅 ${dispDate}</span>
+          </div>
+          <div style="text-align: center; padding: 12px; background: rgba(0, 0, 0, 0.4); border-radius: 8px; border: 1.5px solid rgba(239, 68, 68, 0.4);">
+            <div style="font-size: 0.8rem; color: #94a3b8; font-weight: 800;">TOTAL CASHOUT OUTFLOW</div>
+            <div style="font-size: 1.8rem; font-weight: 900; color: #f87171; font-family: 'JetBrains Mono', monospace; margin: 4px 0;">₹${formatIndianNumber(totalOut)}</div>
+            <div style="font-size: 0.78rem; color: #cbd5e1; font-weight: 700;">${countOut} CASHOUT TRANSACTIONS ACROSS ${Object.keys(guestSums).length} GUESTS</div>
+          </div>
+          ${topGuests.length > 0 ? `
+            <div style="font-size: 0.78rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">TOP CASHOUT GUESTS ON THIS DATE:</div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              ${topGuests.map(([name, sum], idx) => `
+                <div class="ai-entry-row" style="cursor: pointer;" onclick="(typeof window.aiQueryGuest === 'function' ? window.aiQueryGuest('${escapeHTML(name)}') : null)">
+                  <span style="font-weight: 800; color: #ffffff;">#${idx + 1} ${escapeHTML(name)}</span>
+                  <span style="font-weight: 900; color: #f87171;">₹${formatIndianNumber(sum)}</span>
+                </div>
+              `).join('')}
+            </div>
+          ` : '<div style="color: #94a3b8; font-size: 0.82rem; text-align: center;">NO CASHOUT ENTRIES RECORDED FOR THIS DATE.</div>'}
+        </div>
+      `;
+    }
+
+    // 3. Overall Result & Performance
+    if (!detectedGuest && /overall\s*result|gaming\s*result|today\s*result|net\s*result|overall\s*performance|^result$|how\s*did\s*we\s*do|win\s*or\s*loss|pnl|profit/i.test(qLower)) {
+      // Consolidate entries by guest on this date
+      const dateGuestsMap = {};
+      dateEntries.forEach(e => {
+        const raw = (e.guestname || 'UNKNOWN').trim();
+        if (!raw) return;
+        const canonical = clusterFn(raw, dateEntries).canonicalName || raw.toUpperCase();
+        if (!dateGuestsMap[canonical]) {
+          dateGuestsMap[canonical] = { name: canonical, totalIn: 0, totalOut: 0, count: 0 };
+        }
+        const amt = Number(e.amount) || 0;
+        if (isTotalInType(e.type)) dateGuestsMap[canonical].totalIn += amt;
+        else if (isTotalOutType(e.type)) dateGuestsMap[canonical].totalOut += amt;
+        dateGuestsMap[canonical].count++;
+      });
+
+      const dateGuestList = Object.values(dateGuestsMap).sort((a, b) => b.totalIn - a.totalIn);
+
+      let totalIn = 0;
+      let totalOut = 0;
+      dateGuestList.forEach(g => {
+        totalIn += g.totalIn;
+        totalOut += g.totalOut;
+      });
+
+      const netResult = totalOut - totalIn;
+      const isNegative = netResult < 0;
+      // USER RULE: IF NEGATIVE THAN RED, NO COLOUR FOR OTHER (#FFFFFF)
+      const resColor = isNegative ? '#FF0000' : '#FFFFFF';
+      const resFormatted = formatIndianNumber(Math.abs(netResult));
+      const sortedDayEntries = [...dateEntries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+
+      return `
+        <div class="ai-assistant-card">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title">⚖️ OVERALL GAMING RESULT & PERFORMANCE</span>
+            <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">📅 ${dispDate}</span>
+          </div>
+          <div class="ai-stat-grid">
+            <div class="ai-stat-box">
+              <span class="ai-stat-label">TOTAL IN</span>
+              <span class="ai-stat-val">₹${formatIndianNumber(totalIn)}</span>
+            </div>
+            <div class="ai-stat-box">
+              <span class="ai-stat-label">TOTAL OUT</span>
+              <span class="ai-stat-val">₹${formatIndianNumber(totalOut)}</span>
+            </div>
+            <div class="ai-stat-box ${isNegative ? 'is-negative' : ''}" style="border-color: ${isNegative ? '#FF0000' : 'rgba(255,255,255,0.1)'};">
+              <span class="ai-stat-label">RESULT</span>
+              <span class="ai-stat-val ${isNegative ? 'is-negative' : ''}" style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</span>
+            </div>
+          </div>
+
+          <!-- ENTRIES OF SELECTED DATE (Matching user drawing) -->
+          <div class="ai-date-entries-box">
+            <div class="ai-date-entries-title">
+              ENTRIES OF SELECTED DATE
+            </div>
+            <div class="ai-entries-table-wrap">
+              <table class="ai-entries-table">
+                <thead>
+                  <tr>
+                    <th>DATE</th>
+                    <th>GUEST NAME</th>
+                    <th>TOTAL IN</th>
+                    <th>TOTAL OUT</th>
+                    <th>RESULT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${dateGuestList.length === 0 ? `
+                    <tr>
+                      <td colspan="5" style="padding: 14px; color: #94a3b8; font-weight: 700;">
+                        NO ENTRIES RECORDED ON ${dispDate}
+                      </td>
+                    </tr>
+                  ` : `
+                    ${dateGuestList.map(g => {
+                      const gNet = g.totalOut - g.totalIn;
+                      const gIsNeg = gNet < 0;
+                      const gResColor = gIsNeg ? '#FF0000' : '#FFFFFF';
+                      const gResFormatted = formatIndianNumber(Math.abs(gNet));
+                      return `
+                        <tr>
+                          <td>${dispDate}</td>
+                          <td class="guest-clickable" onclick="(typeof window.aiQueryGuest === 'function' ? window.aiQueryGuest('${escapeHTML(g.name)}') : null)">${escapeHTML(g.name)}</td>
+                          <td style="font-weight: 700;">₹${formatIndianNumber(g.totalIn)}</td>
+                          <td style="font-weight: 700;">₹${formatIndianNumber(g.totalOut)}</td>
+                          <td style="color: ${gResColor}; font-weight: 900;">₹${gResFormatted}</td>
+                        </tr>
+                      `;
+                    }).join('')}
+                    <tr style="background: rgba(255, 255, 255, 0.08); font-weight: 900; border-top: 1.5px solid rgba(255, 255, 255, 0.35);">
+                      <td style="color: #38bdf8;">TOTAL</td>
+                      <td style="text-align: center;">${dateGuestList.length} GUESTS (${dateEntries.length} TRANSACTIONS)</td>
+                      <td>₹${formatIndianNumber(totalIn)}</td>
+                      <td>₹${formatIndianNumber(totalOut)}</td>
+                      <td style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</td>
+                    </tr>
+                  `}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ENTRIES IN SENTENCE FORM (SHOW OF PARTICULAR DAY) -->
+          <div class="ai-date-entries-box" style="margin-top: 14px;">
+            <div class="ai-date-entries-title" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>📝 ENTRIES IN SENTENCE FORM (${dispDate})</span>
+              <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">${sortedDayEntries.length} ${sortedDayEntries.length === 1 ? 'TRANSACTION' : 'TRANSACTIONS'}</span>
+            </div>
+            ${sortedDayEntries.length === 0 ? `
+              <div style="text-align: center; color: #94a3b8; padding: 16px; font-weight: 700;">
+                NO TRANSACTIONS RECORDED ON ${dispDate}
+              </div>
+            ` : `
+              <div style="display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; padding-right: 4px;">
+                ${sortedDayEntries.map(e => {
+                  const dt = parseEntryDateTime(e.datetime);
+                  const time = dt.time || '--:--';
+                  const typeClean = (e.type || '').toLowerCase().replace(/[\/\s]/g, '-');
+                  const sentence = getEntrySentence(e, true);
+                  const isCredit = isTotalInType(e.type);
+                  const borderCol = isCredit ? '#10b981' : '#ef4444';
+                  return `
+                    <div class="sentence-item ${typeClean}" style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.12); border-left: 4px solid ${borderCol}; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.86rem; background: rgba(10, 16, 32, 0.65);">
+                      <span style="color: #38bdf8; font-weight: 800; min-width: 48px; flex-shrink: 0; letter-spacing: 0.5px;">${time}</span>
+                      <span style="color: #ffffff; font-weight: 700; flex: 1; word-break: break-word;">${sentence}</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    // 4. All Entries Summary / Date Entries / Sentences View
+    if (!detectedGuest && (/all\s*entries|how\s*many\s*entries|entries\s*count|all\s*records|^entries$|selected\s*date|that\s*day|day\s*entries|show\s*entries|sent[ae]nce|particular|perticular/i.test(qLower) || /^\d{2}[-/]\d{2}[-/]\d{4}$/.test(qLower) || /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(qLower))) {
+      // Consolidate entries by guest on this date
+      const dateGuestsMap = {};
+      dateEntries.forEach(e => {
+        const raw = (e.guestname || 'UNKNOWN').trim();
+        if (!raw) return;
+        const canonical = clusterFn(raw, dateEntries).canonicalName || raw.toUpperCase();
+        if (!dateGuestsMap[canonical]) {
+          dateGuestsMap[canonical] = { name: canonical, totalIn: 0, totalOut: 0, count: 0 };
+        }
+        const amt = Number(e.amount) || 0;
+        if (isTotalInType(e.type)) dateGuestsMap[canonical].totalIn += amt;
+        else if (isTotalOutType(e.type)) dateGuestsMap[canonical].totalOut += amt;
+        dateGuestsMap[canonical].count++;
+      });
+
+      const dateGuestList = Object.values(dateGuestsMap).sort((a, b) => b.totalIn - a.totalIn);
+
+      let totalIn = 0;
+      let totalOut = 0;
+      dateGuestList.forEach(g => {
+        totalIn += g.totalIn;
+        totalOut += g.totalOut;
+      });
+
+      const netResult = totalOut - totalIn;
+      const isNegative = netResult < 0;
+      const resColor = isNegative ? '#FF0000' : '#FFFFFF';
+      const resFormatted = formatIndianNumber(Math.abs(netResult));
+      const sortedDayEntries = [...dateEntries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+
+      return `
+        <div class="ai-assistant-card">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title">📋 ALL ENTRIES OVERVIEW</span>
+            <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">📅 ${dispDate}</span>
+          </div>
+          <div class="ai-stat-grid">
+            <div class="ai-stat-box">
+              <span class="ai-stat-label">TOTAL IN</span>
+              <span class="ai-stat-val">₹${formatIndianNumber(totalIn)}</span>
+            </div>
+            <div class="ai-stat-box">
+              <span class="ai-stat-label">TOTAL OUT</span>
+              <span class="ai-stat-val">₹${formatIndianNumber(totalOut)}</span>
+            </div>
+            <div class="ai-stat-box ${isNegative ? 'is-negative' : ''}" style="border-color: ${isNegative ? '#FF0000' : 'rgba(255,255,255,0.1)'};">
+              <span class="ai-stat-label">RESULT</span>
+              <span class="ai-stat-val ${isNegative ? 'is-negative' : ''}" style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</span>
+            </div>
+          </div>
+
+          <!-- ENTRIES OF SELECTED DATE (Matching user drawing) -->
+          <div class="ai-date-entries-box">
+            <div class="ai-date-entries-title">
+              ENTRIES OF SELECTED DATE
+            </div>
+            <div class="ai-entries-table-wrap">
+              <table class="ai-entries-table">
+                <thead>
+                  <tr>
+                    <th>DATE</th>
+                    <th>GUEST NAME</th>
+                    <th>TOTAL IN</th>
+                    <th>TOTAL OUT</th>
+                    <th>RESULT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${dateGuestList.length === 0 ? `
+                    <tr>
+                      <td colspan="5" style="padding: 14px; color: #94a3b8; font-weight: 700;">
+                        NO ENTRIES RECORDED ON ${dispDate}
+                      </td>
+                    </tr>
+                  ` : `
+                    ${dateGuestList.map(g => {
+                      const gNet = g.totalOut - g.totalIn;
+                      const gIsNeg = gNet < 0;
+                      const gResColor = gIsNeg ? '#FF0000' : '#FFFFFF';
+                      const gResFormatted = formatIndianNumber(Math.abs(gNet));
+                      return `
+                        <tr>
+                          <td>${dispDate}</td>
+                          <td class="guest-clickable" onclick="(typeof window.aiQueryGuest === 'function' ? window.aiQueryGuest('${escapeHTML(g.name)}') : null)">${escapeHTML(g.name)}</td>
+                          <td style="font-weight: 700;">₹${formatIndianNumber(g.totalIn)}</td>
+                          <td style="font-weight: 700;">₹${formatIndianNumber(g.totalOut)}</td>
+                          <td style="color: ${gResColor}; font-weight: 900;">₹${gResFormatted}</td>
+                        </tr>
+                      `;
+                    }).join('')}
+                    <tr style="background: rgba(255, 255, 255, 0.08); font-weight: 900; border-top: 1.5px solid rgba(255, 255, 255, 0.35);">
+                      <td style="color: #38bdf8;">TOTAL</td>
+                      <td style="text-align: center;">${dateGuestList.length} GUESTS (${dateEntries.length} TRANSACTIONS)</td>
+                      <td>₹${formatIndianNumber(totalIn)}</td>
+                      <td>₹${formatIndianNumber(totalOut)}</td>
+                      <td style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</td>
+                    </tr>
+                  `}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ENTRIES IN SENTENCE FORM (SHOW OF PARTICULAR DAY) -->
+          <div class="ai-date-entries-box" style="margin-top: 14px;">
+            <div class="ai-date-entries-title" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>📝 ENTRIES IN SENTENCE FORM (${dispDate})</span>
+              <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">${sortedDayEntries.length} ${sortedDayEntries.length === 1 ? 'TRANSACTION' : 'TRANSACTIONS'}</span>
+            </div>
+            ${sortedDayEntries.length === 0 ? `
+              <div style="text-align: center; color: #94a3b8; padding: 16px; font-weight: 700;">
+                NO TRANSACTIONS RECORDED ON ${dispDate}
+              </div>
+            ` : `
+              <div style="display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; padding-right: 4px;">
+                ${sortedDayEntries.map(e => {
+                  const dt = parseEntryDateTime(e.datetime);
+                  const time = dt.time || '--:--';
+                  const typeClean = (e.type || '').toLowerCase().replace(/[\/\s]/g, '-');
+                  const sentence = getEntrySentence(e, true);
+                  const isCredit = isTotalInType(e.type);
+                  const borderCol = isCredit ? '#10b981' : '#ef4444';
+                  return `
+                    <div class="sentence-item ${typeClean}" style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.12); border-left: 4px solid ${borderCol}; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.86rem; background: rgba(10, 16, 32, 0.65);">
+                      <span style="color: #38bdf8; font-weight: 800; min-width: 48px; flex-shrink: 0; letter-spacing: 0.5px;">${time}</span>
+                      <span style="color: #ffffff; font-weight: 700; flex: 1; word-break: break-word;">${sentence}</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    // 5. Top Guests / Major Patrons
+    if (!detectedGuest && /top\s*guest|top\s*patron|major\s*patron|major\s*guest|biggest|highest/i.test(qLower)) {
+      const guestGroups = {};
+      dateEntries.forEach(e => {
+        const raw = (e.guestname || '').trim();
+        if (!raw) return;
+        const canonical = clusterFn(raw, dateEntries).canonicalName || raw.toUpperCase();
+        if (!guestGroups[canonical]) guestGroups[canonical] = { in: 0, out: 0, entries: 0 };
+        const amt = Number(e.amount) || 0;
+        if (isTotalInType(e.type)) guestGroups[canonical].in += amt;
+        else if (isTotalOutType(e.type)) guestGroups[canonical].out += amt;
+        guestGroups[canonical].entries++;
+      });
+
+      const ranked = Object.entries(guestGroups)
+        .map(([name, d]) => ({ name, ...d, result: d.out - d.in }))
+        .sort((a, b) => b.in - a.in)
+        .slice(0, 8);
+
+      return `
+        <div class="ai-assistant-card">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title">⭐ TOP MAJOR PATRONS / GUESTS</span>
+            <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">📅 ${dispDate}</span>
+          </div>
+          ${ranked.length > 0 ? `
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              ${ranked.map((g, idx) => {
+                const resColor = g.result < 0 ? '#FF0000' : '#FFFFFF';
+                return `
+                  <div class="ai-entry-row" style="cursor: pointer;" onclick="(typeof window.aiQueryGuest === 'function' ? window.aiQueryGuest('${escapeHTML(g.name)}') : null)">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span style="color: #fbbf24; font-weight: 900;">#${idx + 1}</span>
+                      <span style="font-weight: 800; color: #ffffff;">${escapeHTML(g.name)}</span>
+                      <span style="font-size: 0.7rem; color: #94a3b8;">(${g.entries} entries)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <span style="color: #38bdf8; font-weight: 900;">IN: ₹${formatIndianNumber(g.in)}</span>
+                      <span style="color: ${resColor}; font-weight: 900;">RES: ₹${formatIndianNumber(Math.abs(g.result))}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : '<div style="color: #94a3b8; font-size: 0.82rem; text-align: center;">NO PATRON ACTIVITY RECORDED FOR THIS DATE.</div>'}
+        </div>
+      `;
+    }
+
+    // 6. Barred Guests Check
+    if (/barred|banned|blacklist/i.test(qLower)) {
+      const words = qLower.replace(/is|guest|patron|barred|banned|blacklisted|check|\?/g, '').trim();
+      if (words.length > 1) {
+        const found = barredList.filter(b => {
+          const bName = String(b.guestname || b.Name || b['Guest Name'] || b.name || '').toLowerCase();
+          return bName.includes(words) || words.includes(bName);
+        });
+
+        if (found.length > 0) {
+          const bg = found[0];
+          return `
+            <div class="ai-assistant-card" style="border-color: #ef4444;">
+              <div class="ai-card-badge-header">
+                <span class="ai-card-title" style="color: #ef4444;">🚨 ALERT: BARRED GUEST FOUND</span>
+                <span style="font-size: 0.72rem; background: #ef4444; color: #fff; font-weight: 900; padding: 2px 8px; border-radius: 4px;">BARRED</span>
+              </div>
+              <div style="background: rgba(239, 68, 68, 0.15); border: 1.2px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 12px;">
+                <div style="font-size: 1.1rem; font-weight: 900; color: #ffffff; margin-bottom: 6px;">${escapeHTML((bg.guestname || bg.Name || words).toUpperCase())}</div>
+                <div style="font-size: 0.84rem; color: #fca5a5; font-weight: 700; margin-bottom: 4px;">REASON: <span style="color: #ef4444; font-weight: 900;">${escapeHTML(String(bg.reason || bg.Reason || 'BARRED').toUpperCase())}</span></div>
+                <div style="font-size: 0.82rem; color: #cbd5e1; font-weight: 600;">DATE: ${escapeHTML(String(bg.date || bg.Date || '-'))}</div>
+                <div style="font-size: 0.82rem; color: #cbd5e1; font-weight: 600;">INSTRUCTION: ${escapeHTML(String(bg.inst || bg.Inst || 'MANAGEMENT').toUpperCase())}</div>
+                <div style="font-size: 0.82rem; color: #cbd5e1; font-weight: 600;">PROPERTY: ${escapeHTML(String(bg.property || bg.Property || 'CADILLAC').toUpperCase())}</div>
+              </div>
+            </div>
+          `;
+        } else {
+          return `
+            <div class="ai-assistant-card">
+              <div class="ai-card-badge-header">
+                <span class="ai-card-title" style="color: #34d399;">✅ GUEST IS NOT BARRED</span>
+              </div>
+              <p style="color: #cbd5e1; font-size: 0.88rem; margin: 0; font-weight: 700;">
+                NO BARRED RECORDS FOUND FOR <span style="color: #38bdf8;">"${escapeHTML(words.toUpperCase())}"</span> IN THE SURVEILLANCE BARRED DIRECTORY.
+              </p>
+            </div>
+          `;
+        }
+      }
+
+      return `
+        <div class="ai-assistant-card">
+          <div class="ai-card-badge-header">
+            <span class="ai-card-title" style="color: #ef4444;">🚫 BARRED GUESTS DIRECTORY</span>
+            <span style="font-size: 0.72rem; color: #ef4444; font-weight: 900; background: rgba(239, 68, 68, 0.15); padding: 2px 8px; border-radius: 4px;">${barredList.length} TOTAL BARRED</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;">
+            ${barredList.slice(0, 10).map(b => `
+              <div class="ai-entry-row">
+                <span style="font-weight: 800; color: #ffffff;">${escapeHTML(String(b.guestname || b.Name || b.name || '-').toUpperCase())}</span>
+                <span style="color: #ef4444; font-weight: 800; font-size: 0.75rem;">${escapeHTML(String(b.reason || b.Reason || 'BARRED').toUpperCase())}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    // 7. Specific Guest Detail, Total In, Total Out, Result & Entries
+    if (detectedGuest) {
+      const allCluster = clusterFn(detectedGuest, candidateList);
+      const canonicalName = allCluster.canonicalName || detectedGuest.toUpperCase();
+      let allGuestEntries = (allCluster && Array.isArray(allCluster.entries) && allCluster.entries.length > 0)
+        ? allCluster.entries
+        : candidateList.filter(e => {
+            const gn = (e.guestname || '').trim().toUpperCase();
+            return gn === canonicalName || gn.includes(detectedGuest.toUpperCase()) || detectedGuest.toUpperCase().includes(gn);
+          });
+
+      if (allGuestEntries.length === 0) {
+        return `
+          <div class="ai-assistant-card">
+            <div class="ai-card-badge-header">
+              <span class="ai-card-title">👤 GUEST: ${escapeHTML(canonicalName)}</span>
+              <span style="font-size: 0.72rem; color: #ef4444; font-weight: 800; background: rgba(239, 68, 68, 0.15); padding: 2px 8px; border-radius: 4px;">NO RECORDS</span>
+            </div>
+            <p style="color: #cbd5e1; font-size: 0.88rem; margin: 0; font-weight: 700;">
+              NO TRANSACTION RECORDS FOUND FOR GUEST "${escapeHTML(canonicalName)}" IN THE SURVEILLANCE DATABASE.
+            </p>
+          </div>
+        `;
+      }
+
+      // 1. Group all entries of this guest by date
+      const guestDatesMap = {};
+      allGuestEntries.forEach(e => {
+        const dIso = getEntryDate(e) || (parseEntryDateTime(e.datetime).date);
+        if (!dIso) return;
+        if (!guestDatesMap[dIso]) {
+          guestDatesMap[dIso] = { dateIso: dIso, totalIn: 0, totalOut: 0, count: 0 };
+        }
+        const amt = Number(e.amount) || 0;
+        if (isTotalInType(e.type)) guestDatesMap[dIso].totalIn += amt;
+        else if (isTotalOutType(e.type)) guestDatesMap[dIso].totalOut += amt;
+        guestDatesMap[dIso].count++;
+      });
+
+      // Selected date summary
+      const currentDayData = guestDatesMap[targetDate] || { totalIn: 0, totalOut: 0, count: 0 };
+      const dayTotalIn = currentDayData.totalIn;
+      const dayTotalOut = currentDayData.totalOut;
+      const countTx = currentDayData.count;
+
+      const dayNetResult = dayTotalOut - dayTotalIn;
+      const isNegative = dayNetResult < 0;
+      // USER RULE: IF NEGATIVE THAN RED, NO COLOUR FOR OTHER (#FFFFFF)
+      const resColor = isNegative ? '#FF0000' : '#FFFFFF';
+      const resFormatted = formatIndianNumber(Math.abs(dayNetResult));
+
+      // 2. Barred Status Check
+      const isBarred = barredList.some(b => {
+        const bName = String(b.guestname || b.Name || b.name || '').toLowerCase();
+        return bName && canonicalName.toLowerCase().includes(bName);
+      });
+
+      // Overall sum to check major patron status
+      let allTotalIn = 0;
+      let allTotalOut = 0;
+      Object.values(guestDatesMap).forEach(d => {
+        allTotalIn += d.totalIn;
+        allTotalOut += d.totalOut;
+      });
+      const allNetResult = allTotalOut - allTotalIn;
+      const allIsNegative = allNetResult < 0;
+      const allResColor = allIsNegative ? '#FF0000' : '#FFFFFF';
+      const allResFormatted = formatIndianNumber(Math.abs(allNetResult));
+
+      const isMajor = dayTotalIn >= 1000000 || allTotalIn >= 1000000;
+      const statusBadge = isBarred
+        ? '<span style="background: #ef4444; color: #fff; font-size: 0.72rem; font-weight: 900; padding: 2px 8px; border-radius: 4px;">🚨 BARRED</span>'
+        : (isMajor
+            ? '<span style="background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.4); font-size: 0.72rem; font-weight: 900; padding: 2px 8px; border-radius: 4px;">⭐ MAJOR PATRON</span>'
+            : '<span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 4px;">PATRON</span>');
+
+      // 3. Transactions count text for current day
+      const txText = `${countTx} ${countTx === 1 ? 'TRANSACTION' : 'TRANSACTIONS'}`;
+      const dayGuestEntries = allGuestEntries.filter(e => {
+        const d = getEntryDate(e) || (parseEntryDateTime(e.datetime).date);
+        return d === targetDate;
+      });
+      const sortedGuestDayEntries = [...dayGuestEntries].sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+
+      // Dates sorted descending
+      const sortedDateKeys = Object.keys(guestDatesMap).sort((a, b) => b.localeCompare(a));
+      const hasSelectedDateActivity = guestDatesMap[targetDate] !== undefined;
+      const otherDateKeys = sortedDateKeys.filter(k => k !== targetDate);
+      const lastEntryDateIso = sortedDateKeys[0] || '';
+      const dispLastDate = lastEntryDateIso ? formatDisplayDate(lastEntryDateIso) : '';
+
+      // Construct table rows: Consolidated row per date
+      let tableRowsHtml = '';
+      if (hasSelectedDateActivity) {
+        tableRowsHtml += `
+          <tr style="background: rgba(56, 189, 248, 0.12); border-left: 3px solid #38bdf8;">
+            <td style="font-weight: 900; color: #38bdf8; white-space: nowrap;">${dispDate}</td>
+            <td style="font-weight: 800;">${escapeHTML(canonicalName)}</td>
+            <td style="font-weight: 700;">₹${formatIndianNumber(dayTotalIn)}</td>
+            <td style="font-weight: 700;">₹${formatIndianNumber(dayTotalOut)}</td>
+            <td style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</td>
+          </tr>
+        `;
+      } else {
+        tableRowsHtml += `
+          <tr style="background: rgba(255, 255, 255, 0.03); opacity: 0.7;">
+            <td style="font-weight: 800; color: #94a3b8; white-space: nowrap;">${dispDate}</td>
+            <td style="font-weight: 800;">${escapeHTML(canonicalName)}</td>
+            <td style="font-weight: 700;">₹0</td>
+            <td style="font-weight: 700;">₹0</td>
+            <td style="font-weight: 700;">₹0</td>
+          </tr>
+        `;
+      }
+
+      // If guest has other dates recorded:
+      otherDateKeys.forEach(dIso => {
+        const item = guestDatesMap[dIso];
+        const itemNet = item.totalOut - item.totalIn;
+        const itemIsNeg = itemNet < 0;
+        const itemResColor = itemIsNeg ? '#FF0000' : '#FFFFFF';
+        const itemDisp = formatDisplayDate(dIso);
+        tableRowsHtml += `
+          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.15);">
+            <td style="cursor: pointer; text-decoration: underline; color: #38bdf8; font-weight: 700; white-space: nowrap;" title="Click to view this date" onclick="(typeof window.aiSwitchDate === 'function' ? window.aiSwitchDate('${dIso}', '${escapeHTML(canonicalName)}') : null)">${itemDisp}</td>
+            <td style="font-weight: 800;">${escapeHTML(canonicalName)}</td>
+            <td style="font-weight: 700;">₹${formatIndianNumber(item.totalIn)}</td>
+            <td style="font-weight: 700;">₹${formatIndianNumber(item.totalOut)}</td>
+            <td style="color: ${itemResColor}; font-weight: 900;">₹${formatIndianNumber(Math.abs(itemNet))}</td>
+          </tr>
+        `;
+      });
+
+      // If multiple dates exist in history, append overall total row
+      if (sortedDateKeys.length > 1) {
+        tableRowsHtml += `
+          <tr style="background: rgba(255, 255, 255, 0.08); font-weight: 900; border-top: 1.5px solid rgba(255, 255, 255, 0.35);">
+            <td style="color: #38bdf8;">OVERALL TOTAL</td>
+            <td style="text-align: center;">${escapeHTML(canonicalName)} (${sortedDateKeys.length} DATES)</td>
+            <td>₹${formatIndianNumber(allTotalIn)}</td>
+            <td>₹${formatIndianNumber(allTotalOut)}</td>
+            <td style="color: ${allResColor}; font-weight: 900;">₹${allResFormatted}</td>
+          </tr>
+        `;
+      }
+
+      return `
+        <div class="ai-assistant-card">
+          <!-- Card Header with Guest Name, Badge & Current Day Transactions -->
+          <div class="ai-card-badge-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="ai-card-title">${escapeHTML(canonicalName)}</span>
+              ${statusBadge}
+            </div>
+            <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">
+              ${txText}
+            </span>
+          </div>
+
+          <!-- Current Day Overview: TOTAL IN | TOTAL OUT | RESULT (Matching photo) -->
+          <div class="ai-stat-grid">
+            <div class="ai-stat-box">
+              <span class="ai-stat-label">TOTAL IN</span>
+              <span class="ai-stat-val">₹${formatIndianNumber(dayTotalIn)}</span>
+            </div>
+            <div class="ai-stat-box">
+              <span class="ai-stat-label">TOTAL OUT</span>
+              <span class="ai-stat-val">₹${formatIndianNumber(dayTotalOut)}</span>
+            </div>
+            <div class="ai-stat-box ${isNegative ? 'is-negative' : ''}" style="border-color: ${isNegative ? '#FF0000' : 'rgba(255,255,255,0.1)'};">
+              <span class="ai-stat-label">RESULT</span>
+              <span class="ai-stat-val ${isNegative ? 'is-negative' : ''}" style="color: ${resColor}; font-weight: 900;">₹${resFormatted}</span>
+            </div>
+          </div>
+          ${countTx === 0 && lastEntryDateIso ? `
+            <div style="font-size: 0.74rem; color: #94a3b8; font-weight: 700; text-align: center; margin-top: 4px;">
+              NO TRANSACTIONS ON ${dispDate} · LAST RECORDED: <span style="color: #38bdf8; cursor: pointer; text-decoration: underline;" onclick="(typeof window.aiSwitchDate === 'function' ? window.aiSwitchDate('${lastEntryDateIso}', '${escapeHTML(canonicalName)}') : null)">${dispLastDate}</span>
+            </div>
+          ` : ''}
+
+          <!-- ENTRIES OF SELECTED DATE (Matching user drawing) -->
+          <div class="ai-date-entries-box">
+            <div class="ai-date-entries-title">
+              ENTRIES OF SELECTED DATE
+            </div>
+            <div class="ai-entries-table-wrap">
+              <table class="ai-entries-table">
+                <thead>
+                  <tr>
+                    <th>DATE</th>
+                    <th>GUEST NAME</th>
+                    <th>TOTAL IN</th>
+                    <th>TOTAL OUT</th>
+                    <th>RESULT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${tableRowsHtml}
+                </tbody>
+              </table>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 10px;">
+              <button type="button" class="ai-chip-btn" style="flex: 1; justify-content: center; font-size: 0.82rem; padding: 7px 12px; background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; color: #38bdf8; font-weight: 800;" onclick="(typeof window.aiOpenGuestSummary === 'function' ? window.aiOpenGuestSummary('${escapeHTML(canonicalName)}') : null)">
+                👤 OPEN GUEST SUMMARY POPUP
+              </button>
+              <button type="button" class="ai-chip-btn ai-ask-suggest-btn ai-btn-show-date-all" data-query="ALL ENTRIES" data-date="${targetDate}" style="flex: 1; justify-content: center; font-size: 0.82rem; padding: 7px 12px;" onclick="(typeof window.aiShowDateAllEntries === 'function' ? window.aiShowDateAllEntries('${targetDate}') : (typeof executeAiQuery === 'function' ? executeAiQuery('ALL ENTRIES') : null))">
+                📋 VIEW ALL GUESTS
+              </button>
+            </div>
+          </div>
+
+          <!-- ENTRIES IN SENTENCE FORM FOR THIS GUEST ON SELECTED DATE -->
+          <div class="ai-date-entries-box" style="margin-top: 14px;">
+            <div class="ai-date-entries-title" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>📝 ENTRIES IN SENTENCE FORM (${dispDate})</span>
+              <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">${sortedGuestDayEntries.length} ${sortedGuestDayEntries.length === 1 ? 'TRANSACTION' : 'TRANSACTIONS'}</span>
+            </div>
+            ${sortedGuestDayEntries.length === 0 ? `
+              <div style="text-align: center; color: #94a3b8; padding: 14px; font-weight: 700; font-size: 0.84rem;">
+                NO TRANSACTIONS FOR ${escapeHTML(canonicalName)} ON ${dispDate}
+              </div>
+            ` : `
+              <div style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 4px;">
+                ${sortedGuestDayEntries.map(e => {
+                  const dt = parseEntryDateTime(e.datetime);
+                  const time = dt.time || '--:--';
+                  const typeClean = (e.type || '').toLowerCase().replace(/[\/\s]/g, '-');
+                  const sentence = getEntrySentence(e, true);
+                  const isCredit = isTotalInType(e.type);
+                  const borderCol = isCredit ? '#10b981' : '#ef4444';
+                  return `
+                    <div class="sentence-item ${typeClean}" style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.12); border-left: 4px solid ${borderCol}; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.86rem; background: rgba(10, 16, 32, 0.65);">
+                      <span style="color: #38bdf8; font-weight: 800; min-width: 48px; flex-shrink: 0; letter-spacing: 0.5px;">${time}</span>
+                      <span style="color: #ffffff; font-weight: 700; flex: 1; word-break: break-word;">${sentence}</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    // 8. Default / Fallback Assistance (Zero guest names used as examples)
+    return `
+      <div class="ai-assistant-card">
+        <div class="ai-card-badge-header">
+          <span class="ai-card-title">🤖 SURVEILLANCE AI ASSISTANT</span>
+          <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 800; font-family: monospace;">📅 ${dispDate}</span>
+        </div>
+        <p style="color: #cbd5e1; font-size: 0.88rem; margin: 0; font-weight: 700;">
+          I COULD NOT FIND SPECIFIC RECORDS MATCHING "${escapeHTML(query.toUpperCase())}".
+        </p>
+        <div style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">
+          TRY ONE OF THESE QUICK ACTIONS OR TYPE A GUEST NAME:
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0;">
+          <button type="button" class="ai-chip-btn ai-ask-suggest-btn" data-query="OVERALL TOTAL IN">⚡ OVERALL TOTAL IN</button>
+          <button type="button" class="ai-chip-btn ai-ask-suggest-btn" data-query="OVERALL TOTAL OUT">⚡ OVERALL TOTAL OUT</button>
+          <button type="button" class="ai-chip-btn ai-ask-suggest-btn" data-query="OVERALL RESULT">⚡ OVERALL RESULT</button>
+          <button type="button" class="ai-chip-btn ai-ask-suggest-btn" data-query="ALL ENTRIES SUMMARY">📋 ALL ENTRIES</button>
+          <button type="button" class="ai-chip-btn ai-ask-suggest-btn" data-query="TOP MAJOR PATRONS">⭐ TOP GUESTS</button>
+          <button type="button" class="ai-chip-btn ai-ask-suggest-btn" data-query="BARRED GUESTS CHECK">🚫 BARRED GUESTS</button>
+        </div>
+      </div>
+    `;
   }
+  window.processOfflineAiQuestion = processOfflineAiQuestion;
 
-  window.addEventListener('resize', triggerAutoFit, { passive: true });
-  window.addEventListener('orientationchange', () => {
-    setTimeout(applyAutoFit, 50);
-    setTimeout(applyAutoFit, 200);
+  // Global helpers for inline click handlers in AI cards
+  window.aiOpenGuestSummary = function(guestName) {
+    if (!guestName) return;
+    const activeDate = (aiDatePicker && aiDatePicker.value)
+      ? aiDatePicker.value
+      : (currentBusinessDateStr || currentBusinessDate || getBusinessDate());
+    const candidateList = (typeof allEntries !== 'undefined' && Array.isArray(allEntries) && allEntries.length > 0)
+      ? allEntries
+      : (window.allEntries || []);
+    const openFn = typeof window.openGuestSummaryPopup === 'function' ? window.openGuestSummaryPopup : (typeof openGuestSummaryPopup === 'function' ? openGuestSummaryPopup : null);
+    if (openFn) {
+      openFn(guestName, candidateList, activeDate);
+    }
+  };
+
+  window.aiQueryGuest = function(guestName) {
+    window.aiOpenGuestSummary(guestName);
+  };
+
+  window.aiSwitchDate = function(dStr, guestName) {
+    if (dStr && aiDatePicker) aiDatePicker.value = dStr;
+    if (dStr && aiSelectedDateBadge) aiSelectedDateBadge.textContent = formatDisplayDate(dStr);
+    if (guestName && aiQueryInput) aiQueryInput.value = guestName;
+    executeAiQuery(guestName || 'ALL ENTRIES');
+  };
+
+  window.aiShowDateAllEntries = function(dStr) {
+    if (dStr && aiDatePicker) aiDatePicker.value = dStr;
+    if (dStr && aiSelectedDateBadge) aiSelectedDateBadge.textContent = formatDisplayDate(dStr);
+    if (aiQueryInput) aiQueryInput.value = '';
+    executeAiQuery('ALL ENTRIES');
+  };
+
+  // Event Listeners for Offline AI Assistant
+  document.querySelectorAll('.btn-open-ai-assistant').forEach(btn => {
+    btn.addEventListener('click', () => openAiAssistantModal());
   });
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', triggerAutoFit, { passive: true });
-    window.visualViewport.addEventListener('scroll', triggerAutoFit, { passive: true });
+  if (btnOpenAiAssistant) {
+    btnOpenAiAssistant.addEventListener('click', () => openAiAssistantModal());
   }
-  window.addEventListener('pageshow', applyAutoFit);
-});
+  if (btnCloseAiModal) {
+    btnCloseAiModal.addEventListener('click', closeAiAssistantModal);
+  }
+  if (aiAssistantModal) {
+    aiAssistantModal.addEventListener('click', (e) => {
+      if (e.target === aiAssistantModal) closeAiAssistantModal();
+    });
+  }
+  if (btnAiSend && aiQueryInput) {
+    btnAiSend.addEventListener('click', () => executeAiQuery(aiQueryInput.value));
+    aiQueryInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        executeAiQuery(aiQueryInput.value);
+      }
+    });
+  }
+  if (btnAiClear) {
+    btnAiClear.addEventListener('click', () => {
+      resetAiAssistant();
+    });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && aiAssistantModal && (aiAssistantModal.style.display === 'flex' || aiAssistantModal.offsetParent !== null)) {
+      closeAiAssistantModal();
+    }
+  });
+  if (aiDatePicker) {
+    const pickerWrap = aiDatePicker.parentElement;
+    if (pickerWrap) {
+      pickerWrap.addEventListener('click', (e) => {
+        if (e.target !== aiDatePicker && typeof aiDatePicker.showPicker === 'function') {
+          try { aiDatePicker.showPicker(); } catch (err) {}
+        }
+      });
+    }
 
+    if (aiSelectedDateBadge) {
+      aiSelectedDateBadge.style.cursor = 'pointer';
+      aiSelectedDateBadge.title = 'Click Calendar to select date';
+      aiSelectedDateBadge.addEventListener('click', () => {
+        if (typeof aiDatePicker.showPicker === 'function') {
+          try { aiDatePicker.showPicker(); } catch (err) { aiDatePicker.click(); }
+        } else {
+          aiDatePicker.click();
+        }
+      });
+    }
+
+    let dateDebounceTimer = null;
+    const triggerDateFilter = () => {
+      clearTimeout(dateDebounceTimer);
+      dateDebounceTimer = setTimeout(() => {
+        const val = aiDatePicker.value;
+        if (aiSelectedDateBadge) {
+          aiSelectedDateBadge.textContent = formatDisplayDate(val);
+        }
+        if (val) {
+          // As requested: AFTER CLICKING DATE SHOW ALL ENTRIES OF PARTICULAR DATE
+          if (aiQueryInput) aiQueryInput.value = '';
+          executeAiQuery('ALL ENTRIES');
+        }
+      }, 30);
+    };
+
+    aiDatePicker.addEventListener('change', triggerDateFilter);
+    aiDatePicker.addEventListener('input', triggerDateFilter);
+  }
+
+  // Quick Action Chips in AI Header
+  document.querySelectorAll('.ai-chip-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const q = btn.getAttribute('data-query');
+      if (q) executeAiQuery(q);
+    });
+  });
+
+  // Global document click delegation for AI Assistant buttons & clickable guest names
+  document.addEventListener('click', (e) => {
+    const showAllBtn = e.target.closest('.ai-btn-show-date-all');
+    if (showAllBtn) {
+      e.preventDefault();
+      const d = showAllBtn.getAttribute('data-date');
+      if (typeof window.aiShowDateAllEntries === 'function') {
+        window.aiShowDateAllEntries(d);
+      } else if (typeof executeAiQuery === 'function') {
+        executeAiQuery('ALL ENTRIES');
+      }
+      return;
+    }
+
+    const aiGuestSpan = e.target.closest('#ai-chat-messages .clickable-guest-name, #ai-chat-messages .guest-clickable');
+    if (aiGuestSpan) {
+      e.preventDefault();
+      e.stopPropagation();
+      const g = aiGuestSpan.getAttribute('data-guest') || aiGuestSpan.textContent.trim();
+      if (g && typeof window.aiOpenGuestSummary === 'function') {
+        window.aiOpenGuestSummary(g);
+      } else if (g && typeof window.aiQueryGuest === 'function') {
+        window.aiQueryGuest(g);
+      }
+      return;
+    }
+  });
+});
 
 function saveActivePanel(panelId) {
   localStorage.setItem('activeSurveillancePanel', panelId);
 }
 
 
+// ==========================================================================
+// WINDOW MAXIMIZE DETECTION ENGINE ("FIT TO PAGE ONLY IF PAGE IS MAXIMISE")
+// ==========================================================================
+function updateWindowMaximizedState() {
+  try {
+    const availW = window.screen.availWidth || window.screen.width || 0;
+    const availH = window.screen.availHeight || window.screen.height || 0;
+    
+    // Check if browser window matches full available desktop screen dimensions
+    const isAvailW = availW > 0 && (window.innerWidth >= availW - 35 || (window.outerWidth && window.outerWidth >= availW - 10));
+    const isAvailH = availH > 0 && (window.innerHeight >= availH - 95 || (window.outerHeight && window.outerHeight >= availH - 20));
+    const isFullScreen = !!(document.fullscreenElement || window.fullScreen);
+    
+    const isMaximized = (isAvailW && isAvailH) || isFullScreen;
 
+    if (isMaximized) {
+      document.documentElement.classList.add('page-maximized');
+      document.body.classList.add('page-maximized');
+    } else {
+      document.documentElement.classList.remove('page-maximized');
+      document.body.classList.remove('page-maximized');
+    }
+  } catch (err) {
+    // fallback
+  }
+}
+
+window.addEventListener('resize', updateWindowMaximizedState);
+window.addEventListener('orientationchange', updateWindowMaximizedState);
+window.addEventListener('load', updateWindowMaximizedState);
+document.addEventListener('DOMContentLoaded', updateWindowMaximizedState);
+updateWindowMaximizedState();

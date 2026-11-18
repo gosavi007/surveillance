@@ -4,72 +4,187 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>SURVEILLANCE</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <!-- PWA & Mobile Web App Manifest -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Surveillance">
+  <!-- High-Tech Surveillance Cyber Shield Favicon -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=10">
+  <link rel="alternate icon" type="image/svg+xml" href="favicon.svg?v=10">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <!-- Google Fonts (non-blocking – gracefully ignored when offline) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" onerror="this.media='all'">
   <script>
+    // Global Safe HTML Escape
+    window.allEntries = [];
+    window.globalBarredList = [];
+    var allEntries = window.allEntries;
+    var globalBarredList = window.globalBarredList;
+
+    window.escapeHTML = function(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    };
+    var escapeHTML = window.escapeHTML;
+
+    // Global Date Formatter Helper (DD-MM-YYYY)
+    window.formatDisplayDate = function(dateStr) {
+      if (!dateStr) return '';
+      var clean = String(dateStr).split('T')[0];
+      var parts = clean.split('-');
+      if (parts.length === 3 && parts[0].length === 4) {
+        return parts[2] + '-' + parts[1] + '-' + parts[0];
+      }
+      return String(dateStr);
+    };
+    var formatDisplayDate = window.formatDisplayDate;
+
+    // Global Number Formatter Helper (Indian Format)
+    window.formatIndianNumber = function(val) {
+      var n = Math.abs(Math.round(Number(val) || 0));
+      return n.toLocaleString('en-IN');
+    };
+    var formatIndianNumber = window.formatIndianNumber;
+
+    // Global K Amount Formatter Helper
+    window.formatKCurrency = function(val) {
+      if (!val || isNaN(val)) return '0';
+      var num = Math.abs(Number(val));
+      if (num >= 1000) {
+        var k = num / 1000;
+        return (Number.isInteger(k) ? k : k.toFixed(1)) + 'K';
+      }
+      return num.toString();
+    };
+    var formatKCurrency = window.formatKCurrency;
+
+    // Global AI Assistant Handlers (Immediate definition in head)
+    window.aiShowDateAllEntries = function(d) {
+      var dp = document.getElementById('ai-date-picker');
+      var b = document.getElementById('ai-selected-date-badge');
+      var inp = document.getElementById('ai-query-input');
+      if (d && dp) dp.value = d;
+      if (d && b && window.formatDisplayDate) b.textContent = window.formatDisplayDate(d);
+      if (inp) inp.value = '';
+      if (typeof window.executeAiQuery === 'function') {
+        window.executeAiQuery('ALL ENTRIES');
+      }
+    };
+    window.aiSwitchDate = function(d, g) {
+      var dp = document.getElementById('ai-date-picker');
+      var b = document.getElementById('ai-selected-date-badge');
+      var inp = document.getElementById('ai-query-input');
+      if (d && dp) dp.value = d;
+      if (d && b && window.formatDisplayDate) b.textContent = window.formatDisplayDate(d);
+      if (g && inp) inp.value = g;
+      if (typeof window.executeAiQuery === 'function') {
+        window.executeAiQuery(g || 'ALL ENTRIES');
+      }
+    };
+    window.aiOpenGuestSummary = function(g) {
+      if (!g) return;
+      var dp = document.getElementById('ai-date-picker');
+      var d = (dp && dp.value) ? dp.value : '';
+      if (typeof window.openGuestSummaryPopup === 'function') {
+        window.openGuestSummaryPopup(g, window.allEntries || [], d);
+      }
+    };
+    window.aiQueryGuest = function(g) {
+      window.aiOpenGuestSummary(g);
+    };
+
+    // In-app alert interceptor: never allow browser's "localhost:3000 says" popup
+    window.alert = function(msg) {
+      if (window.showAppNotification) {
+        window.showAppNotification(msg, 'info');
+      } else {
+        console.log('[App Alert]', msg);
+      }
+    };
     window.onerror = function(message, source, lineno, colno, error) {
-      document.body.innerHTML = '<div style="color:red; background:white; padding:20px; z-index:9999; position:relative; font-size:24px; font-weight:bold;">' + 
-        'ERROR: ' + message + '<br>Line: ' + lineno + '<br>Stack: ' + (error ? error.stack : 'N/A') + '</div>';
+      var msg = String(message || '');
+      if (msg.includes('ResizeObserver') || msg.includes('Script error')) {
+        return;
+      }
+      var details = msg + (lineno ? ' (Line ' + lineno + ')' : '');
+      console.error('[App Error]', details, error);
+      if (window.showAppNotification) {
+        window.showAppNotification('Error: ' + details, 'error');
+      }
+      try {
+        fetch('/api/client-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, source: String(source), lineno: lineno, colno: colno, stack: error ? error.stack : '' })
+        }).catch(function() {});
+      } catch(e) {}
     };
     window.addEventListener('unhandledrejection', function(event) {
-      document.body.innerHTML = '<div style="color:red; background:white; padding:20px; z-index:9999; position:relative; font-size:24px; font-weight:bold;">' + 
-        'PROMISE REJECTION: ' + event.reason + '</div>';
+      var reason = event.reason ? (event.reason.message || String(event.reason)) : 'Promise Rejection';
+      if (reason.includes('ResizeObserver')) return;
+      console.error('[Promise Rejection]', event.reason);
+      if (window.showAppNotification) {
+        window.showAppNotification('Error: ' + reason, 'error');
+      }
+      try {
+        fetch('/api/client-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: reason, type: 'unhandledrejection', stack: event.reason ? event.reason.stack : '' })
+        }).catch(function() {});
+      } catch(e) {}
     });
   </script>
   <!-- Lucide Icons (local bundle – works offline) -->
   <script src="lucide.min.js"></script>
-  <!-- SheetJS for Excel Export (local bundle – works offline) -->
+  <!-- SheetJS with full cell styling for Excel Export (local bundle – works offline) -->
   <script src="jszip.min.js"></script>
-  <script src="xlsx.full.min.js"></script>
+  <script src="xlsx.style.min.js"></script>
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="style.css?v=29">
+  <link rel="stylesheet" href="style.css?v=63">
 </head>
 <body>
 
-  <!-- Background Decorative Mesh & Surveillance Watermark -->
+  <!-- Background Decorative Mesh -->
   <div class="bg-mesh">
-    <div class="watermark-pattern-grid"></div>
     <div class="mesh-sphere sphere-1"></div>
     <div class="mesh-sphere sphere-2"></div>
     <div class="mesh-sphere sphere-3"></div>
-    <div class="surveillance-watermark-overlay">
-      <div class="surveillance-watermark-stamp">
-        <svg class="watermark-shield-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-          <path d="M9 12l2 2 4-4"/>
-        </svg>
-        <div class="watermark-title">SURVEILLANCE</div>
-        <div class="watermark-subtitle">MONITORING &amp; INTELLIGENCE SYSTEM</div>
-      </div>
-    </div>
   </div>
 
   <!-- LOGIN CONTAINER -->
   <main id="login-view" class="view-container active" style="display:flex; opacity:1;">
-    <div class="login-card">
+    <div class="login-card login-frameless">
       <div class="login-header">
-        <div class="logo-icon-wrapper">
-          <i data-lucide="shield-alert" class="logo-icon animate-pulse"></i>
-        </div>
+        <img src="favicon.svg?v=10" alt="Surveillance Logo" style="width: 52px; height: 52px; filter: drop-shadow(0 0 12px rgba(0, 242, 254, 0.7)); margin-bottom: 12px; display: inline-block;" />
         <h1>SURVEILLANCE</h1>
       </div>
 
       <form id="login-form">
         <div class="input-group">
-          <label for="username">USER ID</label>
           <div class="input-wrapper">
             <i data-lucide="user" class="field-icon"></i>
-            <input type="text" id="username" placeholder="ENTER USER ID" required autocomplete="username">
+            <input type="text" id="username" placeholder="USER ID" required autocomplete="username">
           </div>
         </div>
 
         <div class="input-group">
-          <label for="password">PASSWORD</label>
           <div class="input-wrapper">
             <i data-lucide="lock" class="field-icon"></i>
-            <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+            <input type="password" id="password" placeholder="PASSWORD" required autocomplete="current-password">
           </div>
         </div>
 
@@ -85,9 +200,6 @@
           <div class="spinner" id="login-spinner"></div>
         </button>
       </form>
-      <div class="login-footer">
-        <span>Protected by AES End-to-End Encryption</span>
-      </div>
     </div>
   </main>
 
@@ -97,19 +209,15 @@
     <header class="app-header">
       <div class="header-left">
         <div class="brand">
-          <div style="width: 14px; height: 14px; background-color: var(--success); border-radius: 50%; box-shadow: 0 0 12px var(--success-glow);"></div>
-          <span class="brand-text">SURVEILLANCE LOG</span>
-        </div>
-        <div class="sync-status">
-          <span class="status-dot" style="display: none;"></span>
-          <span class="status-text" style="display: none;"></span>
+          <img src="favicon.svg?v=11" alt="Surveillance Logo" style="width: 24px; height: 24px; filter: drop-shadow(0 0 6px rgba(0, 242, 254, 0.7)); vertical-align: middle; margin-right: 6px;" />
+          <span class="brand-text">SURVEILLANCE</span>
         </div>
       </div>
 
       <div class="header-right">
-        <div class="user-profile">
+        <div class="user-profile" id="user-profile-badge" title="ADMIN">
           <i data-lucide="user-check" class="profile-icon"></i>
-          <span class="profile-name" id="user-badge-id">admin</span>
+          <span class="profile-name" id="user-badge-id">surv_agent</span>
         </div>
         <nav class="nav-actions">
           <button id="btn-major" class="btn-nav" title="View Major">
@@ -123,16 +231,16 @@
             <i data-lucide="home"></i>
           </button>
 
-          <button id="btn-barred-global" class="btn-nav btn-danger-nav" title="Barred Guests">
+          <button id="btn-barred-global" class="btn-nav" title="Barred Guests" style="color: var(--danger);">
             <i data-lucide="ban"></i>
           </button>
-          <button id="btn-admin-users" class="btn-nav btn-admin-style" title="Add Member" style="display: none !important;">
+          <button id="btn-admin-users" class="btn-nav btn-admin-style" title="Add Member" style="display: none;">
             <i data-lucide="user-plus"></i>
           </button>
-          <button id="btn-supervisor-log" class="btn-nav btn-supervisor-style" title="Add Entries">
-            <span class="btn-plus-symbol">+</span>
+          <button id="btn-supervisor-log" class="btn-nav btn-supervisor-style" title="Add Entries" style="display: flex; align-items: center; justify-content: center; background: rgba(99,102,241,0.25); border: 1px solid rgba(99,102,241,0.5); color: #c4b5fd; width: 28px; height: 28px; padding: 0; border-radius: 6px;">
+            <span style="font-size: 1.15rem; font-weight: 900; line-height: 1; display: inline-block;">+</span>
           </button>
-          <button id="btn-logout" class="btn-nav btn-logout-nav" title="Logout">
+          <button id="btn-logout" class="btn-nav" title="Logout">
             <i data-lucide="log-out"></i>
           </button>
         </nav>
@@ -140,50 +248,48 @@
     </header>
 
     <div class="content-wrapper">
-      <!-- HISTORY RECORDS PANEL (HOME VIEW) -->
+      <!-- HISTORY RECORDS TABLE PANEL -->
       <section id="history-table-panel" class="form-panel-card table-panel-card">
-        <div class="panel-header home-panel-header">
-          <div class="panel-header-info">
-            <i data-lucide="history" class="panel-icon"></i>
-            <span class="record-badge" id="record-count">0 Records</span>
-            <span id="home-gaming-date-badge" class="home-gaming-date-badge">
-              <i data-lucide="calendar" style="width: 13px; height: 13px;"></i>
-              <span id="home-gaming-date-display">...</span>
-            </span>
-          </div>
-          <div class="panel-header-actions">
-            <!-- SEARCH (ONLY SYMBOL BUTTON) -->
-            <div class="search-box-wrap" id="home-search-wrap">
-              <button type="button" id="btn-toggle-home-search" class="btn-home-tool btn-search-toggle" title="Search Logs (Symbol Only)">
-                <i data-lucide="search"></i>
-              </button>
-              <input type="text" id="table-search" class="search-expand-input" placeholder="Search logs..." />
-            </div>
-            <!-- BUTTON: START NEW GAMING DAY (ONLY SYMBOL) -->
-            <button type="button" id="btn-start-new-day" class="btn-new-day" title="Start New Gaming Day (Change Date)">
-              <i data-lucide="calendar-plus"></i>
-            </button>
-            <!-- View Mode Toggles: SENTENCE vs TABLE (ONLY SYMBOLS) -->
-            <button type="button" id="btn-home-view-sentence" class="btn-toggle-view active" title="Sentence View">
-              <i data-lucide="align-left"></i>
-            </button>
-            <button type="button" id="btn-home-view-table" class="btn-toggle-view" title="Table View">
+        <!-- UNIFIED COMPACT TOOLBAR (SAME FORMAT) -->
+        <div class="unified-app-toolbar">
+          <!-- Left: Table, Sentence, Excel View, Count -->
+          <div class="toolbar-zone-left">
+            <button id="btn-home-view-table" class="unified-tool-btn active" title="Table View">
               <i data-lucide="table"></i>
             </button>
+            <button id="btn-home-view-sentence" class="unified-tool-btn" title="Sentence View">
+              <i data-lucide="align-left"></i>
+            </button>
+            <button id="btn-home-view-excel" class="unified-tool-btn" title="Excel View">
+              <i data-lucide="file-spreadsheet"></i>
+            </button>
+            <span class="record-badge" id="record-count" title="Entries Count">0</span>
+          </div>
+          <!-- Center: Live Gaming Date & Time Badge (Dark Bold) -->
+          <div class="toolbar-zone-center">
+            <span id="home-live-datetime" class="home-date-time-badge"></span>
+          </div>
+          <!-- Right: Search (Icon Only - Expandable), Offline AI Assistant & New Gaming Day -->
+          <div class="toolbar-zone-right">
+            <button id="btn-home-ai" class="unified-tool-btn btn-open-ai-assistant" title="Offline AI Assistant" style="color: #c084fc; border-color: rgba(168, 85, 247, 0.45); background: rgba(168, 85, 247, 0.15); display: flex; align-items: center; justify-content: center;">
+              <i data-lucide="sparkles"></i>
+            </button>
+            <div class="unified-search-wrap">
+              <button id="btn-home-search-toggle" class="unified-tool-btn unified-search-btn" title="Search">
+                <i data-lucide="search"></i>
+              </button>
+              <input type="text" id="table-search" placeholder="" title="Search" class="unified-search-input" style="display: none; padding: 4px 10px; width: 150px; height: 32px; font-size: 0.82rem;" />
+            </div>
+            <button id="btn-new-day" class="unified-tool-btn" title="New Gaming Day" style="color: #fbbf24; border-color: rgba(251, 191, 36, 0.4);">
+              <i data-lucide="calendar-plus"></i>
+            </button>
           </div>
         </div>
 
-        <!-- SENTENCE VIEW (DEFAULT: INCREASED SIZE, CLEAN DIRECT SENTENCE DISPLAY) -->
-        <div id="home-entries-sentence-view" class="home-sentence-container">
-          <ul id="home-sentence-list" class="home-sentence-list">
-            <li style="text-align:center; padding:30px; color:var(--text-muted); font-size:1rem;">
-              No records found. Type an entry below and click SEND.
-            </li>
-          </ul>
-        </div>
-
-        <!-- TABLE VIEW (OPTIONAL) -->
-        <div id="home-entries-table-view" class="table-responsive" style="display: none;">
+        <!-- HOME DISPLAY CONTAINER WITH 3 VIEWS: TABLE, SENTENCE, EXCEL -->
+        <div id="home-display-area" style="flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0;">
+          <!-- 1. TABLE VIEW -->
+          <div id="home-table-view" class="table-responsive" style="flex: 1; overflow-y: auto;">
           <table class="logs-table">
             <thead>
               <tr>
@@ -208,14 +314,36 @@
             </tbody>
           </table>
         </div>
+
+        <!-- 2. SENTENCE VIEW -->
+        <div id="home-sentence-view" class="all-entries-list" style="display: none; flex: 1; overflow-y: auto; padding: 12px;">
+          <!-- Dynamically populated via JS -->
+        </div>
+
+        <!-- 3. EXCEL VIEW -->
+        <div id="home-excel-view" class="excel-grid-container" style="display: none; flex: 1; overflow-y: auto;">
+          <!-- Dynamically populated via JS -->
+        </div>
+      </div>
       </section>
 
       <!-- ADMIN USER MANAGEMENT PANEL (ADD MEMBER) -->
       <section id="admin-panel-card" class="form-panel-card admin-fixed-layout hidden-panel" style="display: none !important;">
         
-        <!-- HEADER: Centered ADD MEMBER -->
-        <div class="admin-header-bar">
-          <h2 class="admin-main-title">ADD MEMBER</h2>
+        <!-- UNIFIED COMPACT TOOLBAR (SAME FORMAT) -->
+        <div class="unified-app-toolbar">
+          <div class="toolbar-zone-left"></div>
+          <div class="toolbar-zone-center">
+            <span class="toolbar-title">
+              <i data-lucide="users" style="color: #a78bfa; width: 17px; height: 17px;"></i>
+              <span>ADMIN USERS</span>
+            </span>
+          </div>
+          <div class="toolbar-zone-right">
+            <button id="btn-close-admin-panel" class="unified-tool-btn" title="Close" style="color: #94a3b8;">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
         </div>
 
         <!-- MAIN 2-BOX CONTAINER -->
@@ -229,25 +357,33 @@
                 <input type="text" id="new-user-id" placeholder="USER ID" required autocomplete="off">
               </div>
 
-              <div class="admin-input-wrap">
-                <label for="new-user-pass">PASSWORD</label>
-                <input type="text" id="new-user-pass" placeholder="PASSWORD" required autocomplete="off">
-              </div>
-
-              <!-- ROLE SELECT BUTTONS (OFFICER & SUPERVISOR - SYMBOLS ONLY) -->
+              <!-- ROLE SELECT BUTTONS (OFFICER & SUPERVISOR) -->
               <div class="admin-role-selector">
-                <button type="button" id="role-btn-officer" class="admin-role-btn active" title="Officer" style="display: inline-flex; align-items: center; justify-content: center; height: 38px;">
-                  <i data-lucide="shield" style="width: 18px; height: 18px;"></i>
+                <button type="button" id="role-btn-officer" class="admin-role-btn active">
+                  <i data-lucide="shield" style="width: 15px; height: 15px;"></i>
+                  <span>OFFICER</span>
                 </button>
-                <button type="button" id="role-btn-supervisor" class="admin-role-btn" title="Supervisor" style="display: inline-flex; align-items: center; justify-content: center; height: 38px;">
-                  <i data-lucide="award" style="width: 18px; height: 18px;"></i>
+                <button type="button" id="role-btn-supervisor" class="admin-role-btn">
+                  <i data-lucide="award" style="width: 15px; height: 15px;"></i>
+                  <span>SUPERVISOR</span>
                 </button>
                 <input type="hidden" id="new-user-role" value="officer">
               </div>
 
-              <!-- ADD BUTTON (SYMBOL ONLY) -->
-              <button type="submit" id="btn-add-user-submit" class="admin-submit-btn" title="Add User" style="display: inline-flex; align-items: center; justify-content: center; height: 42px;">
-                <i data-lucide="user-plus" style="width: 20px; height: 20px;"></i>
+              <div class="admin-input-wrap">
+                <label for="new-user-name">USER NAME</label>
+                <input type="text" id="new-user-name" placeholder="USER NAME" autocomplete="off" style="text-transform: uppercase;">
+              </div>
+
+              <div class="admin-input-wrap">
+                <label for="new-user-pass">PASSWORD</label>
+                <input type="text" id="new-user-pass" placeholder="PASSWORD" autocomplete="off">
+              </div>
+
+              <!-- ADD BUTTON -->
+              <button type="submit" id="btn-add-user-submit" class="admin-submit-btn">
+                <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i>
+                <span>ADD MEMBER</span>
               </button>
             </form>
           </div>
@@ -269,33 +405,35 @@
 
         </div>
 
+
+
       </section>
 
       <!-- MAJOR PANEL -->
       <section id="major-panel-card" class="form-panel-card hidden-panel" style="display: none !important;">
-        <div class="panel-header major-panel-header">
-          <!-- Left: View Each Entries By Guest Name Button (ONLY in Major Patron - SYMBOL ONLY) -->
-          <div class="major-header-left">
-            <button id="btn-toggle-major-view" class="btn btn-secondary major-tool-btn" title="View Entries By Guest Name">
-              <i data-lucide="list" style="color: #a78bfa;"></i>
-              <span id="btn-toggle-major-view-text" style="display:none;"></span>
+        <div class="unified-app-toolbar">
+          <!-- Left: View Mode Toggle -->
+          <div class="toolbar-zone-left">
+            <button id="btn-toggle-major-view" class="unified-tool-btn" title="View Mode">
+              <i data-lucide="list"></i>
             </button>
           </div>
           <!-- Center: Title -->
-          <div class="major-header-title">
-            <i data-lucide="star" class="panel-icon" style="color: #fbbf24;"></i>
-            <h2>MAJOR PATRON</h2>
+          <div class="toolbar-zone-center">
+            <span class="toolbar-title">
+              <i data-lucide="star" style="color: #fbbf24; width: 17px; height: 17px;"></i>
+              <span>MAJOR PATRON</span>
+            </span>
           </div>
-          <!-- Right: Search & Refresh -->
-          <div class="major-header-actions">
-            <!-- SEARCH (ONLY SYMBOL BUTTON) -->
-            <div class="search-box-wrap" id="major-search-wrap">
-              <button type="button" id="btn-major-search-action" class="major-tool-btn btn-search-toggle" title="Search Patron (Symbol Only)">
+          <!-- Right: Search (Icon Only - Expandable) & Refresh -->
+          <div class="toolbar-zone-right">
+            <div class="unified-search-wrap">
+              <button id="btn-major-search-action" class="unified-tool-btn unified-search-btn" title="Search">
                 <i data-lucide="search"></i>
               </button>
-              <input type="text" id="major-search" class="search-expand-input" placeholder="Search patron..." />
+              <input type="text" id="major-search" placeholder="" title="Search" class="unified-search-input" style="display: none; padding: 4px 10px; width: 160px; height: 32px; font-size: 0.82rem;" />
             </div>
-            <button id="refreshMajor" class="btn btn-secondary major-tool-btn" title="Refresh">
+            <button id="refreshMajor" class="unified-tool-btn" title="Refresh">
               <i data-lucide="refresh-cw"></i>
             </button>
           </div>
@@ -307,12 +445,12 @@
 
       <!-- SUPERVISOR HOME PANEL -->
       <section id="supervisor-home-panel" class="hidden-panel" style="display: none !important; gap: 20px; height: calc(100vh - 100px); width: 100%;">
-        <div id="supervisor-all-entries" style="flex: 1.5; background: var(--card-bg); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; overflow: hidden; padding: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+        <div id="supervisor-all-entries" style="flex: 1.5; background: rgba(10, 16, 32, 0.42); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-radius: 12px; border: 1px solid rgba(255,255,255,0.12); display: flex; flex-direction: column; overflow: hidden; padding: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
           <!-- Content populated via JS -->
         </div>
 
         <!-- Right: SEND Box -->
-        <div style="flex: 0 0 35%; align-self: flex-start; max-height: 100%; background: var(--card-bg); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; padding: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+        <div style="flex: 0 0 35%; align-self: flex-start; max-height: 100%; background: rgba(10, 16, 32, 0.42); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-radius: 12px; border: 1px solid rgba(255,255,255,0.12); display: flex; flex-direction: column; padding: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
           <div id="supervisor-send-box" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
             <!-- Content populated via JS -->
           </div>
@@ -323,136 +461,113 @@
       <!-- BARRED GUESTS PANEL -->
       <section id="barred-guests-panel-card" class="form-panel-card barred-fixed-layout hidden-panel" style="display: none !important;">
         
-        <!-- HEADER: Title Centered -->
-        <div class="barred-header-bar">
-          <h2 class="barred-main-title">BARRED GUEST</h2>
-        </div>
-
-        <!-- TOOLBAR: Controls directly below header -->
-        <div class="barred-toolbar">
-          
-          <!-- LEFT CONTROLS (ONLY SYMBOL BUTTONS) -->
-          <div class="barred-toolbar-left">
-            <!-- Hidden file input for Photo, Excel, Word, PDF (Multiple allowed) -->
-            <input type="file" id="barred-doc-upload" accept=".xlsx, .xls, .csv, .docx, .doc, .pdf, .txt, image/*, .png, .jpg, .jpeg, .webp, .bmp" multiple style="display: none;" />
-            
-            <!-- ONLY ONE UPLOAD BUTTON (SYMBOL ONLY) FOR PHOTO, EXCEL, WORD, PDF -->
-            <button id="btn-import-barred-doc" class="btn-barred-tool btn-barred-import" title="Upload (Photo, Excel, Word, PDF)" style="width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;">
-              <i data-lucide="upload-cloud" style="width: 18px; height: 18px;"></i>
+        <!-- UNIFIED COMPACT TOOLBAR (SAME FORMAT) -->
+        <div class="unified-app-toolbar">
+          <!-- Left: Import, Add, Delete All -->
+          <div class="toolbar-zone-left">
+            <input type="file" id="barred-doc-upload" accept="image/*, .xlsx, .xls, .csv, .docx, .doc, .pdf, .txt" multiple style="display: none;" />
+            <button id="btn-import-barred-doc" class="unified-tool-btn" title="IMPORT PHOTO, PDF, EXCEL, WORD" style="color: #34d399; border-color: rgba(16, 185, 129, 0.4);">
+              <i data-lucide="upload-cloud"></i>
             </button>
-
-            <!-- ADD BARRED (SYMBOL ONLY) -->
-            <button id="btn-open-barred-modal" class="btn-barred-tool btn-barred-add" title="Add Barred Guest" style="width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;">
-              <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i>
+            <button id="btn-open-barred-modal" class="unified-tool-btn" title="ADD BARRED GUEST" style="color: #60a5fa; border-color: rgba(59, 130, 246, 0.4);">
+              <i data-lucide="user-plus"></i>
             </button>
-
-            <!-- DELETE ALL (SYMBOL ONLY) -->
-            <button id="btn-delete-all-barred" class="btn-barred-tool btn-barred-delete-all" title="Delete All Barred Guests" style="width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;">
-              <i data-lucide="trash-2" style="width: 18px; height: 18px;"></i>
-            </button>
-
-            <!-- VIEW TOGGLE: CARDS VIEW (SYMBOL ONLY) -->
-            <button id="btn-barred-view-cards" class="btn-barred-tool active" title="Cards View" style="width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;">
-              <i data-lucide="layout-grid" style="width: 18px; height: 18px;"></i>
-            </button>
-
-            <!-- VIEW TOGGLE: EXCEL SPREADSHEET VIEW (SYMBOL ONLY) -->
-            <button id="btn-barred-view-excel" class="btn-barred-tool" title="Excel Workbook View" style="width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;">
-              <i data-lucide="file-spreadsheet" style="width: 18px; height: 18px; color: #10b981;"></i>
+            <button id="btn-delete-all-barred" class="unified-tool-btn" title="DELETE ALL BARRED GUESTS" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4);">
+              <i data-lucide="trash-2"></i>
             </button>
           </div>
-
-          <!-- RIGHT CONTROLS -->
-          <div class="barred-toolbar-right">
-            <!-- EDIT BUTTON (SYMBOL ONLY) -->
-            <button id="btn-toggle-barred-edit" class="btn-barred-tool btn-barred-edit" title="Toggle Edit Mode" style="width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;">
-              <i data-lucide="edit-3" style="width: 17px; height: 17px;"></i>
-            </button>
-
-            <!-- SEARCH (ONLY SYMBOL BUTTON) -->
-            <div class="search-box-wrap" id="barred-search-wrap">
-              <button type="button" id="btn-toggle-barred-search" class="btn-barred-tool btn-search-toggle" title="Search Barred Guests (Symbol Only)">
+          <!-- Center: Title -->
+          <div class="toolbar-zone-center">
+            <span class="toolbar-title">
+              <i data-lucide="ban" style="color: #ef4444; width: 17px; height: 17px;"></i>
+              <span style="color: #ef4444;">BARRED GUEST</span>
+            </span>
+          </div>
+          <!-- Right: Search (Icon Only - Expandable) & Close (Home) -->
+          <div class="toolbar-zone-right">
+            <div class="unified-search-wrap">
+              <button id="btn-barred-search-toggle" class="unified-tool-btn unified-search-btn" title="SEARCH">
                 <i data-lucide="search"></i>
               </button>
-              <input type="text" id="barred-search" class="search-expand-input" placeholder="SEARCH BARRED..." />
+              <input type="text" id="barred-search" placeholder="" title="Search" class="unified-search-input" style="display: none; padding: 4px 10px; width: 160px; height: 32px; font-size: 0.82rem;" />
             </div>
+            <button id="btn-close-barred-guests" class="unified-tool-btn" title="Close" style="color: #94a3b8;">
+              <i data-lucide="x"></i>
+            </button>
           </div>
-
         </div>
 
         <!-- CENTRAL DISPLAY BOX: ONLY CARDS MOVE UP AND DOWN -->
         <div class="barred-central-box">
-          <!-- CARD VIEW -->
           <div id="barred-list-container" class="barred-cards-scroll-area">
             <!-- 3-column cards injected dynamically by JS -->
           </div>
-
-          <!-- EXCEL SPREADSHEET VIEW -->
-          <div id="barred-excel-view" class="barred-cards-scroll-area excel-sheet-viewer" style="display: none; padding: 12px; overflow: auto;">
-            <!-- Rendered Barred Excel sheet injected dynamically by JS -->
-          </div>
         </div>
+
+
 
       </section>
 
-      <!-- MODAL: Barred Guest Form -->
-      <div id="barred-guest-modal" class="modal-overlay" style="display: none;">
-        <div class="modal-content" style="max-width: 90%; width: 800px; padding: 0;">
-          <div class="modal-header" style="background: var(--card-bg); border-bottom: 1px solid rgba(255,255,255,0.1); padding: 15px 20px;">
-            <h3 style="margin: 0;"><i data-lucide="ban" style="vertical-align: middle; margin-right: 8px;"></i>ADD BARRED GUEST</h3>
-            <button id="btn-close-barred-modal" class="btn-close" style="background:transparent; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer;">&times;</button>
+      <!-- MODAL: Barred Guest Form (Fit to Page & Close Icon) -->
+      <div id="barred-guest-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 10000;">
+        <div class="modal-content" style="max-width: 95vw; width: 560px; max-height: 90vh; display: flex; flex-direction: column; background: rgba(10, 16, 32, 0.78); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1.5px solid rgba(59, 130, 246, 0.4); border-radius: 12px; box-shadow: 0 15px 40px rgba(0,0,0,0.9); overflow: hidden; padding: 0;">
+          <div class="modal-header" style="background: rgba(0,0,0,0.4); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 9px 14px; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 0.95rem; font-weight: 800; color: #f8fafc; letter-spacing: 0.5px; display: flex; align-items: center; gap: 7px;">
+              <i data-lucide="ban" style="width: 17px; height: 17px; color: #ef4444;"></i>
+              <span>ADD BARRED GUEST</span>
+            </h3>
+            <button id="btn-close-barred-modal" class="btn-close" title="CLOSE" style="background:transparent; border:none; color: #94a3b8; cursor:pointer; display:flex; align-items:center; justify-content:center; padding: 2px; border-radius: 4px; transition: color 0.2s;">
+              <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+            </button>
           </div>
-          <div class="modal-body" style="padding: 20px;">
-            <form id="barred-guest-form" style="display: flex; gap: 20px;">
+          <div class="modal-body" style="padding: 12px 14px; overflow-y: auto; flex: 1 1 auto;">
+            <form id="barred-guest-form" style="display: flex; gap: 12px;">
               <!-- Left: Form Fields -->
-              <div style="flex: 2; display: flex; flex-direction: column; gap: 15px;">
-                <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
-                  <label style="width: 120px; font-weight: bold;">GUEST NAME</label>
-                  <input type="text" id="barred-guestname" class="form-control" placeholder="(ENTER KEYWORD)" required style="flex: 1;" />
+              <div style="flex: 1.6; display: flex; flex-direction: column; gap: 6px; min-width: 0;">
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                  <label style="width: 82px; font-weight: 800; font-size: 0.74rem; color: #cbd5e1; flex-shrink: 0;">GUEST NAME</label>
+                  <input type="text" id="barred-guestname" class="form-control" placeholder="(ENTER KEYWORD)" required style="flex: 1; text-transform: uppercase; height: 30px; padding: 4px 8px; font-size: 0.8rem; border-radius: 6px;" />
                 </div>
-                <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
-                  <label style="width: 120px; font-weight: bold;">REASON</label>
-                  <input type="text" id="barred-reason" class="form-control" placeholder="(ENTER KEYWORD)" required style="flex: 1;" />
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                  <label style="width: 82px; font-weight: 800; font-size: 0.74rem; color: #cbd5e1; flex-shrink: 0;">REASON</label>
+                  <input type="text" id="barred-reason" class="form-control" placeholder="(ENTER KEYWORD)" required style="flex: 1; text-transform: uppercase; height: 30px; padding: 4px 8px; font-size: 0.8rem; border-radius: 6px;" />
                 </div>
-                <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
-                  <label style="width: 120px; font-weight: bold;">DATE</label>
-                  <input type="date" id="barred-date" class="form-control" required style="flex: 1;" />
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                  <label style="width: 82px; font-weight: 800; font-size: 0.74rem; color: #cbd5e1; flex-shrink: 0;">DATE</label>
+                  <input type="date" id="barred-date" class="form-control" required style="flex: 1; height: 30px; padding: 4px 8px; font-size: 0.8rem; border-radius: 6px;" />
                 </div>
-                <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
-                  <label style="width: 120px; font-weight: bold;">INST</label>
-                  <input type="text" id="barred-inst" class="form-control" placeholder="(ENTER KEYWORD)" style="flex: 1;" />
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                  <label style="width: 82px; font-weight: 800; font-size: 0.74rem; color: #cbd5e1; flex-shrink: 0;">INST</label>
+                  <input type="text" id="barred-inst" class="form-control" placeholder="(ENTER KEYWORD)" style="flex: 1; text-transform: uppercase; height: 30px; padding: 4px 8px; font-size: 0.8rem; border-radius: 6px;" />
                 </div>
-                <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
-                  <label style="width: 120px; font-weight: bold;">PROPERTY</label>
-                  <input type="text" id="barred-property" class="form-control" placeholder="(ENTER KEYWORD)" style="flex: 1;" />
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                  <label style="width: 82px; font-weight: 800; font-size: 0.74rem; color: #cbd5e1; flex-shrink: 0;">PROPERTY</label>
+                  <input type="text" id="barred-property" class="form-control" placeholder="(ENTER KEYWORD)" style="flex: 1; text-transform: uppercase; height: 30px; padding: 4px 8px; font-size: 0.8rem; border-radius: 6px;" />
                 </div>
-                <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
-                  <label style="width: 120px; font-weight: bold;">OTHER INFO</label>
-                  <input type="text" id="barred-otherinfo" class="form-control" placeholder="(ENTER KEYWORD)" style="flex: 1;" />
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                  <label style="width: 82px; font-weight: 800; font-size: 0.74rem; color: #cbd5e1; flex-shrink: 0;">OTHER INFO</label>
+                  <input type="text" id="barred-otherinfo" class="form-control" placeholder="(ENTER KEYWORD)" style="flex: 1; text-transform: uppercase; height: 30px; padding: 4px 8px; font-size: 0.8rem; border-radius: 6px;" />
                 </div>
               </div>
               
               <!-- Right: Photo Upload -->
-              <div style="flex: 1; display: flex; flex-direction: column; align-items: center; border: 2px dashed rgba(56,189,248,0.4); border-radius: 8px; padding: 14px; position: relative; justify-content: center; min-height: 200px; cursor: pointer; text-align: center; background: rgba(0,0,0,0.35);" id="barred-photo-box">
+              <div style="flex: 1; display: flex; flex-direction: column; align-items: center; border: 1.5px dashed rgba(255,255,255,0.25); border-radius: 8px; padding: 8px; position: relative; justify-content: center; min-height: 190px; cursor: pointer; text-align: center; background: rgba(0,0,0,0.25); min-width: 140px;" id="barred-photo-box" title="Click to upload photo">
                 <input type="file" id="barred-photo-input" accept="image/*" style="display: none;" />
-                <div id="barred-photo-placeholder" style="color: #94a3b8; font-size: 0.85rem; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none;">
-                  <i data-lucide="camera" style="width: 38px; height: 38px; color: #38bdf8;"></i>
-                  <span style="font-weight: 800; color: #fff; font-size: 0.95rem;">UPLOAD PHOTO</span>
-                  <span style="font-size: 0.75rem; color: #64748b;">(JPG, PNG, WEBP)</span>
-                  <div style="margin-top: 6px; padding: 6px 14px; background: rgba(56,189,248,0.2); border: 1px solid #38bdf8; border-radius: 6px; color: #38bdf8; font-weight: 700; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 6px;">
-                    <i data-lucide="image" style="width: 14px; height: 14px;"></i> SELECT PHOTO
-                  </div>
+                <div id="barred-photo-placeholder" style="color: #94a3b8; font-size: 0.78rem; font-weight: 700; line-height: 1.35;">
+                  <i data-lucide="upload-cloud" style="width: 26px; height: 26px; margin-bottom: 4px; color: #38bdf8;"></i>
+                  <br/>UPLOAD PHOTO<br/><span style="font-size: 0.68rem; color: #64748b;">AUTO FIT TO BOX</span>
                 </div>
-                <img id="barred-photo-preview" src="" alt="Preview" style="display: none; width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; border-radius: 6px;" />
+                <img id="barred-photo-preview" src="" alt="Preview" style="display: none; width: 100%; height: 100%; object-fit: contain; position: absolute; top: 0; left: 0; border-radius: 6px; background: rgba(0,0,0,0.4);" />
               </div>
             </form>
           </div>
-          <div class="modal-footer" style="padding: 15px 20px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: flex-end; gap: 12px;">
-            <button type="button" id="btn-cancel-barred-modal" class="btn-secondary" style="padding: 10px 20px; font-weight: 700; border-radius: 8px; cursor: pointer; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff;">
-              CLOSE
+          <div class="modal-footer" style="padding: 10px 14px; border-top: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.25); display: flex; justify-content: center; gap: 10px;">
+            <button type="button" id="btn-delete-single-barred" class="btn-danger" style="display: none; height: 34px; padding: 0 16px; font-size: 0.85rem; font-weight: 800; border-radius: 6px; background: #ef4444; border: none; color: #fff; cursor: pointer; align-items: center; gap: 6px;">
+              <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+              <span>DELETE</span>
             </button>
-            <button type="submit" form="barred-guest-form" class="btn-primary" style="flex: 1; padding: 10px 20px; font-size: 1.05rem; font-weight: bold; letter-spacing: 1px; display:flex; align-items:center; justify-content:center; gap:8px;">
-              <i data-lucide="shield-check" style="width:20px;height:20px;"></i>
+            <button type="submit" form="barred-guest-form" class="btn-primary" style="flex: 1; height: 34px; padding: 0 14px; font-size: 0.88rem; font-weight: 800; letter-spacing: 0.5px; display:flex; align-items:center; justify-content:center; gap:6px; border-radius: 6px; background: #3b82f6; border-color: #2563eb;">
+              <i data-lucide="shield-check" style="width:16px;height:16px;"></i>
               <span>SUBMIT</span>
             </button>
           </div>
@@ -462,72 +577,51 @@
       <!-- ALL ENTRIES PANEL -->
       <section id="all-entries-panel-card" class="form-panel-card all-entries-fixed-layout hidden-panel" style="display: none !important;">
         
-        <!-- TOP HEADER: TITLE CENTERED & GAMING DAY RIGHT-ALIGNED -->
-        <div class="all-entries-header-bar">
-          <div class="all-entries-header-side"></div>
-          <h2 class="all-entries-title">ALL ENTRIES</h2>
-          <div class="all-entries-header-side right">
-            <span id="all-entries-gaming-date" class="all-entries-gaming-tag">TODAY GAMING DAY</span>
+        <!-- UNIFIED COMPACT TOOLBAR (SAME FORMAT) -->
+        <div class="unified-app-toolbar">
+          <!-- Left: Table, Sentence, Excel Views, Delete Selected -->
+          <div class="toolbar-zone-left">
+            <button id="btn-view-normal" class="unified-tool-btn active" title="Table View">
+              <i data-lucide="table"></i>
+            </button>
+            <button id="btn-view-sentence" class="unified-tool-btn" title="Sentence View">
+              <i data-lucide="align-left"></i>
+            </button>
+            <button id="btn-view-excel" class="unified-tool-btn" title="Excel View">
+              <i data-lucide="file-spreadsheet"></i>
+            </button>
+            <button id="btn-delete-selected" class="unified-tool-btn" style="display: none; color: #ef4444; border-color: rgba(239, 68, 68, 0.4);" title="Delete Selected Entries">
+              <i data-lucide="trash-2"></i>
+            </button>
           </div>
-        </div>
-
-        <!-- TOOLBAR -->
-        <div class="all-entries-toolbar">
-          
-          <!-- SEARCH AND TOGGLE (LEFT) -->
-          <div class="all-entries-toolbar-left">
-            <!-- SEARCH (ONLY SYMBOL BUTTON) -->
-            <div class="search-box-wrap" id="all-entries-search-wrap">
-              <button type="button" id="btn-toggle-all-search" class="all-entries-toggle-btn btn-search-toggle" title="Search All Entries (Symbol Only)">
+          <!-- Center: Live Gaming Date & Time Badge (Single Line Format) -->
+          <div class="toolbar-zone-center">
+            <span id="all-entries-gaming-date" class="home-date-time-badge"></span>
+          </div>
+          <!-- Right: Search (Icon Only), Export, Datepicker, Home/Close -->
+          <div class="toolbar-zone-right">
+            <div class="unified-search-wrap">
+              <button id="btn-all-entries-search-action" class="unified-tool-btn unified-search-btn" title="Search">
                 <i data-lucide="search"></i>
               </button>
-              <input type="text" id="all-entries-search" class="search-expand-input" placeholder="SEARCH..." />
+              <input type="text" id="all-entries-search" placeholder="" title="Search" class="unified-search-input" style="display: none; padding: 4px 10px; width: 150px; height: 32px; font-size: 0.82rem;" />
             </div>
-
-            <button id="btn-delete-selected" class="btn-danger btn-delete-selected-all" style="display: none; width: 38px; height: 38px; padding: 0; justify-content: center; align-items: center; border-radius: 8px;" title="Delete Selected Entries">
-              <i data-lucide="trash-2" style="width: 17px; height: 17px; pointer-events: none;"></i>
+            <button id="btn-export-all" class="unified-tool-btn" title="Export to Excel (Both Date-wise & Month-wise)" style="color: #34d399; border-color: rgba(16, 185, 129, 0.4);">
+              <i data-lucide="download"></i>
             </button>
-
-            <!-- Table View Toggle (SYMBOL ONLY) -->
-            <button id="btn-view-normal" class="all-entries-toggle-btn active" title="Table View" style="width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;">
-              <i data-lucide="table" style="width:17px;height:17px;"></i>
-            </button>
-
-            <!-- Sentence View Toggle (SYMBOL ONLY) -->
-            <button id="btn-view-sentence" class="all-entries-toggle-btn" title="Sentence View" style="width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;">
-              <i data-lucide="align-left" style="width:17px;height:17px;"></i>
-            </button>
-
-            <!-- Excel Workbook View Toggle (SYMBOL ONLY) -->
-            <button id="btn-view-excel" class="all-entries-toggle-btn" title="Excel Workbook View" style="width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;">
-              <i data-lucide="file-spreadsheet" style="width:17px;height:17px;color:#10b981;"></i>
-            </button>
-
-            <!-- Entries By Guest Wise View Toggle -->
-            <button id="btn-view-guestwise" class="all-entries-toggle-btn" title="Entries By Guest Wise" style="width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;">
-              <i data-lucide="users" style="width:17px;height:17px;color:#a78bfa;"></i>
+            <div class="unified-tool-btn" style="position: relative; overflow: hidden; cursor: pointer;" title="Select Date">
+              <i data-lucide="calendar" style="color: #60a5fa; pointer-events: none;"></i>
+              <input type="date" id="all-entries-datepicker" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;" />
+            </div>
+            <button id="btn-all-entries-home" class="unified-tool-btn" title="Close" style="color: #94a3b8;">
+              <i data-lucide="x"></i>
             </button>
           </div>
-          
-          <!-- SUB BUTTONS (RIGHT SIDE - SYMBOLS ONLY) -->
-          <div class="all-entries-toolbar-right">
-            <!-- EXPORT TO EXCEL (SYMBOL ONLY) -->
-            <button id="btn-export-all" class="all-entries-export-btn" title="Export to Excel" style="width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;">
-              <i data-lucide="file-spreadsheet" style="width: 18px; height: 18px;"></i>
-            </button>
-
-            <!-- CALENDAR DATE PICKER (SYMBOL ONLY) -->
-            <label for="all-entries-datepicker" class="all-entries-date-btn" title="Select Date" style="width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; cursor: pointer; position: relative;">
-              <i data-lucide="calendar" style="width: 18px; height: 18px; color: #60a5fa;"></i>
-              <input type="date" id="all-entries-datepicker" style="position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer;" />
-            </label>
-          </div>
-
         </div>
 
         <!-- CENTRAL DISPLAY BOX: ONLY ENTRIES MOVE UP AND DOWN -->
         <div class="all-entries-display-box">
-          <!-- MAIN TABLE CONTENT (NORMAL VIEW) -->
+          <!-- 1. MAIN TABLE CONTENT (TABLE VIEW) -->
           <div id="all-entries-normal-view" class="all-entries-scroll-area">
             <table class="logs-table">
               <thead>
@@ -549,41 +643,40 @@
             </table>
           </div>
 
-          <!-- SENTENCE VIEW CONTENT -->
+          <!-- 2. SENTENCE VIEW CONTENT -->
           <div id="all-entries-list-container" class="all-entries-list all-entries-scroll-area" style="display: none;">
             <!-- All entries sentences will be injected here -->
           </div>
 
-          <!-- EXCEL WORKBOOK SPREADSHEET VIEW -->
-          <div id="all-entries-excel-view" class="all-entries-scroll-area excel-sheet-viewer" style="display: none; padding: 10px; overflow: auto;">
-            <!-- Rendered Excel sheet HTML -->
-          </div>
-
-          <!-- ENTRIES BY GUEST WISE VIEW -->
-          <div id="all-entries-guestwise-view" class="all-entries-scroll-area guestwise-view-container" style="display: none; padding: 14px 16px; overflow-y: auto;">
-            <!-- Rendered Guest Wise Cards injected dynamically by JS -->
+          <!-- 3. EXCEL SPREADSHEET VIEW CONTENT -->
+          <div id="all-entries-excel-view" class="all-entries-scroll-area excel-grid-container" style="display: none;">
+            <!-- Excel view table injected here -->
           </div>
         </div>
 
-        <!-- BOTTOM DAY NAVIGATION (FIXED IN ONE SINGLE LINE) -->
+        <!-- BOTTOM DAY NAVIGATION (FIXED) -->
         <div class="all-entries-bottom-bar">
           <div class="all-entries-nav-row">
             <div class="day-pagination">
-              <button class="day-nav-btn" id="day-nav-prev" title="Previous Day" style="padding: 6px 10px; display: inline-flex; align-items: center; justify-content: center;">
-                <i data-lucide="chevron-left" style="width:16px;height:16px;"></i>
+              <button class="day-nav-arrow-btn" id="day-nav-prev" title="Previous Day">
+                <i data-lucide="chevron-left" style="width:12px;height:12px;"></i>
+                <span>PREV</span>
               </button>
               <div id="day-numbers-container" class="day-numbers-list">
                 <!-- Days 1-31 injected by JS -->
               </div>
-              <button class="day-nav-btn" id="day-nav-next" title="Next Day" style="padding: 6px 10px; display: inline-flex; align-items: center; justify-content: center;">
-                <i data-lucide="chevron-right" style="width:16px;height:16px;"></i>
+              <button class="day-nav-arrow-btn" id="day-nav-next" title="Next Day">
+                <span>NEXT</span>
+                <i data-lucide="chevron-right" style="width:12px;height:12px;"></i>
               </button>
             </div>
-            <div class="all-entries-goto-box">
-              <span>GOTO</span>
-              <input type="number" id="goto-day-input" min="1" max="31" />
+            <div class="all-entries-goto-box" title="Go to Day">
+              <span class="goto-label">GOTO</span>
+              <input type="number" id="goto-day-input" min="1" max="31" placeholder="[ ]" />
             </div>
           </div>
+
+
         </div>
 
       </section>
@@ -593,17 +686,21 @@
         <div id="officer-quick-entry-panel" style="width: 100%; max-width: 100%;">
           <!-- ONE BOX LIKE TELEGRAM -->
           <div class="telegram-input-box">
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-right: 10px;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+            <!-- AI ICON: OFFLINE AI ASSISTANT -->
+            <div class="telegram-ai-badge btn-open-ai-assistant" id="btn-open-ai-assistant" title="Offline AI Assistant (Click to Ask Questions)" style="cursor: pointer; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: linear-gradient(135deg, rgba(99,102,241,0.25), rgba(168,85,247,0.3)); border: 1px solid rgba(168,85,247,0.5); flex-shrink: 0; margin-right: 8px; box-shadow: 0 0 10px rgba(168,85,247,0.35);">
+              <i data-lucide="sparkles" style="width: 14px; height: 14px; color: #c084fc;"></i>
+            </div>
             <textarea id="officer-quick-input"
               rows="1"
-              style="flex: 1; resize: none; background: transparent; border: none; color: #ffffff; font-size: 1.05rem; font-family: inherit; font-weight: 500; line-height: 1.4; outline: none; min-height: 48px; max-height: 100px; padding: 12px 4px; overflow-y: auto;"
+              style="flex: 1; resize: none; background: transparent; border: none; color: #ffffff; font-size: 0.95rem; font-family: inherit; font-weight: 500; line-height: 1.35; outline: none; min-height: 32px; max-height: 80px; padding: 6px 4px; overflow-y: auto;"
             ></textarea>
-            <button id="btn-officer-quick-save" title="Send Entry"
-              style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; border-radius: 12px; width: 46px; height: 46px; padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 14px rgba(99,102,241,0.5);">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+            <button id="btn-officer-quick-save"
+              style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; border-radius: 8px; padding: 0 14px; height: 32px; font-weight: 700; font-size: 0.82rem; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px; letter-spacing: 0.5px; flex-shrink: 0; box-shadow: 0 2px 10px rgba(99,102,241,0.4);">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              <span>SEND</span>
             </button>
           </div>
-          <div id="officer-quick-feedback" style="font-size: 0.82rem; min-height: 18px; padding-left: 12px; padding-top: 3px; font-weight: 600;"></div>
+          <div id="officer-quick-feedback" style="font-size: 0.78rem; min-height: 14px; padding-left: 10px; padding-top: 2px; font-weight: 600;"></div>
         </div>
       </section>
     </div>
@@ -611,7 +708,7 @@
 
   <!-- MODAL: ADD ENTRIES (LOG FORM) -->
   <div id="supervisor-log-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 9999;">
-    <div class="modal-content" style="max-width: 95vw; width: 1320px; max-height: 90vh; overflow-y: auto; background: #121827; border: 1px solid rgba(255,255,255,0.15); border-radius: 14px; box-shadow: 0 20px 50px rgba(0,0,0,0.8);">
+    <div class="modal-content" style="max-width: 95vw; width: 1320px; max-height: 90vh; overflow-y: auto; background: rgba(10, 16, 32, 0.68); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255,255,255,0.15); border-radius: 14px; box-shadow: 0 20px 50px rgba(0,0,0,0.8);">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25);">
         <h3 style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 1.15rem; color: #fff; font-weight: 700; letter-spacing: 0.5px;">
           <span style="font-size: 1.4rem; font-weight: 900; line-height: 1; color: #a78bfa; display: inline-block;">+</span>
@@ -622,41 +719,18 @@
       <div class="modal-body" id="supervisor-log-modal-body" style="padding: 20px;">
         <form id="entry-form" class="horizontal-form" novalidate>
           <div class="form-row" style="flex-wrap: nowrap; padding-bottom: 5px; align-items: flex-start;">
-            <!-- 1. TIME -->
-            <div class="form-group flex-2">
-              <label for="datetime" style="display: none;">Time</label>
+            <!-- DateTime (Hidden from Form) -->
+            <div class="form-group flex-2" style="display: none;">
+              <label for="datetime">Date &amp; Time</label>
               <div class="input-wrapper">
-                <i data-lucide="clock" class="field-icon"></i>
-                <input type="datetime-local" id="datetime" required style="padding-left: 36px; color: #fff; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; font-size: 0.85rem;">
+                <i data-lucide="calendar" class="field-icon"></i>
+                <input type="datetime-local" id="datetime" required>
               </div>
             </div>
 
-            <!-- 2. CD -->
-            <div class="form-group flex-1">
-              <label for="cd" style="display: none;">CD</label>
-              <div class="input-wrapper">
-                <i data-lucide="monitor" class="field-icon"></i>
-                <input type="text" id="cd" placeholder="CD" value="CD-01" required style="padding-left: 36px;">
-              </div>
-              <div class="inline-options-list">
-                <div class="inline-option-item">CD-01</div>
-                <div class="inline-option-item">CD-02</div>
-                <div class="inline-option-item">CD-03</div>
-                <div class="inline-option-item">CD-04</div>
-                <div class="inline-option-item">M-CD</div>
-                <div class="inline-option-item">F-CD</div>
-              </div>
-            </div>
-
-            <!-- 3. CASHIER -->
-            <div class="form-group flex-1">
-              <label for="cashier" style="display: none;">Cashier</label>
-              <div class="input-wrapper">
-                <i data-lucide="user-check" class="field-icon"></i>
-                <input type="text" id="cashier" placeholder="CASHIER" autocomplete="off" style="padding-left: 36px;">
-              </div>
-              <div class="inline-options-list" id="cashier-options-grid"></div>
-            </div>
+            <!-- Hidden CD and Cashier (Removed from view) -->
+            <input type="hidden" id="cd" value="CD-01">
+            <input type="hidden" id="cashier" value="-">
 
             <!-- Type -->
             <div class="form-group flex-1-5">
@@ -750,9 +824,136 @@
       </div>
     </div>
   </div>
+
+  <!-- MODAL: GUEST SUMMARY POPUP -->
+  <div id="guest-summary-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 20000;">
+    <div class="modal-content" style="max-width: 92vw; width: 620px; max-height: 88vh; display: flex; flex-direction: column; background: rgba(10, 16, 32, 0.68); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1.5px solid rgba(0, 162, 232, 0.5); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.9); overflow: hidden;">
+      
+      <!-- Top Bar with Date & Close Button -->
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: rgba(0,0,0,0.45); border-bottom: 1px solid rgba(255,255,255,0.08);">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="calendar" style="width: 15px; height: 15px; color: #38bdf8;"></i>
+          <span style="font-size: 0.78rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">DATE:</span>
+          <span id="guest-summary-modal-date" style="font-size: 0.9rem; font-weight: 800; color: #38bdf8; font-family: Arial, 'Segoe UI', Calibri, sans-serif;">DD-MM-YYYY</span>
+        </div>
+        <button id="btn-close-guest-summary-modal" class="btn-close" style="background:transparent; border:none; color:var(--text-muted); font-size:1.6rem; cursor:pointer; line-height: 1; padding: 0 4px;" title="Close">&times;</button>
+      </div>
+
+      <div class="modal-body" style="padding: 16px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px;">
+        
+        <!-- EXCEL STYLE GUEST SUMMARY CARD (Matching user's Excel format) -->
+        <div id="guest-summary-card-container" class="guest-summary-card-box">
+          <!-- Cyan Header -->
+          <div class="guest-summary-header-cyan">
+            GUEST SUMMARY
+          </div>
+          <!-- Rows in Light Sage Green (#C6D9AF) -->
+          <div class="guest-summary-body-green">
+            <div class="summary-row">
+              <span class="summary-lbl">NAME :-</span>
+              <span id="guest-summary-modal-name" class="summary-val">—</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-lbl">TOTAL IN :-</span>
+              <span id="guest-summary-modal-in" class="summary-val">0</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-lbl">TOTAL OUT :-</span>
+              <span id="guest-summary-modal-out" class="summary-val">0</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-lbl">RESULT :-</span>
+              <span id="guest-summary-modal-result" class="summary-val summary-val-result" style="color: #008000;">0</span>
+            </div>
+          </div>
+          <!-- Yellow Divider Row (#FFFF00) -->
+          <div class="guest-summary-footer-yellow"></div>
+        </div>
+
+        <!-- TRANSACTIONS HEADER & LIST BELOW -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.78rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.5px; text-transform: uppercase;">
+              TIME &amp; ENTRY
+            </span>
+            <span id="guest-summary-modal-count" style="font-size: 0.74rem; background: rgba(255,255,255,0.08); padding: 2px 8px; border-radius: 4px; color: #cbd5e1; font-weight: 700;">
+              0 ENTRIES
+            </span>
+          </div>
+
+          <!-- Entries Table / Rows -->
+          <div id="guest-summary-modal-entries" style="display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto;">
+            <!-- Injected via JS -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- OFFLINE SURVEILLANCE AI ASSISTANT MODAL -->
+  <div id="ai-assistant-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 10000; background: rgba(3, 7, 18, 0.50); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);">
+    <div class="modal-content ai-modal-box">
+      <!-- Header -->
+      <div class="ai-modal-header">
+        <div class="ai-header-title">
+          <div class="ai-sparkle-pill">
+            <i data-lucide="sparkles" style="width: 17px; height: 17px; color: #c084fc;"></i>
+          </div>
+          <div style="display: flex; flex-direction: column;">
+            <span class="ai-title-text">OFFLINE SURVEILLANCE AI ASSISTANT</span>
+            <span class="ai-subtitle-text">LOCAL AI · GUEST DETAILS · TOTAL IN / OUT · RESULT · GAMING DATE</span>
+          </div>
+        </div>
+        
+        <!-- Gaming Date Selector in Header with Calendar Icon -->
+        <div class="ai-header-actions" style="display: flex; align-items: center; gap: 8px;">
+          <!-- Calendar Icon Button -->
+          <div class="unified-tool-btn" style="position: relative; overflow: hidden; cursor: pointer; width: 32px; height: 32px; min-width: 32px; border-radius: 8px; background: rgba(255, 255, 255, 0.08); border: 1.2px solid rgba(56, 189, 248, 0.4); display: flex; align-items: center; justify-content: center;" title="Click Calendar Icon to Select Date">
+            <i data-lucide="calendar" style="width: 16px; height: 16px; color: #38bdf8; pointer-events: none;"></i>
+            <input type="date" id="ai-date-picker" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;" />
+          </div>
+          <!-- Dark Bold Selected Date Badge -->
+          <span id="ai-selected-date-badge" class="home-date-time-badge"></span>
+          <button id="btn-close-ai-modal" class="ai-close-btn" title="Close AI Assistant">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Suggestion Action Chips -->
+      <div class="ai-chips-bar">
+        <button type="button" class="ai-chip-btn" data-query="OVERALL TOTAL IN">⚡ OVERALL TOTAL IN</button>
+        <button type="button" class="ai-chip-btn" data-query="OVERALL TOTAL OUT">⚡ OVERALL TOTAL OUT</button>
+        <button type="button" class="ai-chip-btn" data-query="OVERALL RESULT">⚡ OVERALL RESULT</button>
+        <button type="button" class="ai-chip-btn" data-query="ALL ENTRIES SUMMARY">📋 ALL ENTRIES</button>
+        <button type="button" class="ai-chip-btn" data-query="ENTRIES IN SENTENCE FORM">📝 SENTENCES</button>
+        <button type="button" class="ai-chip-btn" data-query="TOP MAJOR PATRONS">⭐ TOP GUESTS</button>
+        <button type="button" class="ai-chip-btn" data-query="BARRED GUESTS CHECK">🚫 BARRED GUESTS</button>
+      </div>
+
+      <!-- Chat / Query Result Area -->
+      <div id="ai-chat-messages" class="ai-chat-area">
+        <!-- Welcoming greeting dynamically inserted -->
+      </div>
+
+      <!-- Input Bar -->
+      <div class="ai-input-bar">
+        <input type="text" id="ai-query-input" class="ai-text-input" placeholder="ASK AI (GUEST NAME, TOTAL IN, RESULT)..." autocomplete="off" />
+        <button type="button" id="btn-ai-send" class="ai-send-btn" title="Ask AI">
+          <i data-lucide="sparkles" style="width: 15px; height: 15px;"></i>
+          <span>ASK AI</span>
+        </button>
+        <button type="button" id="btn-ai-clear" class="ai-clear-btn" title="Clear History">
+          <i data-lucide="trash-2" style="width: 15px; height: 15px;"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: MAJOR GUEST DETAILS -->
   <div id="major-guest-details-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 9999;">
-    <div class="modal-content" style="max-width: 90vw; width: 680px; max-height: 85vh; display: flex; flex-direction: column; background: #121827; border: 1.5px solid rgba(255,255,255,0.15); border-radius: 14px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); overflow: hidden;">
+    <div class="modal-content" style="max-width: 90vw; width: 680px; max-height: 85vh; display: flex; flex-direction: column; background: rgba(10, 16, 32, 0.68); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1.5px solid rgba(255,255,255,0.15); border-radius: 14px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); overflow: hidden;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25);">
         <h3 id="major-modal-guest-name" style="margin: 0; font-size: 1.2rem; color: #fff; font-weight: 800; letter-spacing: 0.5px;"></h3>
         <button id="btn-close-major-modal" class="btn-close" style="background:transparent; border:none; color:var(--text-muted); font-size:1.8rem; cursor:pointer; line-height: 1;" title="Close">&times;</button>
@@ -787,20 +988,9 @@
             </div>
           </div>
           
-          <div style="display: flex; gap: 15px;">
-            <div class="form-group flex-1">
-              <label>CD</label>
-              <div class="input-wrapper">
-                <input type="text" id="edit-cd" value="CD-01" style="width:100%; box-sizing:border-box;">
-              </div>
-            </div>
-            <div class="form-group flex-1">
-              <label>Cashier</label>
-              <div class="input-wrapper">
-                <input type="text" id="edit-cashier" value="-" style="width:100%; box-sizing:border-box;">
-              </div>
-            </div>
-          </div>
+          <!-- Hidden CD and Cashier (Removed from view) -->
+          <input type="hidden" id="edit-cd" value="CD-01">
+          <input type="hidden" id="edit-cashier" value="-">
 
           <div style="display: flex; gap: 15px;">
             <div class="form-group flex-1">
@@ -863,22 +1053,27 @@
 
   <!-- MODAL: EDIT MEMBER -->
   <div id="edit-member-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 9999;">
-    <div class="modal-content" style="max-width: 460px; width: 92%; background: #111827; border: 1.5px solid rgba(255,255,255,0.18); border-radius: 14px; padding: 22px; box-shadow: 0 20px 50px rgba(0,0,0,0.85);">
+    <div class="modal-content" style="max-width: 460px; width: 92%; background: rgba(10, 16, 32, 0.75); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1.5px solid rgba(56, 189, 248, 0.35); border-radius: 14px; padding: 22px; box-shadow: 0 20px 50px rgba(0,0,0,0.85);">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
         <h3 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #fff; letter-spacing: 1px;">EDIT MEMBER</h3>
         <button id="btn-close-edit-member" style="background: transparent; border: none; color: #94a3b8; font-size: 1.8rem; cursor: pointer; line-height: 1;" title="Close">&times;</button>
       </div>
       <form id="edit-member-form">
+        <input type="hidden" id="edit-member-orig-id" />
         <div style="margin-bottom: 14px;">
-          <label style="display: block; font-size: 0.8rem; font-weight: 800; color: #94a3b8; margin-bottom: 5px; letter-spacing: 0.5px;">USER ID</label>
-          <input type="text" id="edit-member-id" readonly style="width: 100%; box-sizing: border-box; padding: 10px 14px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); color: #60a5fa; border-radius: 8px; font-weight: 800; font-size: 0.95rem;" />
+          <label style="display: block; font-size: 0.8rem; font-weight: 800; color: #38bdf8; margin-bottom: 5px; letter-spacing: 0.5px;">USER ID</label>
+          <input type="text" id="edit-member-id" required style="width: 100%; box-sizing: border-box; padding: 10px 14px; background: rgba(0,0,0,0.4); border: 1px solid rgba(56, 189, 248, 0.3); color: #60a5fa; border-radius: 8px; font-weight: 800; font-size: 0.95rem;" />
+        </div>
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 0.8rem; font-weight: 800; color: #94a3b8; margin-bottom: 5px; letter-spacing: 0.5px;">USER NAME</label>
+          <input type="text" id="edit-member-name" placeholder="USER NAME" style="width: 100%; box-sizing: border-box; padding: 10px 14px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 8px; font-weight: 700; font-size: 0.95rem; text-transform: uppercase;" />
         </div>
         <div style="margin-bottom: 16px;">
-          <label style="display: block; font-size: 0.8rem; font-weight: 800; color: #94a3b8; margin-bottom: 5px; letter-spacing: 0.5px;">PASSWORD</label>
-          <input type="text" id="edit-member-pass" required style="width: 100%; box-sizing: border-box; padding: 10px 14px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 8px; font-weight: 700; font-size: 0.95rem;" />
+          <label style="display: block; font-size: 0.8rem; font-weight: 800; color: #fbbf24; margin-bottom: 5px; letter-spacing: 0.5px;">PASSWORD (VISIBLE TO ADMIN)</label>
+          <input type="text" id="edit-member-pass" required style="width: 100%; box-sizing: border-box; padding: 10px 14px; background: rgba(0,0,0,0.3); border: 1px solid rgba(251, 191, 36, 0.4); color: #fbbf24; border-radius: 8px; font-weight: 700; font-size: 0.95rem;" />
         </div>
         <div style="margin-bottom: 20px;">
-          <label style="display: block; font-size: 0.8rem; font-weight: 800; color: #94a3b8; margin-bottom: 5px; letter-spacing: 0.5px;">ROLE</label>
+          <label style="display: block; font-size: 0.8rem; font-weight: 800; color: #94a3b8; margin-bottom: 5px; letter-spacing: 0.5px;">DESIGNATION</label>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <button type="button" id="edit-role-officer" class="admin-role-btn active" style="height: 38px;">OFFICER</button>
             <button type="button" id="edit-role-supervisor" class="admin-role-btn" style="height: 38px;">SUPERVISOR</button>
@@ -895,69 +1090,141 @@
     </div>
   </div>
 
-  <!-- NEW DAY MODAL (CONFIRM CHANGE DATE) -->
-  <div id="new-day-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 10000; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px);">
-    <div class="modal-content" style="max-width: 420px; width: 92%; padding: 25px; text-align: center; background: #1e293b; border-radius: 14px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
-      <div style="width: 50px; height: 50px; border-radius: 50%; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto;">
-        <i data-lucide="calendar" style="width: 26px; height: 26px; color: #10b981;"></i>
+  <!-- MODAL: FIRST TIME LOGIN SETUP -->
+  <div id="first-time-setup-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 100005;">
+    <div class="modal-content" style="max-width: 440px; width: 92%; background: rgba(10, 16, 32, 0.88); backdrop-filter: blur(25px) saturate(180%); -webkit-backdrop-filter: blur(25px) saturate(180%); border: 1.5px solid rgba(56, 189, 248, 0.4); border-radius: 16px; padding: 26px; box-shadow: 0 25px 60px rgba(0,0,0,0.95); text-align: left;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <div style="width: 52px; height: 52px; margin: 0 auto 12px; border-radius: 50%; background: rgba(56, 189, 248, 0.12); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(56, 189, 248, 0.3);">
+          <i data-lucide="shield-check" style="width: 28px; height: 28px; color: #38bdf8;"></i>
+        </div>
+        <h3 style="margin: 0 0 6px 0; font-size: 1.25rem; font-weight: 800; color: #fff; letter-spacing: 0.5px;">FIRST TIME SETUP</h3>
+        <p style="margin: 0; color: #94a3b8; font-size: 0.85rem; line-height: 1.4;">Enter your User Name and set your Password to activate your account.</p>
       </div>
-      <h2 style="margin-top: 0; margin-bottom: 8px; font-size: 1.35rem; color: #ffffff; font-weight: 800;">Want to change date?</h2>
-      <p style="color: #94a3b8; margin-bottom: 20px; font-size: 0.9rem; line-height: 1.4;">
-        Current Gaming Date: <strong id="modal-current-date-display" style="color: #38bdf8;">--</strong><br>
-        Starting a new day will archive previous entries.
-      </p>
-      <div style="text-align: left; margin-bottom: 22px;">
-        <label for="new-day-date-input" style="display: block; font-size: 0.8rem; font-weight: 700; color: #cbd5e1; margin-bottom: 6px; letter-spacing: 0.5px;">NEW GAMING DATE:</label>
-        <input type="date" id="new-day-date-input" style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); background: rgba(15,23,42,0.8); color: white; font-size: 1rem; font-weight: 600; outline: none;">
-      </div>
-      <div style="display: flex; gap: 12px; justify-content: center;">
-        <button type="button" id="btn-cancel-new-day" style="flex: 1; padding: 12px; background: rgba(255,255,255,0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
-          <i data-lucide="x" style="width: 16px; height: 16px;"></i>
-          <span>NO</span>
+
+      <form id="first-time-setup-form">
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 0.78rem; font-weight: 800; color: #38bdf8; margin-bottom: 6px; letter-spacing: 0.5px;">USER NAME</label>
+          <input type="text" id="setup-full-name" placeholder="USER NAME" required style="width: 100%; box-sizing: border-box; padding: 11px 14px; background: rgba(0,0,0,0.4); border: 1px solid rgba(56, 189, 248, 0.3); color: #fff; border-radius: 8px; font-weight: 800; font-size: 0.95rem; text-transform: uppercase;" />
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 0.78rem; font-weight: 800; color: #94a3b8; margin-bottom: 6px; letter-spacing: 0.5px;">PASSWORD</label>
+          <input type="password" id="setup-new-password" placeholder="PASSWORD" required style="width: 100%; box-sizing: border-box; padding: 11px 14px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 8px; font-weight: 700; font-size: 0.95rem;" />
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; font-size: 0.78rem; font-weight: 800; color: #94a3b8; margin-bottom: 6px; letter-spacing: 0.5px;">CONFIRM PASSWORD</label>
+          <input type="password" id="setup-confirm-password" placeholder="CONFIRM PASSWORD" required style="width: 100%; box-sizing: border-box; padding: 11px 14px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 8px; font-weight: 700; font-size: 0.95rem;" />
+        </div>
+
+        <div id="setup-error-msg" style="display: none; color: #ef4444; font-size: 0.85rem; font-weight: 700; margin-bottom: 14px; text-align: center;"></div>
+
+        <button type="submit" class="btn-primary" style="width: 100%; padding: 12px; font-size: 0.95rem; font-weight: 800; background: linear-gradient(135deg, #0284c7, #2563eb); border: none; border-radius: 8px; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 15px rgba(2, 132, 199, 0.4);">
+          <i data-lucide="check-circle" style="width: 18px; height: 18px;"></i>
+          <span>SAVE & ENTER SURVEILLANCE</span>
         </button>
-        <button type="button" id="btn-confirm-new-day" style="flex: 1; padding: 12px; background: linear-gradient(135deg, #059669, #10b981); color: white; border: none; border-radius: 8px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(16,185,129,0.35);">
-          <i data-lucide="check" style="width: 16px; height: 16px;"></i>
-          <span>YES</span>
+
+        <div style="text-align: center; margin-top: 12px;">
+          <button type="button" id="btn-cancel-first-setup" style="background: transparent; border: none; color: #94a3b8; font-size: 0.82rem; font-weight: 700; cursor: pointer; text-decoration: underline; padding: 4px 8px;">SWITCH ACCOUNT / LOG OUT</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- NEW DAY MODAL -->
+  <div id="new-day-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 10000;">
+    <div class="modal-content" style="max-width: 420px; padding: 26px; text-align: center; background: rgba(10, 16, 32, 0.68); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-radius: 14px; border: 1.5px solid rgba(251, 191, 36, 0.4); box-shadow: 0 20px 50px rgba(0,0,0,0.85);">
+      <div style="width: 46px; height: 46px; border-radius: 50%; background: rgba(251, 191, 36, 0.15); display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; color: #fbbf24;">
+        <i data-lucide="calendar-plus" style="width: 24px; height: 24px;"></i>
+      </div>
+      <h2 style="margin-top: 0; margin-bottom: 8px; font-size: 1.35rem; color: #fff; font-weight: 800; letter-spacing: 0.5px;">START NEW GAMING DAY</h2>
+      <p id="new-day-modal-desc" style="color: #94a3b8; margin-bottom: 18px; font-size: 0.88rem; line-height: 1.5;">Advancing to the next date will archive previous day entries and export them to Excel on that date's sheet.</p>
+      
+      <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; margin-bottom: 20px; text-align: left;">
+        <div style="font-size: 0.78rem; font-weight: 700; color: #94a3b8; margin-bottom: 6px; text-transform: uppercase;">Next Gaming Date</div>
+        <input type="date" id="new-day-date-input" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.5); color: white; font-size: 1rem; font-weight: 700;">
+      </div>
+
+      <div style="display: flex; gap: 12px; justify-content: center;">
+        <button id="btn-cancel-new-day" class="btn-secondary" style="flex: 1; padding: 10px; background: rgba(255,255,255,0.1); color: white; border: none; border-radius: 8px; cursor: pointer; display:flex; align-items:center; justify-content:center; gap:6px; font-weight: 700;">
+          <i data-lucide="x" style="width:16px;height:16px;"></i>
+          <span>Cancel</span>
+        </button>
+        <button id="btn-confirm-new-day" class="btn-primary" style="flex: 1.3; padding: 10px; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; border-radius: 8px; font-weight: 800; cursor: pointer; display:flex; align-items:center; justify-content:center; gap:6px; box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4);">
+          <i data-lucide="calendar-check" style="width:16px;height:16px;"></i>
+          <span>Confirm &amp; Export</span>
         </button>
       </div>
     </div>
   </div>
 
-  <!-- WARNING MODAL: Barred Guest Match -->
-  <div id="barred-warning-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 9999; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px);">
-    <div class="modal-content" style="max-width: 90%; width: 500px; padding: 0; background: #0f172a; border: 2px solid var(--danger, #ef4444); border-radius: 14px; box-shadow: 0 0 35px rgba(239, 68, 68, 0.45); position: relative; overflow: hidden;">
-      <!-- Top-Right Close "X" Button -->
-      <button type="button" id="btn-x-close-barred-warning" class="modal-close-btn" title="Close" style="position: absolute; top: 12px; right: 14px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); color: #fff; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10;">
-        <i data-lucide="x" style="width: 18px; height: 18px;"></i>
-      </button>
-
-      <div class="modal-header" style="background: rgba(239, 68, 68, 0.15); border-bottom: 1px solid rgba(239, 68, 68, 0.3); padding: 16px 20px; text-align: center;">
-        <h2 style="margin: 0; color: #ef4444; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 800;">
-          <i data-lucide="alert-triangle" style="width: 26px; height: 26px;"></i> BARRED GUEST WARNING
+  <!-- WARNING MODAL: Barred Guest Match (Compact & Small) -->
+  <div id="barred-warning-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 9999;">
+    <div class="modal-content" style="max-width: 90vw; width: 360px; max-height: 85vh; padding: 0; background: rgba(10, 16, 32, 0.88); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1.5px solid var(--danger); border-radius: 12px; box-shadow: 0 0 25px rgba(239, 68, 68, 0.4); display: flex; flex-direction: column; overflow: hidden;">
+      <div class="modal-header" style="background: rgba(239, 68, 68, 0.15); border-bottom: 1px solid rgba(239, 68, 68, 0.25); padding: 8px 14px; text-align: center; display: flex; align-items: center; justify-content: center;">
+        <h2 style="margin: 0; color: var(--danger); font-size: 0.95rem; font-weight: 800; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <i data-lucide="alert-triangle" style="width: 18px; height: 18px;"></i> WARNING
         </h2>
       </div>
-      <div class="modal-body" style="padding: 24px; text-align: center;">
-        <h3 style="margin-top: 0; color: white; font-size: 1.3rem; margin-bottom: 6px;" id="barred-warning-name">GUEST NAME</h3>
-        <p style="color: #94a3b8; font-size: 1rem; margin-bottom: 18px;">This guest is on the <strong style="color: #ef4444;">Barred List</strong>.</p>
-        <div style="background: rgba(0,0,0,0.35); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); text-align: left; margin-bottom: 22px;">
-          <div style="color: #94a3b8; font-size: 0.8rem; font-weight: 700; margin-bottom: 6px; letter-spacing: 0.5px;">DETAILS & REASON</div>
-          <div style="color: white; font-weight: 600;" id="barred-warning-reason">...</div>
+      <div class="modal-body" style="padding: 12px 14px 14px 14px; text-align: center; overflow-y: auto;">
+        <h3 style="margin: 0 0 2px 0; color: white; font-size: 1rem; font-weight: 800; line-height: 1.2;" id="barred-warning-name">GUEST NAME</h3>
+        <p style="color: var(--text-secondary); font-size: 0.76rem; font-weight: 600; margin: 0 0 8px 0;">This guest is on the <strong style="color: var(--danger);">Barred List</strong>.</p>
+        <div style="background: rgba(0,0,0,0.35); padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); text-align: left; margin-bottom: 10px; max-height: 200px; overflow-y: auto;">
+          <div style="color: var(--text-muted); font-size: 0.68rem; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.5px;">REASON</div>
+          <div style="color: white; font-weight: bold;" id="barred-warning-reason">...</div>
         </div>
-        <div style="display: flex; gap: 12px; justify-content: center;">
-          <button type="button" id="btn-cancel-barred-warning" style="flex: 1; padding: 12px; background: rgba(255,255,255,0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
-            <i data-lucide="x" style="width: 16px; height: 16px;"></i>
-            <span>CLOSE</span>
-          </button>
-          <button type="button" id="btn-close-barred-warning" class="btn-primary" style="flex: 1; padding: 12px; font-weight: 800; background: linear-gradient(135deg, #dc2626, #ef4444); color: white; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(239,68,68,0.35);">
-            <i data-lucide="shield-alert" style="width: 17px; height: 17px;"></i>
-            <span>ACKNOWLEDGE</span>
-          </button>
-        </div>
+        <button id="btn-close-barred-warning" class="btn-primary" style="width: 100%; height: 34px; padding: 0 12px; font-size: 0.82rem; font-weight: 800; background: var(--danger); border-radius: 7px; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35); cursor: pointer;">
+          <i data-lucide="shield-alert" style="width: 15px; height: 15px;"></i>
+          <span>ACKNOWLEDGE</span>
+        </button>
       </div>
     </div>
   </div>
 
-  <script src="app.js?v=61"></script>
+  <!-- IN-APP CONFIRMATION MODAL (Replaces all browser "localhost:3000 says" confirm popups) -->
+  <div id="app-confirm-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 100000;">
+    <div class="modal-content" style="max-width: 420px; width: 90%; background: rgba(10, 16, 32, 0.68); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1.5px solid rgba(56, 189, 248, 0.4); border-radius: 14px; padding: 22px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.9);">
+      <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(56, 189, 248, 0.12); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px auto;">
+        <i data-lucide="help-circle" style="width: 26px; height: 26px; color: #38bdf8;"></i>
+      </div>
+      <p id="app-confirm-message" style="color: #f8fafc; font-size: 0.98rem; font-weight: 600; margin: 0 0 20px 0; line-height: 1.5;">Are you sure?</p>
+      <div style="display: flex; justify-content: center; gap: 12px;">
+        <button id="app-confirm-cancel" class="btn btn-secondary" style="padding: 8px 20px; font-weight: 700; border-radius: 8px;">Cancel</button>
+        <button id="app-confirm-ok" class="btn btn-primary" style="padding: 8px 20px; font-weight: 700; background: #ef4444; border-color: #dc2626; border-radius: 8px;">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- IN-APP TOAST NOTIFICATION CONTAINER -->
+  <div id="app-notification-container" class="app-notification-container"></div>
+
+  <script src="app.js?v=20261119d"></script>
+
+  <!-- PWA Service Worker -->
+  <script>
+    if ('caches' in window) {
+      caches.keys().then(function(names) {
+        names.forEach(function(name) {
+          if (name !== 'surveillance-cache-v5') {
+            caches.delete(name);
+          }
+        });
+      });
+    }
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('sw.js?v=20261119d')
+          .then(function(reg) {
+            reg.update();
+            console.log('[PWA] Service Worker Active (Scope: ' + reg.scope + ')');
+          })
+          .catch(function(err) {
+            console.warn('[PWA] Service Worker registration failed:', err);
+          });
+      });
+    }
+  </script>
 
   <!-- DIRECT PHOTO UPLOADS -->
   <input type="file" id="direct-photo-barred" accept="image/*" style="display:none;" />
