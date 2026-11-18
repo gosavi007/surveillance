@@ -42,7 +42,7 @@ function formatIndianNumber(val) {
 }
 window.formatIndianNumber = formatIndianNumber;
 
-// Global K Amount Formatter Helper (e.g. 50000 -> 50K, 500000 -> 500K)
+// Global K Amount Formatter Helper
 function formatKCurrency(val) {
   if (!val || isNaN(val)) return '0';
   const num = Math.abs(Number(val));
@@ -5764,9 +5764,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function openFirstTimeSetupModal(user) {
     if (!firstTimeSetupModal) return;
-    if (setupFullName) setupFullName.value = (user.name && user.name.toUpperCase() !== user.id.toUpperCase()) ? user.name : '';
-    if (setupNewPass) setupNewPass.value = '';
-    if (setupConfirmPass) setupConfirmPass.value = '';
+    if (setupFullName) {
+      setupFullName.value = (user.name && user.name.toUpperCase() !== user.id.toUpperCase()) ? user.name : '';
+      setupFullName.placeholder = 'USER NAME';
+    }
+    if (setupNewPass) {
+      setupNewPass.value = '';
+      setupNewPass.placeholder = 'PASSWORD';
+    }
+    if (setupConfirmPass) {
+      setupConfirmPass.value = '';
+      setupConfirmPass.placeholder = 'CONFIRM PASSWORD';
+    }
     if (setupErrorMsg) {
       setupErrorMsg.textContent = '';
       setupErrorMsg.style.display = 'none';
@@ -5787,7 +5796,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (!fullName) {
         if (setupErrorMsg) {
-          setupErrorMsg.textContent = 'Please enter your Full Name.';
+          setupErrorMsg.textContent = 'Please enter your User Name.';
           setupErrorMsg.style.display = 'block';
         }
         return;
@@ -5843,6 +5852,21 @@ document.addEventListener('DOMContentLoaded', async () => {
           setupErrorMsg.textContent = err.message || 'Setup error. Please try again.';
           setupErrorMsg.style.display = 'block';
         }
+      }
+    });
+  }
+
+  const btnCancelFirstSetup = document.getElementById('btn-cancel-first-setup');
+  if (btnCancelFirstSetup) {
+    btnCancelFirstSetup.addEventListener('click', () => {
+      if (firstTimeSetupModal) firstTimeSetupModal.style.display = 'none';
+      if (btnLogout) {
+        btnLogout.click();
+      } else {
+        localStorage.removeItem('surv_session');
+        sessionStorage.removeItem('current_panel');
+        currentUser = null;
+        showView('login');
       }
     });
   }
