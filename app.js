@@ -1005,7 +1005,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     editInputGuestName.value = entry.guestname || '';
     editInputCard.value      = entry.card      || '';
     editInputOtherInfo.value = entry.otherinfo || '';
-    editInputSurv.value      = entry.surv      || (currentUser ? currentUser.id : 'ADMIN');
+    editInputSurv.value      = entry.surv      || (currentUser ? (currentUser.name || currentUser.id) : 'ADMIN');
     
     editingEntryId = entry.id;
     
@@ -1305,8 +1305,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       if (parsedSession) {
         currentUser = parsedSession;
-        userBadgeId.textContent = currentUser.name;
-        inputSurv.value = currentUser.id;
+        userBadgeId.textContent = currentUser.name || currentUser.id;
+        inputSurv.value = currentUser.name || currentUser.id;
         
         applyUserWallpaper(currentUser.name);
         
@@ -1327,6 +1327,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetchArchiveMetadata();
         fetchEntries();
         fetchGlobalBarredList();
+        checkAndPromptFirstTimeSetup(currentUser);
       }
     } else {
       showView('login');
@@ -1357,7 +1358,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     inputGuestName.value= '';
     inputCard.value     = '';
     inputOtherInfo.value= '';
-    if (currentUser) inputSurv.value = currentUser.id;
+    if (currentUser) inputSurv.value = currentUser.name || currentUser.id;
 
     // Dispatch input events to sync quick entry widgets
     if (inputCD) inputCD.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1408,8 +1409,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       localStorage.setItem('surv_session', JSON.stringify(currentUser));
       
       // Update badge and field
-      userBadgeId.textContent = currentUser.name;
-      inputSurv.value = currentUser.id;
+      userBadgeId.textContent = currentUser.name || currentUser.id;
+      inputSurv.value = currentUser.name || currentUser.id;
       
       applyUserWallpaper(currentUser.name);
       
@@ -1423,6 +1424,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       fetchArchiveMetadata();
       fetchEntries();
       fetchGlobalBarredList();
+      checkAndPromptFirstTimeSetup(currentUser);
 
       // Reset login form fields
       usernameInput.value = '';
@@ -5239,7 +5241,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const cdFinal = cdVal || 'CD-01';
       const cashierFinal = cashierVal || '-';
-      const survVal = (currentUser ? currentUser.id : 'ADMIN').toUpperCase();
+      const survVal = (currentUser ? (currentUser.name || currentUser.id) : 'ADMIN').toUpperCase();
       const now = Date.now();
       const isoNow = getLocalTimeISOString();
       const curBDate = currentBusinessDateStr || currentBusinessDate || getBusinessDate();
@@ -5491,6 +5493,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const isSelf = user.username === 'admin';
       const roleUpper = (user.role || 'officer').toUpperCase();
       const roleColor = user.role === 'supervisor' ? '#c084fc' : '#60a5fa';
+      const nameDisplay = user.name ? escapeHTML(user.name) : '<span style="color:#f59e0b; font-weight:600; font-size:0.82rem;">(Pending 1st Login)</span>';
 
       html += `
         <li class="admin-user-card" data-user="${escapeHTML(user.username)}">
@@ -5501,8 +5504,12 @@ document.addEventListener('DOMContentLoaded', async () => {
               <span class="user-role-pill" style="color: ${roleColor}; border-color: ${roleColor};">${roleUpper}</span>
             </div>
             <div class="user-card-row">
+              <span class="user-card-label">USER NAME:</span>
+              <span class="user-card-value" style="color: #ffffff; font-weight: 800;">${nameDisplay}</span>
+            </div>
+            <div class="user-card-row">
               <span class="user-card-label">PASSWORD:</span>
-              <span class="user-card-value user-pass-val">${escapeHTML(user.password)}</span>
+              <span class="user-card-value user-pass-val" style="color: #fbbf24 !important; font-family: monospace; font-size: 0.95rem; letter-spacing: 0.5px;">${escapeHTML(user.password || '')}</span>
             </div>
           </div>
           <div class="user-card-right">
@@ -5510,7 +5517,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
               <span>DELETE</span>
             </button>
-            <button type="button" class="btn-user-action btn-edit-user" data-user="${escapeHTML(user.username)}" data-pass="${escapeHTML(user.password)}" data-role="${escapeHTML(user.role || 'officer')}" title="Edit Member">
+            <button type="button" class="btn-user-action btn-edit-user" data-user="${escapeHTML(user.username)}" data-name="${escapeHTML(user.name || '')}" data-pass="${escapeHTML(user.password || '')}" data-role="${escapeHTML(user.role || 'officer')}" title="Edit Member">
               <i data-lucide="edit-2" style="width: 14px; height: 14px;"></i>
               <span>EDIT</span>
             </button>
@@ -5528,6 +5535,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const usernameToDelete = btn.getAttribute('data-user');
         if (usernameToDelete === 'admin') return;
 
+        if (!confirm(`Are you sure you want to delete member "${usernameToDelete}"?`)) {
+          return;
+        }
+
         try {
           const response = await fetch(`/api/users?adminUser=admin&username=${encodeURIComponent(usernameToDelete)}`, {
             method: 'DELETE'
@@ -5539,6 +5550,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
 
           fetchUsers();
+          if (window.showAppNotification) {
+            window.showAppNotification(`Member ${usernameToDelete} deleted.`, 'success');
+          }
         } catch (err) {
           alert(`Error deleting user: ${err.message}`);
         }
@@ -5549,9 +5563,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     list.querySelectorAll('.btn-edit-user').forEach(btn => {
       btn.addEventListener('click', () => {
         const username = btn.getAttribute('data-user');
-        const pass = btn.getAttribute('data-pass');
+        const name = btn.getAttribute('data-name') || '';
+        const pass = btn.getAttribute('data-pass') || '';
         const role = btn.getAttribute('data-role') || 'officer';
-        openEditMemberModal(username, pass, role);
+        openEditMemberModal(username, name, pass, role);
       });
     });
   }
@@ -5579,17 +5594,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnCloseEditMember = document.getElementById('btn-close-edit-member');
   const btnCancelEditMember = document.getElementById('btn-cancel-edit-member');
   const editMemberForm = document.getElementById('edit-member-form');
+  const editMemberOrigId = document.getElementById('edit-member-orig-id');
   const editMemberId = document.getElementById('edit-member-id');
+  const editMemberName = document.getElementById('edit-member-name');
   const editMemberPass = document.getElementById('edit-member-pass');
   const editMemberRole = document.getElementById('edit-member-role');
   const editRoleOfficer = document.getElementById('edit-role-officer');
   const editRoleSupervisor = document.getElementById('edit-role-supervisor');
 
-  function openEditMemberModal(username, password, role) {
+  function openEditMemberModal(username, name, password, role) {
     if (!editMemberModal) return;
+    if (editMemberOrigId) editMemberOrigId.value = username;
     if (editMemberId) editMemberId.value = username;
-    if (editMemberPass) editMemberPass.value = password;
-    if (editMemberRole) editMemberRole.value = role;
+    if (editMemberName) editMemberName.value = name || '';
+    if (editMemberPass) editMemberPass.value = password || '';
+    if (editMemberRole) editMemberRole.value = role || 'officer';
 
     if (role === 'supervisor') {
       if (editRoleSupervisor) editRoleSupervisor.classList.add('active');
@@ -5631,16 +5650,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (editMemberForm) {
     editMemberForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const username = editMemberId.value.trim();
+      const origUsername = (editMemberOrigId ? editMemberOrigId.value : editMemberId.value).trim();
+      const newUsername = editMemberId.value.trim();
+      const name = editMemberName ? editMemberName.value.trim().toUpperCase() : '';
       const password = editMemberPass.value;
       const role = editMemberRole ? editMemberRole.value : 'officer';
 
       if (!isUserAdmin()) {
-        if (window.showAppNotification) window.showAppNotification('ONLY ADMIN CAN ADD MEMBER', 'error');
+        if (window.showAppNotification) window.showAppNotification('ONLY ADMIN CAN EDIT MEMBER', 'error');
         return;
       }
 
-      if (!username || !password) return;
+      if (!newUsername || !password) return;
 
       try {
         const response = await fetch('/api/users', {
@@ -5648,7 +5669,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             adminUser: 'admin',
-            username,
+            origUsername,
+            newUsername,
+            name,
             password,
             role
           })
@@ -5661,6 +5684,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         closeEditMemberModal();
         fetchUsers();
+        if (window.showAppNotification) {
+          window.showAppNotification(`User ${newUsername} updated successfully!`, 'success');
+        }
       } catch (err) {
         alert(`Error updating user: ${err.message}`);
       }
@@ -5670,13 +5696,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Submit handler for adding new user account
   const addUserForm = document.getElementById('add-user-form');
   const newUsernameInput = document.getElementById('new-user-id');
+  const newNameInput = document.getElementById('new-user-name');
   const newPasswordInput = document.getElementById('new-user-pass');
 
   if (addUserForm) {
     addUserForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const username = newUsernameInput.value.trim().toLowerCase();
-      const password = newPasswordInput.value;
+      const username = newUsernameInput.value.trim();
+      const name = newNameInput ? newNameInput.value.trim().toUpperCase() : '';
+      const password = newPasswordInput ? newPasswordInput.value.trim() : '';
       const roleElement = document.getElementById('new-user-role');
       const role = roleElement ? roleElement.value : 'officer';
 
@@ -5685,7 +5713,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
 
-      if (!username || !password) return;
+      if (!username) return;
 
       try {
         const response = await fetch('/api/users', {
@@ -5694,6 +5722,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           body: JSON.stringify({
             adminUser: 'admin',
             newUsername: username,
+            newName: name,
             newPassword: password,
             newRole: role
           })
@@ -5706,14 +5735,117 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         newUsernameInput.value = '';
-        newPasswordInput.value = '';
+        if (newNameInput) newNameInput.value = '';
+        if (newPasswordInput) newPasswordInput.value = '';
         fetchUsers();
+        if (window.showAppNotification) {
+          window.showAppNotification(`User ${username} added successfully!`, 'success');
+        }
       } catch (err) {
         alert(`Error adding user: ${err.message}`);
       }
     });
   }
 
+  // First-Time Login Profile Setup Modal Logic
+  const firstTimeSetupModal = document.getElementById('first-time-setup-modal');
+  const firstTimeSetupForm = document.getElementById('first-time-setup-form');
+  const setupFullName = document.getElementById('setup-full-name');
+  const setupNewPass = document.getElementById('setup-new-password');
+  const setupConfirmPass = document.getElementById('setup-confirm-password');
+  const setupErrorMsg = document.getElementById('setup-error-msg');
+
+  function checkAndPromptFirstTimeSetup(user) {
+    if (!user || user.id === 'admin') return;
+    if (user.firstLogin || !user.name || user.name.trim() === '' || user.name.toUpperCase() === user.id.toUpperCase()) {
+      openFirstTimeSetupModal(user);
+    }
+  }
+
+  function openFirstTimeSetupModal(user) {
+    if (!firstTimeSetupModal) return;
+    if (setupFullName) setupFullName.value = (user.name && user.name.toUpperCase() !== user.id.toUpperCase()) ? user.name : '';
+    if (setupNewPass) setupNewPass.value = '';
+    if (setupConfirmPass) setupConfirmPass.value = '';
+    if (setupErrorMsg) {
+      setupErrorMsg.textContent = '';
+      setupErrorMsg.style.display = 'none';
+    }
+    firstTimeSetupModal.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+    setTimeout(() => {
+      if (setupFullName) setupFullName.focus();
+    }, 200);
+  }
+
+  if (firstTimeSetupForm) {
+    firstTimeSetupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fullName = (setupFullName ? setupFullName.value : '').trim().toUpperCase();
+      const newPass = setupNewPass ? setupNewPass.value : '';
+      const confirmPass = setupConfirmPass ? setupConfirmPass.value : '';
+
+      if (!fullName) {
+        if (setupErrorMsg) {
+          setupErrorMsg.textContent = 'Please enter your Full Name.';
+          setupErrorMsg.style.display = 'block';
+        }
+        return;
+      }
+
+      if (!newPass) {
+        if (setupErrorMsg) {
+          setupErrorMsg.textContent = 'Please enter your new password.';
+          setupErrorMsg.style.display = 'block';
+        }
+        return;
+      }
+
+      if (newPass !== confirmPass) {
+        if (setupErrorMsg) {
+          setupErrorMsg.textContent = 'Passwords do not match. Please re-enter.';
+          setupErrorMsg.style.display = 'block';
+        }
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/user/first-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: currentUser.id,
+            newName: fullName,
+            newPassword: newPass
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to complete setup.');
+        }
+
+        currentUser.name = fullName;
+        currentUser.firstLogin = false;
+        localStorage.setItem('surv_session', JSON.stringify(currentUser));
+
+        if (userBadgeId) userBadgeId.textContent = fullName;
+        if (inputSurv) inputSurv.value = fullName;
+        applyUserWallpaper(fullName);
+
+        firstTimeSetupModal.style.display = 'none';
+
+        if (window.showAppNotification) {
+          window.showAppNotification(`Welcome, ${fullName}! Profile setup complete.`, 'success');
+        }
+      } catch (err) {
+        if (setupErrorMsg) {
+          setupErrorMsg.textContent = err.message || 'Setup error. Please try again.';
+          setupErrorMsg.style.display = 'block';
+        }
+      }
+    });
+  }
   // Helper: Secure HTML escape to avoid XSS
   function escapeHTML(str) {
     if (!str) return '';
