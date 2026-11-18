@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Runtime and log files
+*.log
+server.log
+watchdog.lock
+*.lock
+*.tmp
+
+# Large executables (keep launcher scripts and web code)
+node.exe
+
+# OS specific files
+desktop.ini
+Thumbs.db
+.DS_Store
