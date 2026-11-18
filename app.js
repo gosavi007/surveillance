@@ -1446,7 +1446,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyUserWallpaper(null);
     updateSurvFieldState();
     hideAllPanels();
-    if (btnAdminUsers) btnAdminUsers.style.display = 'none';
+    document.body.classList.remove('is-admin-session');
+    if (btnAdminUsers) btnAdminUsers.style.setProperty('display', 'none', 'important');
     if (btnSupervisorLog) btnSupervisorLog.style.display = 'none';
 
     showView('login');
@@ -1596,6 +1597,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // De-activate all nav buttons
     document.querySelectorAll('.btn-nav').forEach(btn => btn.classList.remove('active'));
+    toggleAdminPanel();
 
     // Keep wrapper locked inside single screen
     const wrapper = document.querySelector('.content-wrapper');
@@ -5441,16 +5443,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }, 30000);
 
-  // Helper to check if current user is admin
+  // Helper to check if current user is admin (Supervisors and Officers are STRICTLY non-admin)
   function isUserAdmin() {
-    return !!(currentUser && (currentUser.role === 'admin' || currentUser.id === 'admin' || (currentUser.name && currentUser.name.toLowerCase() === 'admin')));
+    if (!currentUser) return false;
+    const role = (currentUser.role || '').toLowerCase();
+    if (role === 'supervisor' || role === 'officer') return false;
+    const id = (currentUser.id || '').toLowerCase();
+    const name = (currentUser.name || '').toLowerCase();
+    return role === 'admin' || id === 'admin' || name === 'admin';
   }
 
   // Toggle the Admin Users button visibility based on active user - ONLY ADMIN CAN ADD MEMBER
   function toggleAdminPanel() {
     const admin = isUserAdmin();
+    if (admin) {
+      document.body.classList.add('is-admin-session');
+    } else {
+      document.body.classList.remove('is-admin-session');
+    }
     if (btnAdminUsers) {
-      btnAdminUsers.style.display = admin ? 'flex' : 'none';
+      btnAdminUsers.style.setProperty('display', admin ? 'flex' : 'none', 'important');
     }
     const userProfileEl = document.getElementById('user-profile-badge') || document.querySelector('.user-profile');
     if (userProfileEl) {

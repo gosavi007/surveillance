@@ -725,6 +725,15 @@ input::placeholder, textarea::placeholder {
   background: rgba(124, 58, 237, 0.08);
 }
 
+/* ADD MEMBER BUTTON: Strictly hidden by default, visible ONLY for admin session */
+#btn-admin-users {
+  display: none !important;
+}
+
+body.is-admin-session #btn-admin-users {
+  display: flex !important;
+}
+
 /* ==========================================================================
    CONTENT LAYOUT & WIDGETS
    ========================================================================== */

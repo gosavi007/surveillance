@@ -154,7 +154,7 @@
   <script src="jszip.min.js"></script>
   <script src="xlsx.style.min.js"></script>
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="style.css?v=62">
+  <link rel="stylesheet" href="style.css?v=63">
 </head>
 <body>
 
@@ -1198,14 +1198,14 @@
   <!-- IN-APP TOAST NOTIFICATION CONTAINER -->
   <div id="app-notification-container" class="app-notification-container"></div>
 
-  <script src="app.js?v=20261119b"></script>
+  <script src="app.js?v=20261119d"></script>
 
   <!-- PWA Service Worker -->
   <script>
     if ('caches' in window) {
       caches.keys().then(function(names) {
         names.forEach(function(name) {
-          if (name !== 'surveillance-cache-v3') {
+          if (name !== 'surveillance-cache-v5') {
             caches.delete(name);
           }
         });
@@ -1214,7 +1214,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('sw.js?v=20261119b')
+        navigator.serviceWorker.register('sw.js?v=20261119d')
           .then(function(reg) {
             reg.update();
             console.log('[PWA] Service Worker Active (Scope: ' + reg.scope + ')');
