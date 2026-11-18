@@ -1,0 +1,176 @@
+[08-11-2026 17:31:11.95] Starting Surveillance Server 24/7... 
+
+======================================================
+ SUCCESS! Surveillance Server is LIVE!
+======================================================
+ -> Access on this PC:      http://localhost:3000
+ -> Access from other PCs:  http://192.168.100.25:3000
+======================================================
+
+Writing entries to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance
+[2026-11-08T12:03:23.274Z] Missed a daily reset. Running catch-up archiving for 2026-11-07...
+Catch-up archived 9 entries.
+[MONTHLY EXPORT] Saved 31-sheet monthly workbook to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance\EXPORTS\NOVEMBER_2026\Monthly_NOVEMBER_2026_DateWise_1-31.xlsx
+[DATE-WISE EXPORT] Saved date-wise file to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance\EXPORTS\NOVEMBER_2026\07-11-2026.xlsx
+[08-11-2026 19:21:13.42] Surveillance Server stopped intentionally. 
+[08-11-2026 19:21:19.52] Starting Surveillance Server 24/7... 
+[08-11-2026 19:22:35.20] Starting Surveillance Server 24/7... 
+[08-11-2026 19:58:38.87] Starting Surveillance Server 24/7... 
+
+======================================================
+ SUCCESS! Surveillance Server is LIVE!
+======================================================
+ -> Access on this PC:      http://localhost:3000
+ -> Access from other PCs:  http://192.168.100.25:3000
+======================================================
+
+Writing entries to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance
+[08-11-2026 20:02:49.84] Starting Surveillance Server 24/7... 
+
+======================================================
+ SUCCESS! Surveillance Server is LIVE!
+======================================================
+ -> Access on this PC:      http://localhost:3000
+ -> Access from other PCs:  http://192.168.100.25:3000
+======================================================
+
+Writing entries to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance
+[08-11-2026 20:06:27.94] Starting Surveillance Server 24/7... 
+
+======================================================
+ SUCCESS! Surveillance Server is LIVE!
+======================================================
+ -> Access on this PC:      http://localhost:3000
+ -> Access from other PCs:  http://192.168.100.25:3000
+======================================================
+
+Writing entries to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance
+[11-11-2026 19:22:17.34] Starting Surveillance Server 24/7... 
+
+======================================================
+ SUCCESS! Surveillance Server is LIVE!
+======================================================
+ -> Direct URL:             http://surveillance
+ -> Clean Localhost:        http://localhost
+ -> Port 3000 (Fallback):   http://localhost:3000
+ -> Network IP (Port 80):   http://192.168.100.25
+ -> Network IP (Port 3000): http://192.168.100.25:3000
+======================================================
+
+Writing entries to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance
+[2026-11-11T13:52:26.467Z] Missed a daily reset. Running catch-up archiving for 2026-11-08...
+Catch-up archived 7 entries.
+[FOLDER 1: DATE_WISE] Saved workbook to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance\EXPORTS\DATE_WISE\08-11-2026.xlsx
+[FOLDER 2: MONTHLY_WORKBOOK] Saved workbook to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance\EXPORTS\MONTHLY_WORKBOOK\NOVEMBER_2026.xlsx
+[HTTP 80] Direct http://surveillance and http://localhost are LIVE on Port 80!
+[11-11-2026 20:01:43.65] Server process stopped or crashed. Auto-restarting in 3 seconds... 
+[11-11-2026 20:01:47.14] Starting Surveillance Server 24/7... 
+
+======================================================
+ SUCCESS! Surveillance Server is LIVE!
+======================================================
+ -> Direct URL:             http://surveillance
+ -> Clean Localhost:        http://localhost
+ -> Port 3000 (Fallback):   http://localhost:3000
+ -> Network IP (Port 80):   http://192.168.100.25
+ -> Network IP (Port 3000): http://192.168.100.25:3000
+======================================================
+
+Writing entries to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance
+[HTTP 80] Direct http://surveillance and http://localhost are LIVE on Port 80!
+Error writing entry: SyntaxError: Bad escaped character in JSON at position 13
+    at JSON.parse (<anonymous>)
+    at IncomingMessage.<anonymous> (C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\server.js:1833:29)
+    at IncomingMessage.emit (node:events:518:28)
+    at endReadableNT (node:internal/streams/readable:1696:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
+>>> [CLIENT BROWSER ERROR]: {"message":"Uncaught TypeError: window.aiShowDateAllEntries is not a function","source":"http://surveillance/","lineno":1,"colno":8,"stack":"TypeError: window.aiShowDateAllEntries is not a function\n    at HTMLButtonElement.onclick (http://surveillance/:1:8)"}
+>>> [CLIENT BROWSER ERROR]: {"message":"Uncaught TypeError: window.aiShowDateAllEntries is not a function","source":"http://surveillance/","lineno":1,"colno":8,"stack":"TypeError: window.aiShowDateAllEntries is not a function\n    at HTMLButtonElement.onclick (http://surveillance/:1:8)"}
+>>> [CLIENT BROWSER ERROR]: {"message":"Uncaught TypeError: window.aiShowDateAllEntries is not a function","source":"http://surveillance/","lineno":1,"colno":8,"stack":"TypeError: window.aiShowDateAllEntries is not a function\n    at HTMLButtonElement.onclick (http://surveillance/:1:8)"}
+>>> [CLIENT BROWSER ERROR]: {"message":"Uncaught TypeError: window.aiShowDateAllEntries is not a function","source":"http://surveillance/","lineno":1,"colno":8,"stack":"TypeError: window.aiShowDateAllEntries is not a function\n    at HTMLButtonElement.onclick (http://surveillance/:1:8)"}
+>>> [CLIENT BROWSER ERROR]: {"message":"Uncaught TypeError: window.aiShowDateAllEntries is not a function","source":"http://surveillance/","lineno":1,"colno":8,"stack":"TypeError: window.aiShowDateAllEntries is not a function\n    at HTMLButtonElement.onclick (http://surveillance/:1:8)"}
+>>> [CLIENT BROWSER ERROR]: {"message":"Uncaught TypeError: window.aiShowDateAllEntries is not a function","source":"http://surveillance/","lineno":1,"colno":8,"stack":"TypeError: window.aiShowDateAllEntries is not a function\n    at HTMLButtonElement.onclick (http://surveillance/:1:8)"}
+>>> [CLIENT BROWSER ERROR]: {"message":"Uncaught TypeError: window.aiShowDateAllEntries is not a function","source":"http://surveillance/","lineno":1,"colno":8,"stack":"TypeError: window.aiShowDateAllEntries is not a function\n    at HTMLButtonElement.onclick (http://surveillance/:1:8)"}
+>>> [CLIENT BROWSER ERROR]: {"message":"Uncaught TypeError: window.aiShowDateAllEntries is not a function","source":"http://surveillance/","lineno":1,"colno":8,"stack":"TypeError: window.aiShowDateAllEntries is not a function\n    at HTMLButtonElement.onclick (http://surveillance/:1:8)"}
+>>> [CLIENT BROWSER ERROR]: {"message":"Uncaught TypeError: window.aiShowDateAllEntries is not a function","source":"http://surveillance/","lineno":1,"colno":8,"stack":"TypeError: window.aiShowDateAllEntries is not a function\n    at HTMLButtonElement.onclick (http://surveillance/:1:8)"}
+>>> [CLIENT BROWSER ERROR]: {"message":"Uncaught TypeError: window.aiShowDateAllEntries is not a function","source":"http://surveillance/","lineno":1,"colno":8,"stack":"TypeError: window.aiShowDateAllEntries is not a function\n    at HTMLButtonElement.onclick (http://surveillance/:1:8)"}
+>>> [CLIENT BROWSER ERROR]: {"message":"Uncaught TypeError: window.aiShowDateAllEntries is not a function","source":"http://surveillance/","lineno":1,"colno":8,"stack":"TypeError: window.aiShowDateAllEntries is not a function\n    at HTMLButtonElement.onclick (http://surveillance/:1:8)"}
+>>> [CLIENT BROWSER ERROR]: {"message":"Uncaught TypeError: window.aiShowDateAllEntries is not a function","source":"http://surveillance/","lineno":1,"colno":8,"stack":"TypeError: window.aiShowDateAllEntries is not a function\n    at HTMLButtonElement.onclick (http://surveillance/:1:8)"}
+>>> [CLIENT BROWSER ERROR]: {"message":"Uncaught TypeError: window.aiShowDateAllEntries is not a function","source":"http://surveillance/","lineno":1,"colno":8,"stack":"TypeError: window.aiShowDateAllEntries is not a function\n    at HTMLButtonElement.onclick (http://surveillance/:1:8)"}
+[11-11-2026 22:15:51.04] Server process stopped or crashed. Auto-restarting in 3 seconds... 
+[11-11-2026 22:15:55.08] Starting Surveillance Server 24/7... 
+[11-11-2026 22:15:55.99] Server process stopped or crashed. Auto-restarting in 3 seconds... 
+[17-11-2026 14:10:03.14] Starting Surveillance Server 24/7... 
+
+======================================================
+ SUCCESS! Surveillance Server is LIVE!
+======================================================
+ -> Direct URL:             http://surveillance
+ -> Clean Localhost:        http://localhost
+ -> Port 3000 (Fallback):   http://localhost:3000
+ -> Network IP (Port 80):   http://192.168.100.28
+ -> Network IP (Port 3000): http://192.168.100.28:3000
+======================================================
+
+Writing entries to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance
+[HTTP 80] Direct http://surveillance and http://localhost are LIVE on Port 80!
+[17-11-2026 14:29:24.35] Server process stopped or crashed. Auto-restarting in 3 seconds... 
+[17-11-2026 14:29:29.64] Starting Surveillance Server 24/7... 
+[17-11-2026 14:29:29.99] Server process stopped or crashed. Auto-restarting in 3 seconds... 
+[18-11-2026 15:07:16.07] Starting Surveillance Server 24/7... 
+
+======================================================
+ SUCCESS! Surveillance Server is LIVE!
+======================================================
+ -> Direct URL:             http://surveillance
+ -> Clean Localhost:        http://localhost
+ -> Port 3000 (Fallback):   http://localhost:3000
+ -> Network IP (Port 80):   http://192.168.100.28
+ -> Network IP (Port 3000): http://192.168.100.28:3000
+======================================================
+
+Writing entries to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance
+[HTTP 80] Direct http://surveillance and http://localhost are LIVE on Port 80!
+[18-11-2026 15:08:13.59] Starting Surveillance Server 24/7... 
+[18-11-2026 15:10:07.14] Starting Surveillance Server 24/7... 
+
+======================================================
+ SUCCESS! Surveillance Server is LIVE!
+======================================================
+ -> Direct URL:             http://surveillance
+ -> Clean Localhost:        http://localhost
+ -> Port 3000 (Fallback):   http://localhost:3000
+ -> Network IP (Port 80):   http://192.168.100.28
+ -> Network IP (Port 3000): http://192.168.100.28:3000
+======================================================
+
+Writing entries to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance
+[HTTP 80] Direct http://surveillance and http://localhost are LIVE on Port 80!
+[18-11-2026 23:45:21.07] Starting Surveillance Server 24/7... 
+
+======================================================
+ SUCCESS! Surveillance Server is LIVE!
+======================================================
+ -> Direct URL:             http://surveillance
+ -> Clean Localhost:        http://localhost
+ -> Port 3000 (Fallback):   http://localhost:3000
+ -> Network IP (Port 80):   http://192.168.100.28
+ -> Network IP (Port 3000): http://192.168.100.28:3000
+======================================================
+
+Writing entries to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance
+[HTTP 80] Direct http://surveillance and http://localhost are LIVE on Port 80!
+[19-11-2026  1:50:17.91] Starting Surveillance Server 24/7... 
+
+======================================================
+ SUCCESS! Surveillance Server is LIVE!
+======================================================
+ -> Direct URL:             http://surveillance
+ -> Clean Localhost:        http://localhost
+ -> Port 3000 (Fallback):   http://localhost:3000
+ -> Network IP (Port 80):   http://192.168.100.28
+ -> Network IP (Port 3000): http://192.168.100.28:3000
+======================================================
+
+Writing entries to: C:\Users\Manthan Gosavi\Desktop\SURVEILLANCE\data\surveillance
+[HTTP 80] Direct http://surveillance and http://localhost are LIVE on Port 80!

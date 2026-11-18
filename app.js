@@ -1398,6 +1398,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         body: JSON.stringify({ username, password })
       });
 
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
       const data = await response.json();
 
       if (!response.ok) {
@@ -1462,6 +1468,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const response = await fetch('/api/entries');
       if (!response.ok) throw new Error('Failed to retrieve entries.');
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
       const data = await response.json();
       allEntries = data.entries || [];
       window.allEntries = allEntries;
@@ -4861,7 +4873,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...entryPayload, id: editingEntryId })
         });
-        const data = await response.json();
+        const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
+      const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to save entry.');
         resetFormInputs();
         closeLogModal();
@@ -5428,7 +5446,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       const startFetch = Date.now();
       const response = await fetch('/api/status');
       if (response.ok) {
-        const data = await response.json();
+        const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
+      const data = await response.json();
         if (data.serverTime) {
           const rtt = Date.now() - startFetch;
           timeOffset = data.serverTime + (rtt / 2) - Date.now();
@@ -5482,6 +5506,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       const response = await fetch('/api/users?requester=admin');
       if (!response.ok) {
         throw new Error('Failed to retrieve user accounts.');
+      }
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
       }
       const data = await response.json();
       renderUsers(data.users || []);
@@ -5555,7 +5585,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           const response = await fetch(`/api/users?adminUser=admin&username=${encodeURIComponent(usernameToDelete)}`, {
             method: 'DELETE'
           });
-          const data = await response.json();
+          const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
+      const data = await response.json();
 
           if (!response.ok) {
             throw new Error(data.error || 'Failed to delete user.');
@@ -5689,7 +5725,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           })
         });
 
-        const data = await response.json();
+        const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
+      const data = await response.json();
         if (!response.ok) {
           throw new Error(data.error || 'Failed to update user.');
         }
@@ -5740,7 +5782,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           })
         });
 
-        const data = await response.json();
+        const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(response.status === 404 || response.status === 502 || response.status === 503
+          ? `Backend service unavailable (Status ${response.status}). On Render, ensure your service is configured as a "Web Service" running "node server.js".`
+          : 'Server connection failed. Invalid server response.');
+      }
+      const data = await response.json();
 
         if (!response.ok) {
           throw new Error(data.error || 'Failed to add user account.');

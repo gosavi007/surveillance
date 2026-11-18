@@ -15,7 +15,7 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('[UNHANDLED REJECTION]', reason);
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Helper to get executable directory for pkg
 const IS_PKG = typeof process.pkg !== 'undefined';
@@ -3304,17 +3304,19 @@ server.listen(PORT, '0.0.0.0', () => {
   startDailyArchiveJob();
 });
 
-// Also bind Port 80 for direct "http://surveillance" (no :3000 needed)
-try {
-  const serverPort80 = http.createServer((req, res) => {
-    server.emit('request', req, res);
-  });
-  serverPort80.listen(80, '0.0.0.0', () => {
-    console.log(`[HTTP 80] Direct http://surveillance and http://localhost are LIVE on Port 80!`);
-  });
-  serverPort80.on('error', (err) => {
-    console.log(`[HTTP 80 Note] Port 80 could not be bound: ${err.message}. Port ${PORT} is active.`);
-  });
-} catch (e) {
-  console.log('[HTTP 80 Note]', e.message);
+// Also bind Port 80 for direct "http://surveillance" (no :3000 needed) - Local machine only
+if (!process.env.PORT) {
+  try {
+    const serverPort80 = http.createServer((req, res) => {
+      server.emit('request', req, res);
+    });
+    serverPort80.listen(80, '0.0.0.0', () => {
+      console.log(`[HTTP 80] Direct http://surveillance and http://localhost are LIVE on Port 80!`);
+    });
+    serverPort80.on('error', (err) => {
+      console.log(`[HTTP 80 Note] Port 80 could not be bound: ${err.message}. Port ${PORT} is active.`);
+    });
+  } catch (e) {
+    console.log('[HTTP 80 Note]', e.message);
+  }
 }
