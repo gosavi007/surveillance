@@ -29,6 +29,15 @@ const BARRED_DIR = path.join(TARGET_DIR, 'BARRED');
 const STAFF_DIR = path.join(TARGET_DIR, 'STAFF');
 const EXPORTS_DIR = path.join(TARGET_DIR, 'EXPORTS');
 
+// Ensure target directories exist IMMEDIATELY on startup
+[TARGET_DIR, ENTRIES_DIR, BARRED_DIR, STAFF_DIR, EXPORTS_DIR].forEach(dir => {
+  if (!fs.existsSync(dir)) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch (err) {}
+  }
+});
+
 const MONTH_NAMES = [
   'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
   'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
@@ -68,12 +77,17 @@ function calculateActualBusinessDate() {
 }
 
 function getPersistedBusinessDate() {
+  if (!fs.existsSync(TARGET_DIR)) {
+    try { fs.mkdirSync(TARGET_DIR, { recursive: true }); } catch (e) {}
+  }
   const filePath = path.join(TARGET_DIR, 'business_date.txt');
   if (fs.existsSync(filePath)) {
     return fs.readFileSync(filePath, 'utf8').trim();
   }
   const d = calculateActualBusinessDate();
-  fs.writeFileSync(filePath, d, 'utf8');
+  try {
+    fs.writeFileSync(filePath, d, 'utf8');
+  } catch (err) {}
   return d;
 }
 
@@ -174,7 +188,12 @@ setInterval(() => {
 
 function savePersistedBusinessDate(d) {
   currentBusinessDate = d;
-  fs.writeFileSync(path.join(TARGET_DIR, 'business_date.txt'), d, 'utf8');
+  if (!fs.existsSync(TARGET_DIR)) {
+    try { fs.mkdirSync(TARGET_DIR, { recursive: true }); } catch (e) {}
+  }
+  try {
+    fs.writeFileSync(path.join(TARGET_DIR, 'business_date.txt'), d, 'utf8');
+  } catch (err) {}
 }
 
 
@@ -3208,6 +3227,12 @@ const server = http.createServer((req, res) => {
   // Clean request path
   const sanitizedPath = pathname === '/' ? '/index.html' : pathname;
   let filePath = path.join(__dirname, 'public', sanitizedPath);
+  if (!fs.existsSync(filePath)) {
+    const rootPath = path.join(__dirname, sanitizedPath);
+    if (fs.existsSync(rootPath)) {
+      filePath = rootPath;
+    }
+  }
   
   // Security: prevent directory traversal
   const relative = path.relative(path.join(__dirname, 'public'), filePath);
@@ -3227,7 +3252,10 @@ const server = http.createServer((req, res) => {
       if (err.code === 'ENOENT') {
         // Only fallback to index.html for client-side routing on extension-less or .html routes
         if (!ext || ext === '.html') {
-          fs.readFile(path.join(__dirname, 'public', 'index.html'), (indexErr, indexContent) => {
+          const fallbackIndex = fs.existsSync(path.join(__dirname, 'public', 'index.html'))
+            ? path.join(__dirname, 'public', 'index.html')
+            : path.join(__dirname, 'index.html');
+          fs.readFile(fallbackIndex, (indexErr, indexContent) => {
             if (indexErr) {
               res.writeHead(500, { 'Content-Type': 'text/plain' });
               res.end('Internal Server Error');
